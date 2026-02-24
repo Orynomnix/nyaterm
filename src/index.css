@@ -1,11 +1,79 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme {
+  --font-sans: "JetBrains Mono", "Inter", sans-serif;
   --font-display: "JetBrains Mono", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
   --color-primary: var(--df-primary);
   --color-primary-hover: var(--df-primary-hover);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ── Map shadcn CSS vars to existing --df-* theme system ───────────────── */
+:root {
+  --radius: 0.5rem;
+  --background: var(--df-bg);
+  --foreground: var(--df-text);
+  --card: var(--df-bg-panel);
+  --card-foreground: var(--df-text);
+  --popover: var(--df-bg-panel);
+  --popover-foreground: var(--df-text);
+  --primary: var(--df-primary);
+  --primary-foreground: #fff;
+  --secondary: var(--df-bg-hover);
+  --secondary-foreground: var(--df-text);
+  --muted: var(--df-bg-hover);
+  --muted-foreground: var(--df-text-muted);
+  --accent: var(--df-bg-hover);
+  --accent-foreground: var(--df-text);
+  --destructive: #dc2626;
+  --border: var(--df-border);
+  --input: var(--df-border);
+  --ring: var(--df-primary);
 }
 
 /* ── Theme-aware scrollbar ──────────────────────────────────────────────── */
@@ -53,6 +121,7 @@ body,
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes blink {
+
   0%,
   100% {
     opacity: 1;
@@ -90,4 +159,14 @@ body,
 
 .df-hover-primary:hover {
   background-color: color-mix(in srgb, var(--df-primary) 20%, transparent);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
 }

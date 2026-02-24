@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import pkg from "../../../package.json";
 import DragonflyLogo from "../DragonflyLogo";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface AboutDialogProps {
     open: boolean;
@@ -22,69 +31,46 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
         }
     }, [open]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && open) {
-                onClose();
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [open, onClose]);
-
-    if (!open) return null;
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div
-                className="rounded-lg w-[320px] shadow-2xl border flex flex-col items-center p-6 space-y-4"
-                style={{ backgroundColor: "var(--df-bg-panel)", borderColor: "var(--df-border)" }}
-            >
-                <DragonflyLogo className="w-24 h-24 object-contain" />
-
-                <div className="text-center">
-                    <h2 className="text-lg font-bold" style={{ color: "var(--df-text)" }}>
-                        {appName}
-                    </h2>
-                    <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="w-[320px] sm:max-w-[320px] flex flex-col items-center p-6 gap-4">
+                <DialogHeader className="items-center">
+                    <DragonflyLogo className="w-24 h-24 object-contain" />
+                    <DialogTitle className="text-lg">{appName}</DialogTitle>
+                    <DialogDescription className="text-xs">
                         v{appVersion}
-                    </p>
-                </div>
+                    </DialogDescription>
+                </DialogHeader>
 
-                <p className="text-xs text-center px-4 leading-relaxed" style={{ color: "var(--df-text-dimmed)" }}>
+                <p className="text-xs text-center px-4 leading-relaxed text-muted-foreground">
                     {t("about.description")}
                 </p>
 
                 <div className="flex gap-3 w-full pt-2">
-                    <button
-                        className="flex-1 py-2 text-xs font-medium rounded border transition-colors hover:bg-white/5"
-                        style={{ borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-xs"
                         onClick={() => openUrl(pkg.homepage)}
                     >
                         {t("about.website")}
-                    </button>
-                    <button
-                        className="flex-1 py-2 text-xs font-medium rounded border transition-colors hover:bg-white/5"
-                        style={{ borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-xs"
                         onClick={() => openUrl(pkg.bugs.url)}
                     >
                         {t("about.issues")}
-                    </button>
+                    </Button>
                 </div>
 
-                <div className="w-full">
-                    <button
-                        className="w-full py-2 text-xs font-medium rounded transition-colors hover:opacity-90"
-                        style={{
-                            backgroundColor: "var(--df-primary)",
-                            color: "#fff"
-                        }}
-                        onClick={onClose}
-                    >
+                <DialogFooter className="w-full">
+                    <Button size="sm" className="w-full text-xs" onClick={onClose}>
                         {t("about.close")}
-                    </button>
-                </div>
-            </div>
-        </div>
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

@@ -4,6 +4,76 @@ import { invoke } from "@tauri-apps/api/core";
 import { useApp } from "../../context/AppContext";
 import { themeList } from "../../themes";
 import { AVAILABLE_LANGUAGES } from "../../i18n";
+import {
+    Dialog,
+    DialogContent,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+
+/* ── Reusable sub-components ─────────────────────────────────────────── */
+
+function SettingRow({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
+    return (
+        <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+                <Label className="font-medium text-sm">{label}</Label>
+                {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function SettingInput({ label, desc, ...inputProps }: { label: string; desc?: string } & React.ComponentProps<typeof Input>) {
+    return (
+        <div className="space-y-1">
+            <Label className="font-medium text-sm">{label}</Label>
+            {desc && <p className="text-xs text-muted-foreground">{desc}</p>}
+            <Input className="text-sm" {...inputProps} />
+        </div>
+    );
+}
+
+function SettingSelect({ label, desc, value, onValueChange, children }: {
+    label: string; desc?: string; value: string; onValueChange: (v: string) => void; children: React.ReactNode
+}) {
+    return (
+        <div className="space-y-1">
+            <Label className="font-medium text-sm">{label}</Label>
+            {desc && <p className="text-xs text-muted-foreground pb-1">{desc}</p>}
+            <Select value={value} onValueChange={onValueChange}>
+                <SelectTrigger className="w-full text-sm">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    {children}
+                </SelectContent>
+            </Select>
+        </div>
+    );
+}
+
+function SettingCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <input
+            type="checkbox"
+            className="w-4 h-4 rounded accent-primary cursor-pointer shrink-0"
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+        />
+    );
+}
+
+/* ── Main Component ──────────────────────────────────────────────────── */
 
 export default function SettingsDialog() {
     const { t, i18n } = useTranslation();
@@ -17,19 +87,6 @@ export default function SettingsDialog() {
             .catch(console.error);
     }, []);
 
-    // Close dialog on ESC
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && showSettingsDialog) {
-                setShowSettingsDialog(false);
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [showSettingsDialog, setShowSettingsDialog]);
-
-    if (!showSettingsDialog) return null;
-
     const tabs = [
         { id: "general", label: t("settings.general", "General"), icon: "settings" },
         { id: "appearance", label: t("settings.appearance", "Appearance"), icon: "palette" },
@@ -42,45 +99,26 @@ export default function SettingsDialog() {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 text-sm" style={{ fontFamily: appSettings.appearance.font_family }}>
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-                onClick={() => setShowSettingsDialog(false)}
-            />
-
-            {/* Dialog */}
-            <div
-                className="relative w-full max-w-4xl h-[80vh] flex flex-col sm:flex-row rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-                style={{
-                    backgroundColor: "var(--df-bg-panel)",
-                    color: "var(--df-text)",
-                    border: "1px solid var(--df-border)",
-                }}
-                onClick={(e) => e.stopPropagation()}
+        <Dialog open={showSettingsDialog} onOpenChange={(v) => !v && setShowSettingsDialog(false)}>
+            <DialogContent
+                className="w-full max-w-4xl sm:max-w-4xl h-[80vh] p-0 gap-0 flex flex-col sm:flex-row overflow-hidden"
+                showCloseButton={false}
+                style={{ fontFamily: appSettings.appearance.font_family }}
             >
                 {/* Sidebar */}
-                <div
-                    className="w-full sm:w-64 flex-shrink-0 flex flex-col border-r overflow-y-auto"
-                    style={{ borderColor: "var(--df-border)", backgroundColor: "var(--df-bg)" }}
-                >
-                    <div className="p-6 border-b shrink-0 flex items-center gap-3" style={{ borderColor: "var(--df-border)" }}>
-                        <span className="material-icons text-2xl" style={{ color: "var(--df-primary)" }}>settings</span>
+                <div className="w-full sm:w-64 shrink-0 flex flex-col border-r bg-background overflow-y-auto">
+                    <div className="p-6 border-b shrink-0 flex items-center gap-3">
+                        <span className="material-icons text-2xl text-primary">settings</span>
                         <h2 className="text-xl font-semibold">{t("settings.title", "Settings")}</h2>
                     </div>
-
                     <div className="flex-1 py-3 px-3 space-y-1">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-colors"
-                                style={{
-                                    backgroundColor: activeTab === tab.id ? "color-mix(in srgb, var(--df-primary) 15%, transparent)" : "transparent",
-                                    color: activeTab === tab.id ? "var(--df-primary)" : "var(--df-text)",
-                                }}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${activeTab === tab.id ? "bg-primary/15 text-primary" : "hover:bg-accent"}`}
                             >
-                                <span className="material-icons text-[18px]" style={{ color: activeTab === tab.id ? "var(--df-primary)" : "var(--df-text-muted)" }}>{tab.icon}</span>
+                                <span className={`material-icons text-[18px] ${activeTab === tab.id ? "text-primary" : "text-muted-foreground"}`}>{tab.icon}</span>
                                 {tab.label}
                             </button>
                         ))}
@@ -88,113 +126,84 @@ export default function SettingsDialog() {
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 flex flex-col min-w-0" style={{ backgroundColor: "var(--df-bg-panel)" }}>
-                    <div className="p-6 border-b shrink-0 flex items-center justify-between" style={{ borderColor: "var(--df-border)" }}>
+                <div className="flex-1 flex flex-col min-w-0">
+                    <div className="p-6 border-b shrink-0 flex items-center justify-between">
                         <h3 className="text-2xl font-semibold">
                             {tabs.find(t => t.id === activeTab)?.label}
                         </h3>
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => setShowSettingsDialog(false)}
-                            className="p-1 rounded-md transition-colors hover:bg-black/10 dark:hover:bg-white/10"
-                            style={{ color: "var(--df-text-muted)" }}
                         >
                             <span className="material-icons text-xl">close</span>
-                        </button>
+                        </Button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6 md:p-8">
                         <div className="max-w-2xl text-base space-y-6">
+
+                            {/* ── General Tab ──────────────────────────────────────── */}
                             {activeTab === "general" && (
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.startupRestore", "Restore previous session on startup")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.startupRestoreDesc", "Automatically reconnect to tabs that were open when you last closed the app.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.general.startup_restore}
-                                            onChange={(e) => updateAppSettings({ general: { ...appSettings.general, startup_restore: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.startupRestore", "Restore previous session on startup")}
+                                        desc={t("settings.startupRestoreDesc", "Automatically reconnect to tabs that were open when you last closed the app.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.general.startup_restore} onChange={(v) => updateAppSettings({ general: { ...appSettings.general, startup_restore: v } })} />
+                                    </SettingRow>
 
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.defaultLocalShell", "Default Local Shell")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.defaultLocalShellDesc", "The shell path to use when opening a local terminal.")}</p>
-                                        <input
-                                            type="text"
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.general.default_local_shell}
-                                            onChange={(e) => updateAppSettings({ general: { ...appSettings.general, default_local_shell: e.target.value } })}
-                                        />
-                                    </div>
+                                    <SettingInput
+                                        label={t("settings.defaultLocalShell", "Default Local Shell")}
+                                        desc={t("settings.defaultLocalShellDesc", "The shell path to use when opening a local terminal.")}
+                                        value={appSettings.general.default_local_shell}
+                                        onChange={(e) => updateAppSettings({ general: { ...appSettings.general, default_local_shell: e.target.value } })}
+                                    />
 
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.minimizeToTray", "Minimize to tray on close")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.minimizeToTrayDesc", "Keep the application running in the background when the window is closed.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.general.minimize_to_tray}
-                                            onChange={(e) => updateAppSettings({ general: { ...appSettings.general, minimize_to_tray: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.minimizeToTray", "Minimize to tray on close")}
+                                        desc={t("settings.minimizeToTrayDesc", "Keep the application running in the background when the window is closed.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.general.minimize_to_tray} onChange={(v) => updateAppSettings({ general: { ...appSettings.general, minimize_to_tray: v } })} />
+                                    </SettingRow>
                                 </div>
                             )}
 
+                            {/* ── Appearance Tab ───────────────────────────────────── */}
                             {activeTab === "appearance" && (
                                 <div className="space-y-5">
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.theme", "Theme")}</label>
-                                        <p className="text-xs pb-1" style={{ color: "var(--df-text-muted)" }}>{t("settings.themeDesc", "Select the color theme for the terminal and application.")}</p>
-                                        <select
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.appearance.theme || "github-dark"}
-                                            onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, theme: e.target.value } })}
-                                        >
-                                            {themeList.map((tm) => (
-                                                <option key={tm.id} value={tm.id}>{tm.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    <SettingSelect
+                                        label={t("settings.theme", "Theme")}
+                                        desc={t("settings.themeDesc", "Select the color theme for the terminal and application.")}
+                                        value={appSettings.appearance.theme || "github-dark"}
+                                        onValueChange={(v) => updateAppSettings({ appearance: { ...appSettings.appearance, theme: v } })}
+                                    >
+                                        {themeList.map((tm) => (
+                                            <SelectItem key={tm.id} value={tm.id}>{tm.name}</SelectItem>
+                                        ))}
+                                    </SettingSelect>
 
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.language", "Language")}</label>
-                                        <p className="text-xs pb-1" style={{ color: "var(--df-text-muted)" }}>{t("settings.languageDesc", "Select the display language for the application interface.")}</p>
-                                        <select
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={uiConfig.language || "en"}
-                                            onChange={(e) => {
-                                                const lng = e.target.value;
-                                                i18n.changeLanguage(lng);
-                                                updateUiConfig({ language: lng });
-                                            }}
-                                        >
-                                            {AVAILABLE_LANGUAGES.map(lng => (
-                                                <option key={lng.id} value={lng.id}>{lng.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    <SettingSelect
+                                        label={t("settings.language", "Language")}
+                                        desc={t("settings.languageDesc", "Select the display language for the application interface.")}
+                                        value={uiConfig.language || "en"}
+                                        onValueChange={(lng) => { i18n.changeLanguage(lng); updateUiConfig({ language: lng }); }}
+                                    >
+                                        {AVAILABLE_LANGUAGES.map(lng => (
+                                            <SelectItem key={lng.id} value={lng.id}>{lng.name}</SelectItem>
+                                        ))}
+                                    </SettingSelect>
 
+                                    {/* Font Family */}
                                     <div className="space-y-2">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.fontFamily", "Font Family")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.fontFamilyDesc", "The font family used in the terminal and app UI. Topmost font has highest priority.")}</p>
-
+                                        <Label className="font-medium text-sm">{t("settings.fontFamily", "Font Family")}</Label>
+                                        <p className="text-xs text-muted-foreground">{t("settings.fontFamilyDesc", "The font family used in the terminal and app UI. Topmost font has highest priority.")}</p>
                                         <div className="space-y-2">
                                             {appSettings.appearance.font_family.split(",").map(f => f.trim()).map((font, idx, arr) => (
                                                 <div key={idx} className="flex items-center gap-2">
-                                                    <span className="text-xs w-20 flex-shrink-0" style={{ color: "var(--df-text-muted)" }}>{idx === 0 ? t("settings.fontPrimary", "Primary") : t("settings.fontFallback", "Fallback") + " " + idx}</span>
+                                                    <span className="text-xs w-20 shrink-0 text-muted-foreground">{idx === 0 ? t("settings.fontPrimary", "Primary") : `${t("settings.fontFallback", "Fallback")} ${idx}`}</span>
                                                     <select
-                                                        className="flex-1 px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                                        style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                                                        className="flex-1 h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs focus:outline-none"
                                                         value={systemFonts.includes(font) ? font : ""}
                                                         onChange={(e) => {
                                                             const newFonts = [...arr];
@@ -202,243 +211,166 @@ export default function SettingsDialog() {
                                                             updateAppSettings({ appearance: { ...appSettings.appearance, font_family: newFonts.filter(Boolean).join(", ") } });
                                                         }}
                                                     >
-                                                        {/* Ensure a blank/fallback option exists if the font is missing from the system list initially */
-                                                            !systemFonts.includes(font) && <option value={font}>{font} (Custom/Missing)</option>}
+                                                        {!systemFonts.includes(font) && <option value={font}>{font} (Custom/Missing)</option>}
                                                         {systemFonts.map(f => <option key={f} value={f}>{f}</option>)}
                                                     </select>
-                                                    <button
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon-xs"
+                                                        className="text-destructive hover:bg-destructive/10"
+                                                        title={t("common.remove", "Remove")}
                                                         onClick={() => {
                                                             const newFonts = arr.filter((_, i) => i !== idx);
-                                                            if (newFonts.length === 0) newFonts.push("Consolas"); // Ensure at least one
+                                                            if (newFonts.length === 0) newFonts.push("Consolas");
                                                             updateAppSettings({ appearance: { ...appSettings.appearance, font_family: newFonts.join(", ") } });
                                                         }}
-                                                        className="p-1.5 rounded text-red-500 hover:bg-red-500/10 transition-colors"
-                                                        title={t("common.remove", "Remove")}
                                                     >
                                                         <span className="material-icons text-[16px]">close</span>
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             ))}
                                         </div>
-                                        <button
+                                        <Button
+                                            variant="ghost"
+                                            size="xs"
+                                            className="text-primary"
                                             onClick={() => {
                                                 const newFonts = [...appSettings.appearance.font_family.split(",").map(f => f.trim()), systemFonts[0] || "Arial"];
                                                 updateAppSettings({ appearance: { ...appSettings.appearance, font_family: newFonts.join(", ") } });
                                             }}
-                                            className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors mt-1"
-                                            style={{ backgroundColor: "color-mix(in srgb, var(--df-primary) 10%, transparent)", color: "var(--df-primary)" }}
                                         >
                                             <span className="material-icons text-[14px]">add</span> {t("settings.addFallbackFont", "Add Fallback")}
-                                        </button>
+                                        </Button>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.fontSize", "Font Size (px)")}</label>
-                                            <input
-                                                type="number"
-                                                min={8} max={72}
-                                                className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                                value={appSettings.appearance.font_size}
-                                                onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, font_size: parseInt(e.target.value) || 14 } })}
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.cursorStyle", "Cursor Style")}</label>
-                                            <select
-                                                className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                                style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                                value={appSettings.appearance.cursor_style}
-                                                onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, cursor_style: e.target.value } })}
-                                            >
-                                                <option value="block">{t("settings.cursorBlock", "Block")}</option>
-                                                <option value="underline">{t("settings.cursorUnderline", "Underline")}</option>
-                                                <option value="bar">{t("settings.cursorBar", "Bar")}</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.cursorBlink", "Cursor Blink")}</label>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.appearance.cursor_blink}
-                                            onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, cursor_blink: e.target.checked } })}
+                                        <SettingInput
+                                            label={t("settings.fontSize", "Font Size (px)")}
+                                            type="number"
+                                            min={8} max={72}
+                                            value={appSettings.appearance.font_size}
+                                            onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, font_size: parseInt(e.target.value) || 14 } })}
                                         />
+                                        <SettingSelect
+                                            label={t("settings.cursorStyle", "Cursor Style")}
+                                            value={appSettings.appearance.cursor_style}
+                                            onValueChange={(v) => updateAppSettings({ appearance: { ...appSettings.appearance, cursor_style: v } })}
+                                        >
+                                            <SelectItem value="block">{t("settings.cursorBlock", "Block")}</SelectItem>
+                                            <SelectItem value="underline">{t("settings.cursorUnderline", "Underline")}</SelectItem>
+                                            <SelectItem value="bar">{t("settings.cursorBar", "Bar")}</SelectItem>
+                                        </SettingSelect>
                                     </div>
 
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.fontLigatures", "Enable Font Ligatures")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.fontLigaturesDesc", "Combine multiple characters into a single typographical glyph.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.appearance.ligatures}
-                                            onChange={(e) => updateAppSettings({ appearance: { ...appSettings.appearance, ligatures: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow label={t("settings.cursorBlink", "Cursor Blink")}>
+                                        <SettingCheckbox checked={appSettings.appearance.cursor_blink} onChange={(v) => updateAppSettings({ appearance: { ...appSettings.appearance, cursor_blink: v } })} />
+                                    </SettingRow>
 
+                                    <SettingRow
+                                        label={t("settings.fontLigatures", "Enable Font Ligatures")}
+                                        desc={t("settings.fontLigaturesDesc", "Combine multiple characters into a single typographical glyph.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.appearance.ligatures} onChange={(v) => updateAppSettings({ appearance: { ...appSettings.appearance, ligatures: v } })} />
+                                    </SettingRow>
                                 </div>
                             )}
 
+                            {/* ── Terminal Tab ─────────────────────────────────────── */}
                             {activeTab === "terminal" && (
                                 <div className="space-y-4">
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.scrollbackLines", "Scrollback Buffer (lines)")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.scrollbackLinesDesc", "Number of lines kept in memory for scrolling up.")}</p>
-                                        <input
-                                            type="number"
-                                            min={100} max={100000} step={100}
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.terminal.scrollback_lines}
-                                            onChange={(e) => updateAppSettings({ terminal: { ...appSettings.terminal, scrollback_lines: parseInt(e.target.value) || 5000 } })}
-                                        />
-                                    </div>
+                                    <SettingInput
+                                        label={t("settings.scrollbackLines", "Scrollback Buffer (lines)")}
+                                        desc={t("settings.scrollbackLinesDesc", "Number of lines kept in memory for scrolling up.")}
+                                        type="number" min={100} max={100000} step={100}
+                                        value={appSettings.terminal.scrollback_lines}
+                                        onChange={(e) => updateAppSettings({ terminal: { ...appSettings.terminal, scrollback_lines: parseInt(e.target.value) || 5000 } })}
+                                    />
 
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.keepAliveInterval", "Keep-Alive Interval (seconds)")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.keepAliveIntervalDesc", "Send SSH keep-alive packets every X seconds. 0 to disable.")}</p>
-                                        <input
-                                            type="number"
-                                            min={0} max={600} step={5}
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.terminal.keep_alive_interval}
-                                            onChange={(e) => updateAppSettings({ terminal: { ...appSettings.terminal, keep_alive_interval: parseInt(e.target.value) || 0 } })}
-                                        />
-                                    </div>
+                                    <SettingInput
+                                        label={t("settings.keepAliveInterval", "Keep-Alive Interval (seconds)")}
+                                        desc={t("settings.keepAliveIntervalDesc", "Send SSH keep-alive packets every X seconds. 0 to disable.")}
+                                        type="number" min={0} max={600} step={5}
+                                        value={appSettings.terminal.keep_alive_interval}
+                                        onChange={(e) => updateAppSettings({ terminal: { ...appSettings.terminal, keep_alive_interval: parseInt(e.target.value) || 0 } })}
+                                    />
 
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.hardwareAcceleration", "Hardware Acceleration")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.hardwareAccelerationDesc", "Use GPU for terminal rendering (WebGL/Canvas). Requires restart.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.terminal.hardware_acceleration}
-                                            onChange={(e) => updateAppSettings({ terminal: { ...appSettings.terminal, hardware_acceleration: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.hardwareAcceleration", "Hardware Acceleration")}
+                                        desc={t("settings.hardwareAccelerationDesc", "Use GPU for terminal rendering (WebGL/Canvas). Requires restart.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.terminal.hardware_acceleration} onChange={(v) => updateAppSettings({ terminal: { ...appSettings.terminal, hardware_acceleration: v } })} />
+                                    </SettingRow>
                                 </div>
                             )}
 
+                            {/* ── Interaction Tab ──────────────────────────────────── */}
                             {activeTab === "interaction" && (
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.copyOnSelect", "Copy on Select")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.copyOnSelectDesc", "Automatically copy selected text to the clipboard.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.interaction.copy_on_select}
-                                            onChange={(e) => updateAppSettings({ interaction: { ...appSettings.interaction, copy_on_select: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.copyOnSelect", "Copy on Select")}
+                                        desc={t("settings.copyOnSelectDesc", "Automatically copy selected text to the clipboard.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.interaction.copy_on_select} onChange={(v) => updateAppSettings({ interaction: { ...appSettings.interaction, copy_on_select: v } })} />
+                                    </SettingRow>
 
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.rightClickPaste", "Right-click Paste")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.rightClickPasteDesc", "Paste clipboard content on right-click instead of opening context menu.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.interaction.right_click_paste}
-                                            onChange={(e) => updateAppSettings({ interaction: { ...appSettings.interaction, right_click_paste: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.rightClickPaste", "Right-click Paste")}
+                                        desc={t("settings.rightClickPasteDesc", "Paste clipboard content on right-click instead of opening context menu.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.interaction.right_click_paste} onChange={(v) => updateAppSettings({ interaction: { ...appSettings.interaction, right_click_paste: v } })} />
+                                    </SettingRow>
 
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.wordSeparators", "Word Separators")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.wordSeparatorsDesc", "Characters that separate words for double-click selection.")}</p>
-                                        <input
-                                            type="text"
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.interaction.word_separators}
-                                            onChange={(e) => updateAppSettings({ interaction: { ...appSettings.interaction, word_separators: e.target.value } })}
-                                        />
-                                    </div>
+                                    <SettingInput
+                                        label={t("settings.wordSeparators", "Word Separators")}
+                                        desc={t("settings.wordSeparatorsDesc", "Characters that separate words for double-click selection.")}
+                                        value={appSettings.interaction.word_separators}
+                                        onChange={(e) => updateAppSettings({ interaction: { ...appSettings.interaction, word_separators: e.target.value } })}
+                                    />
 
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.defaultEncoding", "Default Encoding")}</label>
-                                        <select
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.interaction.default_encoding}
-                                            onChange={(e) => updateAppSettings({ interaction: { ...appSettings.interaction, default_encoding: e.target.value } })}
-                                        >
-                                            <option value="UTF-8">UTF-8</option>
-                                            <option value="GBK">GBK</option>
-                                        </select>
-                                    </div>
+                                    <SettingSelect
+                                        label={t("settings.defaultEncoding", "Default Encoding")}
+                                        value={appSettings.interaction.default_encoding}
+                                        onValueChange={(v) => updateAppSettings({ interaction: { ...appSettings.interaction, default_encoding: v } })}
+                                    >
+                                        <SelectItem value="UTF-8">UTF-8</SelectItem>
+                                        <SelectItem value="GBK">GBK</SelectItem>
+                                    </SettingSelect>
                                 </div>
                             )}
 
+                            {/* ── Proxy Tab ────────────────────────────────────────── */}
                             {activeTab === "proxy" && (
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.enableProxy", "Enable Proxy")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.enableProxyDesc", "Route SSH connections through a proxy server.")}</p>
-                                        </div>
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                            style={{ borderColor: "var(--df-border)" }}
-                                            checked={appSettings.proxy.enabled}
-                                            onChange={(e) => updateAppSettings({ proxy: { ...appSettings.proxy, enabled: e.target.checked } })}
-                                        />
-                                    </div>
+                                    <SettingRow
+                                        label={t("settings.enableProxy", "Enable Proxy")}
+                                        desc={t("settings.enableProxyDesc", "Route SSH connections through a proxy server.")}
+                                    >
+                                        <SettingCheckbox checked={appSettings.proxy.enabled} onChange={(v) => updateAppSettings({ proxy: { ...appSettings.proxy, enabled: v } })} />
+                                    </SettingRow>
 
                                     <div className={`space-y-4 ${!appSettings.proxy.enabled ? "opacity-50 pointer-events-none" : ""}`}>
-                                        <div className="space-y-1">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.proxyProtocol", "Protocol")}</label>
-                                            <select
-                                                className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                                style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                                value={appSettings.proxy.protocol}
-                                                onChange={(e) => updateAppSettings({ proxy: { ...appSettings.proxy, protocol: e.target.value } })}
-                                            >
-                                                <option value="socks5">SOCKS5</option>
-                                                <option value="http">HTTP</option>
-                                            </select>
-                                        </div>
+                                        <SettingSelect
+                                            label={t("settings.proxyProtocol", "Protocol")}
+                                            value={appSettings.proxy.protocol}
+                                            onValueChange={(v) => updateAppSettings({ proxy: { ...appSettings.proxy, protocol: v } })}
+                                        >
+                                            <SelectItem value="socks5">SOCKS5</SelectItem>
+                                            <SelectItem value="http">HTTP</SelectItem>
+                                        </SettingSelect>
 
                                         <div className="flex gap-2">
-                                            <div className="space-y-1 flex-1">
-                                                <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.proxyHost", "Host")}</label>
-                                                <input
-                                                    type="text"
+                                            <div className="flex-1">
+                                                <SettingInput
+                                                    label={t("settings.proxyHost", "Host")}
                                                     placeholder="127.0.0.1"
-                                                    className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                    style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
                                                     value={appSettings.proxy.host}
                                                     onChange={(e) => updateAppSettings({ proxy: { ...appSettings.proxy, host: e.target.value } })}
                                                 />
                                             </div>
-                                            <div className="space-y-1 w-24">
-                                                <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.proxyPort", "Port")}</label>
-                                                <input
-                                                    type="number"
-                                                    min={1} max={65535}
-                                                    className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                    style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                                            <div className="w-24">
+                                                <SettingInput
+                                                    label={t("settings.proxyPort", "Port")}
+                                                    type="number" min={1} max={65535}
                                                     value={appSettings.proxy.port || ""}
                                                     onChange={(e) => updateAppSettings({ proxy: { ...appSettings.proxy, port: parseInt(e.target.value) || 0 } })}
                                                 />
@@ -448,46 +380,42 @@ export default function SettingsDialog() {
                                 </div>
                             )}
 
+                            {/* ── Search Tab ───────────────────────────────────────── */}
                             {activeTab === "search" && (
                                 <div className="space-y-6">
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.defaultSearchEngine", "Default Search Engine")}</label>
-                                        <p className="text-xs pb-1" style={{ color: "var(--df-text-muted)" }}>{t("settings.defaultSearchEngineDesc", "The primary engine used when double-clicking or right-clicking to search.")}</p>
-                                        <select
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.search.default_engine}
-                                            onChange={(e) => updateAppSettings({ search: { ...appSettings.search, default_engine: e.target.value } })}
-                                        >
-                                            {appSettings.search.custom_engines.map((engine, idx) => (
-                                                <option key={idx} value={engine.name}>{engine.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    <SettingSelect
+                                        label={t("settings.defaultSearchEngine", "Default Search Engine")}
+                                        desc={t("settings.defaultSearchEngineDesc", "The primary engine used when double-clicking or right-clicking to search.")}
+                                        value={appSettings.search.default_engine}
+                                        onValueChange={(v) => updateAppSettings({ search: { ...appSettings.search, default_engine: v } })}
+                                    >
+                                        {appSettings.search.custom_engines.map((engine, idx) => (
+                                            <SelectItem key={idx} value={engine.name}>{engine.name}</SelectItem>
+                                        ))}
+                                    </SettingSelect>
 
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.customEngines", "Search Engines")}</label>
-                                            <button
+                                            <Label className="font-medium text-sm">{t("settings.customEngines", "Search Engines")}</Label>
+                                            <Button
+                                                variant="ghost"
+                                                size="xs"
+                                                className="text-primary"
                                                 onClick={() => {
                                                     const newEngines = [...appSettings.search.custom_engines, { name: "New Engine", url_template: "https://example.com/search?q=%s" }];
                                                     updateAppSettings({ search: { ...appSettings.search, custom_engines: newEngines } });
                                                 }}
-                                                className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
-                                                style={{ backgroundColor: "color-mix(in srgb, var(--df-primary) 10%, transparent)", color: "var(--df-primary)" }}
                                             >
                                                 <span className="material-icons text-[14px]">add</span> {t("common.add", "Add")}
-                                            </button>
+                                            </Button>
                                         </div>
 
-                                        <div className="border rounded overflow-hidden" style={{ borderColor: "var(--df-border)" }}>
+                                        <div className="border rounded-md overflow-hidden">
                                             {appSettings.search.custom_engines.map((engine, i) => (
-                                                <div key={i} className="flex items-center gap-2 p-2 border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5 transition-colors" style={{ borderColor: "var(--df-border)" }}>
-                                                    <input
-                                                        type="text"
+                                                <div key={i} className="flex items-center gap-2 p-2 border-b last:border-0 hover:bg-accent transition-colors">
+                                                    <Input
                                                         placeholder="Name"
-                                                        className="w-1/3 px-2 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                        style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                                                        className="w-1/3 text-sm"
                                                         value={engine.name}
                                                         onChange={(e) => {
                                                             const newEngines = [...appSettings.search.custom_engines];
@@ -495,11 +423,9 @@ export default function SettingsDialog() {
                                                             updateAppSettings({ search: { ...appSettings.search, custom_engines: newEngines } });
                                                         }}
                                                     />
-                                                    <input
-                                                        type="text"
+                                                    <Input
                                                         placeholder="URL Template (e.g. https://google.com/search?q=%s)"
-                                                        className="flex-1 px-2 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                        style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                                                        className="flex-1 text-sm"
                                                         value={engine.url_template}
                                                         onChange={(e) => {
                                                             const newEngines = [...appSettings.search.custom_engines];
@@ -507,151 +433,117 @@ export default function SettingsDialog() {
                                                             updateAppSettings({ search: { ...appSettings.search, custom_engines: newEngines } });
                                                         }}
                                                     />
-                                                    <button
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon-xs"
+                                                        className="text-destructive hover:bg-destructive/10"
+                                                        title={t("common.delete", "Delete")}
                                                         onClick={() => {
                                                             const newEngines = appSettings.search.custom_engines.filter((_, idx) => idx !== i);
-                                                            const newDefault = (appSettings.search.default_engine === engine.name)
-                                                                ? (newEngines[0]?.name || "")
-                                                                : appSettings.search.default_engine;
+                                                            const newDefault = (appSettings.search.default_engine === engine.name) ? (newEngines[0]?.name || "") : appSettings.search.default_engine;
                                                             updateAppSettings({ search: { default_engine: newDefault, custom_engines: newEngines } });
                                                         }}
-                                                        className="p-1.5 rounded text-red-500 hover:bg-red-500/10 transition-colors"
-                                                        title={t("common.delete", "Delete")}
                                                     >
                                                         <span className="material-icons text-[16px]">delete</span>
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             ))}
                                             {appSettings.search.custom_engines.length === 0 && (
-                                                <div className="text-center py-6 text-xs" style={{ color: "var(--df-text-muted)" }}>
+                                                <div className="text-center py-6 text-xs text-muted-foreground">
                                                     {t("settings.noCustomEngines", "No search engines available.")}
                                                 </div>
                                             )}
                                         </div>
-                                        <p className="text-xs mt-1" style={{ color: "var(--df-text-muted)" }}>
+                                        <p className="text-xs mt-1 text-muted-foreground">
                                             {t("settings.customEnginesDesc", "Use %s to represent the searched text in the URL template.")}
                                         </p>
                                     </div>
                                 </div>
                             )}
 
+                            {/* ── Translation Tab ──────────────────────────────────── */}
                             {activeTab === "translation" && (
                                 <div className="space-y-4">
-                                    <div className="space-y-1">
-                                        <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.translationProvider", "Translation Provider")}</label>
-                                        <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.translationProviderDesc", "Select the API provider for translating terminal output.")}</p>
-                                        <select
-                                            className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                            style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                            value={appSettings.translation.provider}
-                                            onChange={(e) => updateAppSettings({ translation: { ...appSettings.translation, provider: e.target.value } })}
-                                        >
-                                            <option value="">{t("settings.translationDisabled", "Disabled")}</option>
-                                            <option value="openai">OpenAI</option>
-                                            <option value="deepl">DeepL</option>
-                                        </select>
-                                    </div>
+                                    <SettingSelect
+                                        label={t("settings.translationProvider", "Translation Provider")}
+                                        desc={t("settings.translationProviderDesc", "Select the API provider for translating terminal output.")}
+                                        value={appSettings.translation.provider}
+                                        onValueChange={(v) => updateAppSettings({ translation: { ...appSettings.translation, provider: v } })}
+                                    >
+                                        <SelectItem value="">{t("settings.translationDisabled", "Disabled")}</SelectItem>
+                                        <SelectItem value="openai">OpenAI</SelectItem>
+                                        <SelectItem value="deepl">DeepL</SelectItem>
+                                    </SettingSelect>
 
                                     {appSettings.translation.provider !== "" && (
-                                        <div className="space-y-1">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.translationApiKey", "API Key")}</label>
-                                            <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.translationApiKeyDesc", "Enter the API key for your chosen translation provider.")}</p>
-                                            <input
-                                                type="password"
-                                                placeholder="sk-..."
-                                                className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                                value={appSettings.translation.api_key}
-                                                onChange={(e) => updateAppSettings({ translation: { ...appSettings.translation, api_key: e.target.value } })}
-                                            />
-                                        </div>
+                                        <SettingInput
+                                            label={t("settings.translationApiKey", "API Key")}
+                                            desc={t("settings.translationApiKeyDesc", "Enter the API key for your chosen translation provider.")}
+                                            type="password"
+                                            placeholder="sk-..."
+                                            value={appSettings.translation.api_key}
+                                            onChange={(e) => updateAppSettings({ translation: { ...appSettings.translation, api_key: e.target.value } })}
+                                        />
                                     )}
                                 </div>
                             )}
 
+                            {/* ── Security Tab ─────────────────────────────────────── */}
                             {activeTab === "security" && (
                                 <div className="space-y-6">
                                     <div className="space-y-4">
-                                        <h4 className="font-semibold text-sm" style={{ color: "var(--df-text)" }}>{t("settings.credentialStorage", "Credential Storage")}</h4>
+                                        <h4 className="font-semibold text-sm">{t("settings.credentialStorage", "Credential Storage")}</h4>
 
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.useOsKeyring", "Use OS Keyring")}</label>
-                                                <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.useOsKeyringDesc", "Securely store SSH passwords and keys in your system's native keychain (Windows Credential Manager, Keychain Access, etc).")}</p>
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                                style={{ borderColor: "var(--df-border)" }}
-                                                checked={appSettings.security.use_os_keyring}
-                                                onChange={(e) => updateAppSettings({ security: { ...appSettings.security, use_os_keyring: e.target.checked } })}
-                                            />
-                                        </div>
+                                        <SettingRow
+                                            label={t("settings.useOsKeyring", "Use OS Keyring")}
+                                            desc={t("settings.useOsKeyringDesc", "Securely store SSH passwords and keys in your system's native keychain.")}
+                                        >
+                                            <SettingCheckbox checked={appSettings.security.use_os_keyring} onChange={(v) => updateAppSettings({ security: { ...appSettings.security, use_os_keyring: v } })} />
+                                        </SettingRow>
 
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.requireMasterPassword", "Require Master Password")}</label>
-                                                <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.requireMasterPasswordDesc", "Require a master password to encrypt your session database.")}</p>
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                className="w-4 h-4 rounded appearance-none checked:bg-[var(--df-primary)] border checked:border-transparent transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[5px] after:w-1.5 after:h-2.5 after:border-r-2 after:border-b-2 after:border-white after:rotate-45 after:hidden checked:after:block"
-                                                style={{ borderColor: "var(--df-border)" }}
-                                                checked={appSettings.security.require_master_password}
-                                                onChange={(e) => updateAppSettings({ security: { ...appSettings.security, require_master_password: e.target.checked } })}
-                                            />
-                                        </div>
+                                        <SettingRow
+                                            label={t("settings.requireMasterPassword", "Require Master Password")}
+                                            desc={t("settings.requireMasterPasswordDesc", "Require a master password to encrypt your session database.")}
+                                        >
+                                            <SettingCheckbox checked={appSettings.security.require_master_password} onChange={(v) => updateAppSettings({ security: { ...appSettings.security, require_master_password: v } })} />
+                                        </SettingRow>
                                     </div>
 
-                                    <div className="border-t pt-4 space-y-4" style={{ borderColor: "var(--df-border)" }}>
-                                        <h4 className="font-semibold text-sm" style={{ color: "var(--df-text)" }}>{t("settings.sessionSecurity", "Session Security")}</h4>
+                                    <div className="border-t pt-4 space-y-4">
+                                        <h4 className="font-semibold text-sm">{t("settings.sessionSecurity", "Session Security")}</h4>
 
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.idleLockMinutes", "Session Lock Interval")}</label>
-                                                <p className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("settings.idleLockMinutesDesc", "Lock the application after a specified duration of inactivity (0 to disable).")}</p>
-                                            </div>
+                                        <SettingRow
+                                            label={t("settings.idleLockMinutes", "Session Lock Interval")}
+                                            desc={t("settings.idleLockMinutesDesc", "Lock the application after a specified duration of inactivity (0 to disable).")}
+                                        >
                                             <div className="flex items-center gap-2">
-                                                <input
-                                                    type="number"
-                                                    min={0} max={1440}
-                                                    className="w-20 px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow"
-                                                    style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
+                                                <Input
+                                                    type="number" min={0} max={1440}
+                                                    className="w-20 text-sm"
                                                     value={appSettings.security.idle_lock_minutes}
                                                     onChange={(e) => updateAppSettings({ security: { ...appSettings.security, idle_lock_minutes: parseInt(e.target.value) || 0 } })}
                                                 />
-                                                <span className="text-sm" style={{ color: "var(--df-text-muted)" }}>{t("common.minutes", "mins")}</span>
+                                                <span className="text-sm text-muted-foreground">{t("common.minutes", "mins")}</span>
                                             </div>
-                                        </div>
+                                        </SettingRow>
 
-                                        <div className="space-y-1">
-                                            <label className="font-medium text-sm" style={{ color: "var(--df-text)" }}>{t("settings.hostKeyPolicy", "Host Key Policy")}</label>
-                                            <p className="text-xs pb-1" style={{ color: "var(--df-text-muted)" }}>{t("settings.hostKeyPolicyDesc", "How the application handles unrecognized SSH host keys.")}</p>
-                                            <select
-                                                className="w-full px-3 py-2 rounded text-sm border focus:outline-none focus:ring-1 transition-shadow appearance-none"
-                                                style={{ backgroundColor: "var(--df-bg)", borderColor: "var(--df-border)", color: "var(--df-text)" }}
-                                                value={appSettings.security.host_key_policy}
-                                                onChange={(e) => updateAppSettings({ security: { ...appSettings.security, host_key_policy: e.target.value } })}
-                                            >
-                                                <option value="strict">{t("settings.hostKeyStrict", "Strict (Reject unknown hosts)")}</option>
-                                                <option value="prompt">{t("settings.hostKeyPrompt", "Prompt (Ask user for confirmation)")}</option>
-                                                <option value="accept">{t("settings.hostKeyAccept", "Accept (Automatically add new hosts)")}</option>
-                                            </select>
-                                        </div>
+                                        <SettingSelect
+                                            label={t("settings.hostKeyPolicy", "Host Key Policy")}
+                                            desc={t("settings.hostKeyPolicyDesc", "How the application handles unrecognized SSH host keys.")}
+                                            value={appSettings.security.host_key_policy}
+                                            onValueChange={(v) => updateAppSettings({ security: { ...appSettings.security, host_key_policy: v } })}
+                                        >
+                                            <SelectItem value="strict">{t("settings.hostKeyStrict", "Strict (Reject unknown hosts)")}</SelectItem>
+                                            <SelectItem value="prompt">{t("settings.hostKeyPrompt", "Prompt (Ask user for confirmation)")}</SelectItem>
+                                            <SelectItem value="accept">{t("settings.hostKeyAccept", "Accept (Automatically add new hosts)")}</SelectItem>
+                                        </SettingSelect>
                                     </div>
-                                </div>
-                            )}
-
-                            {/* Placeholder for un-implemented tabs */}
-                            {activeTab !== "general" && activeTab !== "appearance" && activeTab !== "terminal" && activeTab !== "interaction" && activeTab !== "proxy" && activeTab !== "search" && activeTab !== "translation" && activeTab !== "security" && (
-                                <div style={{ color: "var(--df-text-muted)" }}>
-                                    Configuration options for <strong>{activeTab}</strong> will be implemented here soon.
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }

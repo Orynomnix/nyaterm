@@ -3,6 +3,17 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Group, SavedConnection } from "../../types";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface NewSessionDialogProps {
   open: boolean;
@@ -11,13 +22,6 @@ interface NewSessionDialogProps {
   onSaved: () => void;
   initialData?: SavedConnection;
 }
-
-/* Shared input style using CSS variables */
-const inputStyle: React.CSSProperties = {
-  backgroundColor: "var(--df-bg-input)",
-  borderColor: "var(--df-border)",
-  color: "var(--df-text)",
-};
 
 /** Modal for new/edit SSH connection or local terminal. Save, connect, or cancel. */
 export default function NewSessionDialog({
@@ -108,18 +112,8 @@ export default function NewSessionDialog({
     }
   }, [open, initialData, resetForm]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open && !connecting && !showGroupDropdown) {
-        resetForm();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, connecting, showGroupDropdown, resetForm, onClose]);
-
   const handleClose = () => {
+    if (connecting) return;
     resetForm();
     onClose();
   };
@@ -180,116 +174,68 @@ export default function NewSessionDialog({
     }
   };
 
-  if (!open) return null;
-
-  const inputClass = "w-full rounded px-3 py-2 text-xs focus:outline-none border transition-colors";
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div
-        className="rounded-lg w-[480px] shadow-2xl border"
-        style={{ backgroundColor: "var(--df-bg-panel)", borderColor: "var(--df-border)" }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 py-3 border-b"
-          style={{ borderColor: "var(--df-border)" }}
-        >
-          <h2 className="text-sm font-semibold" style={{ color: "var(--df-text)" }}>
+    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
+      <DialogContent className="w-[480px] sm:max-w-[480px] p-0 gap-0">
+        <DialogHeader className="px-5 py-3 border-b">
+          <DialogTitle className="text-sm">
             {initialData ? t("dialog.editConnection") : t("dialog.newConnection")}
-          </h2>
-          <span
-            className="material-icons text-base cursor-pointer transition-opacity hover:opacity-70"
-            style={{ color: "var(--df-text-muted)" }}
-            onClick={handleClose}
-          >
-            close
-          </span>
-        </div>
+          </DialogTitle>
+        </DialogHeader>
 
         {/* Body */}
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           {!initialData && (
-            <button
-              className="w-full flex items-center gap-3 p-3 border rounded transition-colors text-left hover:opacity-90"
-              style={{ backgroundColor: "var(--df-bg-hover)", borderColor: "var(--df-border)" }}
+            <Button
+              variant="outline"
+              className="w-full flex items-center gap-3 p-3 h-auto text-left justify-start"
               onClick={handleConnectLocal}
               disabled={connecting}
             >
               <span className="material-icons text-xl text-cyan-400">terminal</span>
               <div>
-                <div className="text-xs font-medium" style={{ color: "var(--df-text)" }}>
-                  {t("dialog.localTerminal")}
-                </div>
-                <div className="text-[10px]" style={{ color: "var(--df-text-dimmed)" }}>
-                  {t("dialog.openLocalShell")}
-                </div>
+                <div className="text-xs font-medium">{t("dialog.localTerminal")}</div>
+                <div className="text-[10px] text-muted-foreground">{t("dialog.openLocalShell")}</div>
               </div>
-            </button>
+            </Button>
           )}
 
           {!initialData && (
-            <div
-              className="flex items-center gap-3 text-[10px] uppercase tracking-wider"
-              style={{ color: "var(--df-text-dimmed)" }}
-            >
-              <div className="flex-1 border-t" style={{ borderColor: "var(--df-border)" }}></div>
+            <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <div className="flex-1 border-t" />
               <span>{t("dialog.sshConnection")}</span>
-              <div className="flex-1 border-t" style={{ borderColor: "var(--df-border)" }}></div>
+              <div className="flex-1 border-t" />
             </div>
           )}
 
           {/* Name + Group */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                {t("dialog.connectionName")}
-              </label>
-              <input
-                type="text"
+              <Label className="text-[11px] text-muted-foreground">{t("dialog.connectionName")}</Label>
+              <Input
+                className="mt-1 text-xs h-8"
                 placeholder={t("dialog.serverPlaceholder")}
-                className={inputClass}
-                style={inputStyle}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="w-52 relative" ref={groupRef}>
-              <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                {t("dialog.group")}
-              </label>
-              <button
+              <Label className="text-[11px] text-muted-foreground">{t("dialog.group")}</Label>
+              <Button
                 type="button"
-                className="w-full flex items-center justify-between rounded px-3 py-2 text-xs text-left border transition-colors"
-                style={inputStyle}
+                variant="outline"
+                className="w-full mt-1 h-8 justify-between text-xs font-normal"
                 onClick={() => setShowGroupDropdown(!showGroupDropdown)}
               >
-                <span style={{ color: group ? "var(--df-text)" : "var(--df-text-dimmed)" }}>
+                <span className={group ? "" : "text-muted-foreground"}>
                   {group || t("dialog.none")}
                 </span>
-                <span className="material-icons text-xs" style={{ color: "var(--df-text-dimmed)" }}>
-                  expand_more
-                </span>
-              </button>
+                <span className="material-icons text-xs text-muted-foreground">expand_more</span>
+              </Button>
               {showGroupDropdown && (
-                <div
-                  className="absolute top-full left-0 right-0 mt-1 border rounded shadow-xl z-10 overflow-hidden"
-                  style={{ backgroundColor: "var(--df-bg-panel)", borderColor: "var(--df-border)" }}
-                >
+                <div className="absolute top-full left-0 right-0 mt-1 border rounded-md shadow-xl z-10 overflow-hidden bg-popover">
                   <div
-                    className="px-3 py-1.5 text-xs cursor-pointer transition-colors"
-                    style={{
-                      backgroundColor: !group
-                        ? "color-mix(in srgb, var(--df-primary) 15%, transparent)"
-                        : undefined,
-                      color: !group ? "var(--df-primary)" : "var(--df-text-muted)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (group) e.currentTarget.style.backgroundColor = "var(--df-bg-hover)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (group) e.currentTarget.style.backgroundColor = "";
-                    }}
+                    className={`px-3 py-1.5 text-xs cursor-pointer transition-colors hover:bg-accent ${!group ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
                     onClick={() => {
                       setGroup("");
                       setShowGroupDropdown(false);
@@ -300,21 +246,7 @@ export default function NewSessionDialog({
                   {groups.map((g) => (
                     <div
                       key={g.id}
-                      className="px-3 py-1.5 text-xs cursor-pointer transition-colors"
-                      style={{
-                        backgroundColor:
-                          group === g.name
-                            ? "color-mix(in srgb, var(--df-primary) 15%, transparent)"
-                            : undefined,
-                        color: group === g.name ? "var(--df-primary)" : "var(--df-text)",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (group !== g.name)
-                          e.currentTarget.style.backgroundColor = "var(--df-bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (group !== g.name) e.currentTarget.style.backgroundColor = "";
-                      }}
+                      className={`px-3 py-1.5 text-xs cursor-pointer transition-colors hover:bg-accent ${group === g.name ? "bg-primary/15 text-primary" : ""}`}
                       onClick={() => {
                         setGroup(g.name);
                         setShowGroupDropdown(false);
@@ -323,16 +255,11 @@ export default function NewSessionDialog({
                       {g.name}
                     </div>
                   ))}
-                  <div
-                    className="p-1.5 border-t"
-                    style={{ borderColor: "color-mix(in srgb, var(--df-border) 60%, transparent)" }}
-                  >
+                  <div className="p-1.5 border-t">
                     <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
+                      <Input
+                        className="flex-1 min-w-0 h-7 text-xs"
                         placeholder={t("dialog.newGroupPlaceholder")}
-                        className="flex-1 min-w-0 rounded px-2 py-1 text-xs border focus:outline-none"
-                        style={inputStyle}
                         value={newGroupName}
                         onChange={(e) => setNewGroupName(e.target.value)}
                         onKeyDown={(e) => {
@@ -343,9 +270,9 @@ export default function NewSessionDialog({
                           }
                         }}
                       />
-                      <button
-                        className="flex-shrink-0 p-1 transition-colors disabled:opacity-30"
-                        style={{ color: "var(--df-text-muted)" }}
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         disabled={!newGroupName.trim()}
                         onClick={() => {
                           if (newGroupName.trim()) {
@@ -356,7 +283,7 @@ export default function NewSessionDialog({
                         }}
                       >
                         <span className="material-icons text-sm">add</span>
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -367,26 +294,19 @@ export default function NewSessionDialog({
           {/* Host + Port */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                {t("dialog.host")}
-              </label>
-              <input
-                type="text"
+              <Label className="text-[11px] text-muted-foreground">{t("dialog.host")}</Label>
+              <Input
+                className="mt-1 text-xs h-8"
                 placeholder="192.168.1.100"
-                className={inputClass}
-                style={inputStyle}
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
               />
             </div>
             <div className="w-20">
-              <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                {t("dialog.port")}
-              </label>
-              <input
+              <Label className="text-[11px] text-muted-foreground">{t("dialog.port")}</Label>
+              <Input
                 type="number"
-                className={inputClass}
-                style={inputStyle}
+                className="mt-1 text-xs h-8"
                 value={port}
                 onChange={(e) => setPort(Number(e.target.value))}
               />
@@ -395,13 +315,9 @@ export default function NewSessionDialog({
 
           {/* Username */}
           <div>
-            <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-              {t("dialog.username")}
-            </label>
-            <input
-              type="text"
-              className={inputClass}
-              style={inputStyle}
+            <Label className="text-[11px] text-muted-foreground">{t("dialog.username")}</Label>
+            <Input
+              className="mt-1 text-xs h-8"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
@@ -409,51 +325,34 @@ export default function NewSessionDialog({
 
           {/* Auth Type */}
           <div>
-            <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-              {t("dialog.authentication")}
-            </label>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 py-1.5 text-xs rounded border transition-colors"
-                style={{
-                  backgroundColor:
-                    authType === "password"
-                      ? "color-mix(in srgb, var(--df-primary) 20%, transparent)"
-                      : "var(--df-bg-input)",
-                  borderColor: authType === "password" ? "var(--df-primary)" : "var(--df-border)",
-                  color: authType === "password" ? "var(--df-primary)" : "var(--df-text-muted)",
-                }}
+            <Label className="text-[11px] text-muted-foreground">{t("dialog.authentication")}</Label>
+            <div className="flex gap-2 mt-1">
+              <Button
+                variant={authType === "password" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 text-xs"
                 onClick={() => setAuthType("password")}
               >
                 {t("dialog.password")}
-              </button>
-              <button
-                className="flex-1 py-1.5 text-xs rounded border transition-colors"
-                style={{
-                  backgroundColor:
-                    authType === "key"
-                      ? "color-mix(in srgb, var(--df-primary) 20%, transparent)"
-                      : "var(--df-bg-input)",
-                  borderColor: authType === "key" ? "var(--df-primary)" : "var(--df-border)",
-                  color: authType === "key" ? "var(--df-primary)" : "var(--df-text-muted)",
-                }}
+              </Button>
+              <Button
+                variant={authType === "key" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 text-xs"
                 onClick={() => setAuthType("key")}
               >
                 {t("dialog.privateKey")}
-              </button>
+              </Button>
             </div>
           </div>
 
           {/* Password or Key File */}
           {authType === "password" ? (
             <div>
-              <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                {t("dialog.password")}
-              </label>
-              <input
+              <Label className="text-[11px] text-muted-foreground">{t("dialog.password")}</Label>
+              <Input
                 type="password"
-                className={inputClass}
-                style={inputStyle}
+                className="mt-1 text-xs h-8"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -461,32 +360,18 @@ export default function NewSessionDialog({
           ) : (
             <>
               <div>
-                <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                  {t("dialog.privateKey")}
-                </label>
-                <div
-                  className="flex items-center w-full rounded border overflow-hidden transition-colors"
-                  style={{
-                    backgroundColor: "var(--df-bg-input)",
-                    borderColor: "var(--df-border)",
-                  }}
-                >
+                <Label className="text-[11px] text-muted-foreground">{t("dialog.privateKey")}</Label>
+                <div className="flex items-center w-full rounded-md border overflow-hidden mt-1 bg-transparent">
                   <div
-                    className="flex-1 px-3 py-2 text-xs truncate"
-                    style={{
-                      color: keyFileName || hasKeyData ? "var(--df-text)" : "var(--df-text-muted)",
-                      opacity: keyFileName || hasKeyData ? 1 : 0.5,
-                    }}
+                    className={`flex-1 px-3 py-2 text-xs truncate ${keyFileName || hasKeyData ? "text-foreground" : "text-muted-foreground opacity-50"}`}
                   >
                     {keyFileName || (hasKeyData ? t("dialog.keyFileLoaded") : t("dialog.selectKeyFile"))}
                   </div>
-                  <button
+                  <Button
                     type="button"
-                    className="px-3 py-2 hover:bg-black/10 dark:hover:bg-white/10 transition-colors flex items-center justify-center border-l"
-                    style={{
-                      borderColor: "var(--df-border)",
-                      color: "var(--df-text-muted)",
-                    }}
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-none border-l h-auto py-2"
                     onClick={async () => {
                       const selected = await openFileDialog({
                         multiple: false,
@@ -501,17 +386,14 @@ export default function NewSessionDialog({
                     }}
                   >
                     <span className="material-icons text-sm">folder_open</span>
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-                  {t("dialog.passphrase")}
-                </label>
-                <input
+                <Label className="text-[11px] text-muted-foreground">{t("dialog.passphrase")}</Label>
+                <Input
                   type="password"
-                  className={inputClass}
-                  style={inputStyle}
+                  className="mt-1 text-xs h-8"
                   value={passphrase}
                   onChange={(e) => setPassphrase(e.target.value)}
                 />
@@ -521,14 +403,11 @@ export default function NewSessionDialog({
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] mb-1" style={{ color: "var(--df-text-muted)" }}>
-              {t("dialog.description")}
-            </label>
-            <textarea
+            <Label className="text-[11px] text-muted-foreground">{t("dialog.description")}</Label>
+            <Textarea
               rows={2}
               placeholder={t("dialog.descriptionPlaceholder")}
-              className="w-full rounded px-3 py-2 text-xs border focus:outline-none resize-none transition-colors"
-              style={inputStyle}
+              className="mt-1 text-xs resize-none"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -536,7 +415,7 @@ export default function NewSessionDialog({
 
           {/* Messages */}
           {error && (
-            <div className="p-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-400">
+            <div className="p-2 bg-destructive/10 border border-destructive/30 rounded text-xs text-red-400">
               {error}
             </div>
           )}
@@ -548,27 +427,20 @@ export default function NewSessionDialog({
         </div>
 
         {/* Footer */}
-        <div
-          className="flex justify-end gap-2 px-5 py-3 border-t"
-          style={{ borderColor: "var(--df-border)" }}
-        >
-          <button
-            className="px-4 py-1.5 text-xs transition-colors hover:opacity-70"
-            style={{ color: "var(--df-text-muted)" }}
-            onClick={handleClose}
-          >
+        <DialogFooter className="px-5 py-3 border-t">
+          <Button variant="ghost" size="sm" className="text-xs" onClick={handleClose}>
             {t("dialog.cancel")}
-          </button>
-          <button
-            className="px-4 py-1.5 text-xs text-white rounded transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "var(--df-primary)" }}
+          </Button>
+          <Button
+            size="sm"
+            className="text-xs"
             onClick={handleSave}
             disabled={connecting || !host}
           >
             {connecting ? t("dialog.saving") : t("dialog.save")}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

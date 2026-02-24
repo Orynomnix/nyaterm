@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export interface PropertiesDialogData {
     sessionId: string;
@@ -25,12 +33,6 @@ interface PropertiesDialogProps {
     data: PropertiesDialogData;
     onClose: () => void;
 }
-
-const inputStyle: React.CSSProperties = {
-    backgroundColor: "var(--df-bg-input)",
-    borderColor: "var(--df-border)",
-    color: "var(--df-text)",
-};
 
 function formatSize(bytes: number): string {
     if (bytes === 0) return "0 Bytes";
@@ -101,16 +103,6 @@ export default function PropertiesDialog({ data, onClose }: PropertiesDialogProp
         return () => { isMounted = false; };
     }, [data.sessionId, data.fullPath]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && !isSaving) {
-                onClose();
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onClose, isSaving]);
-
     const handleSave = async () => {
         if (octal === initialOctal) {
             onClose();
@@ -162,94 +154,67 @@ export default function PropertiesDialog({ data, onClose }: PropertiesDialogProp
         return data.fullPath.substring(0, idx + 1);
     };
 
-    return createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity">
-            <div
-                className="rounded-lg w-[420px] shadow-2xl border flex flex-col"
-                style={{ backgroundColor: "var(--df-bg-panel)", borderColor: "var(--df-border)" }}
-            >
+    return (
+        <Dialog open onOpenChange={(v) => !v && !isSaving && onClose()}>
+            <DialogContent className="w-[420px] sm:max-w-[420px] p-0 gap-0">
                 {/* Header */}
-                <div
-                    className="flex items-center justify-between px-5 py-3 border-b select-none"
-                    style={{ borderColor: "var(--df-border)" }}
-                >
-                    <div className="flex items-center gap-2">
+                <DialogHeader className="px-5 py-3 border-b">
+                    <DialogTitle className="text-sm flex items-center gap-2">
                         <span className="material-icons text-lg" style={{ color: data.is_dir ? "#eab308" : "var(--df-primary)" }}>
                             {data.is_dir ? 'folder' : 'insert_drive_file'}
                         </span>
-                        <h2 className="text-sm font-semibold truncate max-w-[300px]" style={{ color: "var(--df-text)" }} title={data.name}>
+                        <span className="truncate max-w-[300px]" title={data.name}>
                             {t("fileExplorer.propertiesOf", { name: data.name })}
-                        </h2>
-                    </div>
-                    <span
-                        className="material-icons text-base cursor-pointer transition-opacity hover:opacity-70"
-                        style={{ color: "var(--df-text-muted)" }}
-                        onClick={onClose}
-                    >
-                        close
-                    </span>
-                </div>
+                        </span>
+                    </DialogTitle>
+                </DialogHeader>
 
                 {/* Body */}
-                <div className="p-5 overflow-y-auto max-h-[75vh] terminal-scroll space-y-5 relative min-h-[250px]">
+                <div className="p-5 overflow-y-auto max-h-[75vh] space-y-5 relative min-h-[250px]">
                     {loading ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-2 text-[var(--df-text-muted)]">
+                        <div className="absolute inset-0 flex flex-col items-center justify-center space-y-2 text-muted-foreground">
                             <span className="material-icons animate-spin text-3xl">refresh</span>
                             <span className="text-xs">{t("fileExplorer.loading", "Loading...")}</span>
                         </div>
                     ) : error ? (
-                        <div className="absolute inset-0 flex items-center justify-center text-red-500 text-xs px-5 text-center">
+                        <div className="absolute inset-0 flex items-center justify-center text-destructive text-xs px-5 text-center">
                             {error}
                         </div>
                     ) : properties ? (
                         <>
-                            {/* General Information Section */}
+                            {/* General Information */}
                             <div>
-                                <h3 className="text-xs font-semibold mb-3 tracking-wider uppercase" style={{ color: "var(--df-text-muted)" }}>
+                                <h3 className="text-xs font-semibold mb-3 tracking-wider uppercase text-muted-foreground">
                                     {t("fileExplorer.general", "General")}
                                 </h3>
-                                <div className="space-y-2.5 text-xs text-left" style={{ color: "var(--df-text)" }}>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.type", "Type")}:</span>
-                                        <span>{getFileType()}</span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.location", "Location")}:</span>
-                                        <span className="truncate break-all select-all font-mono" title={getLocation()}>{getLocation()}</span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.size", "Size")}:</span>
-                                        <span>{formatSize(properties.size)}</span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.mtime", "Modified")}:</span>
-                                        <span className="font-mono">{formatTime(properties.mtime)}</span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.atime", "Accessed")}:</span>
-                                        <span className="font-mono">{formatTime(properties.atime)}</span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.owner", "Owner")}:</span>
-                                        <span>{properties.owner} <span className="font-mono opacity-70">[{properties.uid}]</span></span>
-                                    </div>
-                                    <div className="flex items-start">
-                                        <span className="w-24 shrink-0" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.group", "Group")}:</span>
-                                        <span>{properties.group} <span className="font-mono opacity-70">[{properties.gid}]</span></span>
-                                    </div>
+                                <div className="space-y-2.5 text-xs text-left">
+                                    {[
+                                        [t("fileExplorer.type", "Type"), getFileType()],
+                                        [t("fileExplorer.location", "Location"), <span key="loc" className="truncate break-all select-all font-mono" title={getLocation()}>{getLocation()}</span>],
+                                        [t("fileExplorer.size", "Size"), formatSize(properties.size)],
+                                        [t("fileExplorer.mtime", "Modified"), <span key="mt" className="font-mono">{formatTime(properties.mtime)}</span>],
+                                        [t("fileExplorer.atime", "Accessed"), <span key="at" className="font-mono">{formatTime(properties.atime)}</span>],
+                                        [t("fileExplorer.owner", "Owner"), <span key="ow">{properties.owner} <span className="font-mono opacity-70">[{properties.uid}]</span></span>],
+                                        [t("fileExplorer.group", "Group"), <span key="gr">{properties.group} <span className="font-mono opacity-70">[{properties.gid}]</span></span>],
+                                    ].map(([label, value], i) => (
+                                        <div key={i} className="flex items-start">
+                                            <span className="w-24 shrink-0 text-muted-foreground">{label}:</span>
+                                            <span>{value}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
-                            <div className="border-t" style={{ borderColor: "var(--df-border)" }} />
+                            <div className="border-t" />
 
-                            {/* Permissions Section */}
+                            {/* Permissions */}
                             <div>
-                                <h3 className="text-xs font-semibold mb-3 tracking-wider uppercase" style={{ color: "var(--df-text-muted)" }}>
+                                <h3 className="text-xs font-semibold mb-3 tracking-wider uppercase text-muted-foreground">
                                     {t("fileExplorer.permissions", "Permissions")}
                                 </h3>
-                                <div className="rounded border overflow-hidden" style={{ borderColor: "var(--df-border)", backgroundColor: "var(--df-bg)" }}>
+                                <div className="rounded-md border overflow-hidden bg-background">
                                     <table className="w-full text-xs text-left select-none">
-                                        <thead style={{ backgroundColor: "color-mix(in srgb, var(--df-border) 20%, transparent)", color: "var(--df-text-muted)" }}>
+                                        <thead className="bg-muted text-muted-foreground">
                                             <tr>
                                                 <th className="font-normal px-3 py-2 w-16"></th>
                                                 <th className="font-normal px-2 py-2 text-center w-14">R</th>
@@ -258,45 +223,40 @@ export default function PropertiesDialog({ data, onClose }: PropertiesDialogProp
                                                 <th className="font-normal px-2 py-2 text-center">{t("fileExplorer.special", "Special")}</th>
                                             </tr>
                                         </thead>
-                                        <tbody style={{ color: "var(--df-text)" }}>
-                                            <tr className="border-t" style={{ borderColor: "var(--df-border)", backgroundColor: "color-mix(in srgb, var(--df-bg-input) 50%, transparent)" }}>
-                                                <td className="px-3 py-2" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.permUser", "User")}</td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(1, 4)} onChange={(e) => updateBit(1, 4, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(1, 2)} onChange={(e) => updateBit(1, 2, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(1, 1)} onChange={(e) => updateBit(1, 1, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><label className="flex items-center justify-center gap-1.5 cursor-pointer text-[10px]"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(0, 4)} onChange={(e) => updateBit(0, 4, e.target.checked)} /> UID</label></td>
-                                            </tr>
-                                            <tr className="border-t" style={{ borderColor: "var(--df-border)" }}>
-                                                <td className="px-3 py-2" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.permGroup", "Group")}</td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(2, 4)} onChange={(e) => updateBit(2, 4, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(2, 2)} onChange={(e) => updateBit(2, 2, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(2, 1)} onChange={(e) => updateBit(2, 1, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><label className="flex items-center justify-center gap-1.5 cursor-pointer text-[10px]"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(0, 2)} onChange={(e) => updateBit(0, 2, e.target.checked)} /> GID</label></td>
-                                            </tr>
-                                            <tr className="border-t" style={{ borderColor: "var(--df-border)", backgroundColor: "color-mix(in srgb, var(--df-bg-input) 50%, transparent)" }}>
-                                                <td className="px-3 py-2" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.permOther", "Other")}</td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(3, 4)} onChange={(e) => updateBit(3, 4, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(3, 2)} onChange={(e) => updateBit(3, 2, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(3, 1)} onChange={(e) => updateBit(3, 1, e.target.checked)} /></td>
-                                                <td className="px-2 py-2 text-center"><label className="flex items-center justify-center gap-1.5 cursor-pointer text-[10px]"><input type="checkbox" className="accent-[var(--df-primary)] cursor-pointer" checked={hasBit(0, 1)} onChange={(e) => updateBit(0, 1, e.target.checked)} /> {t("fileExplorer.permSticky", "Sticky")}</label></td>
-                                            </tr>
+                                        <tbody>
+                                            {[
+                                                { label: t("fileExplorer.permUser", "User"), idx: 1, sIdx: 0, sBit: 4, sLabel: "UID", alt: true },
+                                                { label: t("fileExplorer.permGroup", "Group"), idx: 2, sIdx: 0, sBit: 2, sLabel: "GID", alt: false },
+                                                { label: t("fileExplorer.permOther", "Other"), idx: 3, sIdx: 0, sBit: 1, sLabel: t("fileExplorer.permSticky", "Sticky"), alt: true },
+                                            ].map((row) => (
+                                                <tr key={row.idx} className={`border-t ${row.alt ? "bg-muted/30" : ""}`}>
+                                                    <td className="px-3 py-2 text-muted-foreground">{row.label}</td>
+                                                    <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-primary cursor-pointer" checked={hasBit(row.idx, 4)} onChange={(e) => updateBit(row.idx, 4, e.target.checked)} /></td>
+                                                    <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-primary cursor-pointer" checked={hasBit(row.idx, 2)} onChange={(e) => updateBit(row.idx, 2, e.target.checked)} /></td>
+                                                    <td className="px-2 py-2 text-center"><input type="checkbox" className="accent-primary cursor-pointer" checked={hasBit(row.idx, 1)} onChange={(e) => updateBit(row.idx, 1, e.target.checked)} /></td>
+                                                    <td className="px-2 py-2 text-center">
+                                                        <label className="flex items-center justify-center gap-1.5 cursor-pointer text-[10px]">
+                                                            <input type="checkbox" className="accent-primary cursor-pointer" checked={hasBit(row.sIdx, row.sBit)} onChange={(e) => updateBit(row.sIdx, row.sBit, e.target.checked)} />
+                                                            {row.sLabel}
+                                                        </label>
+                                                    </td>
+                                                </tr>
+                                            ))}
                                         </tbody>
                                     </table>
                                 </div>
 
                                 <div className="flex items-center justify-between mt-4">
-                                    <span className="text-xs" style={{ color: "var(--df-text-muted)" }}>{t("fileExplorer.octal", "Octal Mode")}:</span>
+                                    <span className="text-xs text-muted-foreground">{t("fileExplorer.octal", "Octal Mode")}:</span>
                                     <div className="flex items-center">
                                         <span className="text-xs font-mono mr-2 opacity-50">0</span>
-                                        <input
-                                            type="text"
-                                            className="w-[60px] rounded px-2 py-1 text-center font-mono text-xs border focus:outline-none transition-colors"
-                                            style={{ ...inputStyle, letterSpacing: '2px' }}
+                                        <Input
+                                            className="w-[60px] text-center font-mono text-xs h-7"
+                                            style={{ letterSpacing: '2px' }}
                                             value={octal.substring(1)}
                                             onChange={(e) => {
                                                 let val = e.target.value.replace(/[^0-7]/g, '');
                                                 if (val.length > 3) val = val.substring(0, 3);
-                                                // Keeping Special bit intact when typing the 3 digits
                                                 setOctal(octal[0] + val.padStart(3, '0'));
                                             }}
                                         />
@@ -308,30 +268,16 @@ export default function PropertiesDialog({ data, onClose }: PropertiesDialogProp
                 </div>
 
                 {/* Footer */}
-                <div
-                    className="flex justify-end gap-2 px-5 py-3 border-t bg-black/5"
-                    style={{ borderColor: "var(--df-border)", borderRadius: "0 0 8px 8px" }}
-                >
-                    <button
-                        className="px-4 py-1.5 text-xs rounded transition-colors hover:opacity-70 border bg-transparent"
-                        style={{ color: "var(--df-text-muted)", borderColor: "var(--df-border)" }}
-                        onClick={onClose}
-                        disabled={isSaving}
-                    >
+                <DialogFooter className="px-5 py-3 border-t">
+                    <Button variant="outline" size="sm" className="text-xs" onClick={onClose} disabled={isSaving}>
                         {t("dialog.cancel", "Cancel")}
-                    </button>
-                    <button
-                        className="px-4 py-1.5 text-xs text-white rounded transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                        style={{ backgroundColor: "var(--df-primary)" }}
-                        onClick={handleSave}
-                        disabled={isSaving || loading || !!error}
-                    >
+                    </Button>
+                    <Button size="sm" className="text-xs" onClick={handleSave} disabled={isSaving || loading || !!error}>
                         {isSaving && <span className="material-icons text-[14px] animate-spin">refresh</span>}
                         {t("dialog.save", "Save Changes")}
-                    </button>
-                </div>
-            </div>
-        </div>,
-        document.body
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

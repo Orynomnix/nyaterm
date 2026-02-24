@@ -4,7 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { invoke } from "../../lib/invoke";
 import { logger } from "../../lib/logger";
 import type { Group, SavedConnection, SessionType } from "../../types";
-import { useToast } from "../toast/ToastContext";
+import { toast } from "sonner";
 
 interface SavedConnectionsProps {
   onEditConnection: (connection: SavedConnection) => void;
@@ -27,7 +27,7 @@ export default function SavedConnections({
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
-  const toast = useToast();
+
 
   // Build grouped view: use savedGroups order, include empty groups
   const { groups, ungrouped } = useMemo(() => {

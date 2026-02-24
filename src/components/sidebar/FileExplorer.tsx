@@ -10,7 +10,7 @@ import PropertiesDialog, { PropertiesDialogData } from "../dialog/PropertiesDial
 import RenameDialog, { RenameDialogData } from "../dialog/RenameDialog";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../../context/AppContext";
-import { useToast } from "../toast/ToastContext";
+import { toast } from "sonner";
 
 interface FileEntry {
   name: string;
@@ -154,7 +154,7 @@ function formatSize(bytes: number): string {
 export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
   const { t } = useTranslation();
   const { showContextMenu } = useApp();
-  const toast = useToast();
+
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [currentPath, setCurrentPath] = useState("");
