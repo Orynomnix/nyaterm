@@ -39,6 +39,9 @@ pub enum AppError {
 
     #[error("Crypto error: {0}")]
     Crypto(String),
+
+    #[error("Translation error: {0}")]
+    Translation(String),
 }
 
 impl Serialize for AppError {
