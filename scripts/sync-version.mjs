@@ -17,11 +17,19 @@ cargo = cargo.replace(
 );
 writeFileSync('src-tauri/Cargo.toml', cargo);
 
+// 同步到 Cargo.lock（仅替换 dragonfly 包条目的 version）
+let cargoLock = readFileSync('src-tauri/Cargo.lock', 'utf-8');
+cargoLock = cargoLock.replace(
+    /(\[\[package\]\]\nname = "dragonfly"\n)version = "[^"]*"/,
+    `$1version = "${version}"`
+);
+writeFileSync('src-tauri/Cargo.lock', cargoLock);
+
 console.log(`✅ Version synced to ${version}`);
 
 // 如果传入 --commit 参数，自动提交版本变更
 if (process.argv.includes('--commit')) {
-    const files = ['package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml'];
+    const files = ['package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock'];
     execSync(`git add ${files.join(' ')}`, { stdio: 'inherit' });
     execSync(`git commit -m "chore: bump version to v${version}"`, { stdio: 'inherit' });
     console.log(`✅ Committed: chore: bump version to v${version}`);
