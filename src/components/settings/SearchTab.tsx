@@ -9,8 +9,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SEARCH_ICONS, QuickIconDef } from "../../icons";
-import { useApp } from "../../../context/AppContext";
+import { SEARCH_ICONS, QuickIconDef } from "../icons";
+import { useApp } from "@/context/AppContext";
 
 export function SearchTab() {
   const { t } = useTranslation();

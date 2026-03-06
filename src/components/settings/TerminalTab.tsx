@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useApp } from "../../../context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { SettingNumberInput, SettingRow, SettingSwitch } from "./SettingFormItems";
 
 export function TerminalTab() {

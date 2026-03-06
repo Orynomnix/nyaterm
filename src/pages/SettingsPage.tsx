@@ -13,15 +13,15 @@ import {
 } from "react-icons/md";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/context/AppContext";
-import { AppearanceTab } from "@/components/dialog/settings/AppearanceTab";
-import { GeneralTab } from "@/components/dialog/settings/GeneralTab";
-import { InteractionTab } from "@/components/dialog/settings/InteractionTab";
-import { ProxyTab } from "@/components/dialog/settings/ProxyTab";
-import { SearchTab } from "@/components/dialog/settings/SearchTab";
-import { SecurityTab } from "@/components/dialog/settings/SecurityTab";
-import { TerminalTab } from "@/components/dialog/settings/TerminalTab";
-import { KeyManagementTab } from "@/components/dialog/settings/KeyManagementTab";
-import { TranslationTab } from "@/components/dialog/settings/TranslationTab";
+import { AppearanceTab } from "@/components/settings/AppearanceTab";
+import { GeneralTab } from "@/components/settings/GeneralTab";
+import { InteractionTab } from "@/components/settings/InteractionTab";
+import { ProxyTab } from "@/components/settings/ProxyTab";
+import { SearchTab } from "@/components/settings/SearchTab";
+import { SecurityTab } from "@/components/settings/SecurityTab";
+import { TerminalTab } from "@/components/settings/TerminalTab";
+import { KeyManagementTab } from "@/components/settings/KeyManagementTab";
+import { TranslationTab } from "@/components/settings/TranslationTab";
 
 export default function SettingsPage() {
   const { t } = useTranslation();

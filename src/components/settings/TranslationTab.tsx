@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { SelectItem } from "@/components/ui/select";
-import { useApp } from "../../../context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { SettingInput, SettingSelect } from "./SettingFormItems";
 import { Label } from "@/components/ui/label";
 import { MdCheck, MdClose } from "react-icons/md";
