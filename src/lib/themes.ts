@@ -538,7 +538,7 @@ const githubLight: Theme = {
     terminal: {
       background: "#ffffff",
       foreground: "#1f2328",
-      cursor: "#1f2328",
+      cursor: "#0969da",
       selectionBackground: "#b6e3ff",
       black: "#1f2328",
       red: "#cf222e",
@@ -676,7 +676,7 @@ const nordLight: Theme = {
     terminal: {
       background: "#eceff4",
       foreground: "#2e3440",
-      cursor: "#2e3440",
+      cursor: "#5e81ac",
       selectionBackground: "#d8dee9",
       black: "#2e3440",
       red: "#bf616a",
