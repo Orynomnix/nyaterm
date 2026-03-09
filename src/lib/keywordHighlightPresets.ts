@@ -40,12 +40,12 @@ const BUILTIN_PATTERNS = {
   info:    ["info(?:rmation)?", "notice"].map(requireSpace),
   debug:   ["debug", "trace", "verbose"].map(requireSpace),
   datetime: [
-    "\\b\\d{4}[-/]\\d{2}[-/]\\d{2}(?:T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:?\\d{2})?)?\\b",
+    "\\b\\d{4}[-/]\\d{2}[-/]\\d{2}(?:T(?:[01]\\d|2[0-3])[-:][0-5]\\d[-:][0-5]\\d(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:?\\d{2})?)?\\b",
     "\\b(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?(?:\\.\\d{1,6})?\\b"
   ],
   number: [
     "(?<![\\w-])[-+]?0x[0-9a-f]+(?![\\w-])",
-    "(?<![\\w-])[-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:e[-+]?\\d+)?(?:\\s*%)?(?![\\w-])"
+    "(?<![\\w.-])[-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:e[-+]?\\d+)?(?:\\s*%)?(?![\\w.-])"
   ],
   constant: [
     "\\b(?:true|false|null|undefined|NaN|Infinity)\\b"
@@ -70,6 +70,7 @@ const BUILTIN_PATTERNS = {
   ],
   version: [
     "\\bv\\d+(?:\\.\\d+){1,2}(?:-[a-z0-9.-]+)?\\b",
+    "\\b\\d+(?:\\.\\d+){2,}(?:-[a-z0-9.-]+)?\\b",
     "\\blatest\\b",
     "\\brelease\\b",
     "\\bstable\\b",
@@ -81,7 +82,7 @@ const BUILTIN_PATTERNS = {
     "\\b\\d+(?:\\.\\d+)?\\s*(?:[kmgtep]i?b|b|bytes?|[kmgtep]bps)\\b"
   ],
   duration: [
-    "\\b[-+]?\\d+(?:\\.\\d+)?\\s*(?:[nµum]?s|sec|m|mins?|h|hrs?|d|days?)\\b"
+    "\\b[-+]?\\d+(?:\\.\\d+)?\\s*(?:[nµum]?s|sec|m|mins?|h|hrs?|d|days|weeks|months|years)\\b"
   ],
 } as const;
 
