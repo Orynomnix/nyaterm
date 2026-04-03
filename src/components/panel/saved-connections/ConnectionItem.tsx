@@ -3,9 +3,9 @@ import {
   MdDelete,
   MdDriveFileRenameOutline,
   MdEdit,
-  MdLan,
   MdLink,
 } from "react-icons/md";
+import { FaServer } from "react-icons/fa6";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -45,7 +45,7 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
   const showBefore = isTarget && dragTarget.position === "before";
   const showAfter = isTarget && dragTarget.position === "after";
   const iconDef = conn.icon ? CONNECTION_ICONS[conn.icon] : null;
-  const ConnIcon = iconDef ? iconDef.icon : MdLan;
+  const ConnIcon = iconDef ? iconDef.icon : FaServer;
   const iconStyle = iconDef ? { color: iconDef.color } : undefined;
   const indentLeft = indented ? `${8 + depth * 16 + 16}px` : "0.5rem";
 

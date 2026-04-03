@@ -148,7 +148,6 @@ export default function Header({
     { key: "file", label: t("menu.file") },
     { key: "edit", label: t("menu.edit") },
     { key: "view", label: t("menu.view") },
-    { key: "terminal", label: t("menu.terminal") },
     { key: "help", label: t("menu.help") },
   ];
 
@@ -236,10 +235,6 @@ export default function Header({
       { label: t("menu.resetZoom"), action: handleResetZoom, icon: "restart_alt", shortcut: `${MOD}+0` },
       { label: "separator", separator: true },
       { label: t("menu.fullscreen"), action: toggleFullscreen, icon: "fullscreen", shortcut: "F11" },
-    ],
-    terminal: [
-      { label: t("menu.newSshConnection"), action: onNewSession, icon: "add", shortcut: `${MOD}+Shift+N` },
-      { label: t("menu.newLocalTerminal"), action: onNewSession, icon: "computer", shortcut: `${MOD}+\`` },
     ],
     help: [
       {
