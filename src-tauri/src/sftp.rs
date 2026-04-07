@@ -8,7 +8,7 @@ use crate::session::SessionManager;
 use crate::ssh::SshHandler;
 use russh::client;
 use russh_sftp::client::SftpSession;
-use russh_sftp::protocol::FileType;
+use russh_sftp::protocol::{FileType, OpenFlags};
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::Emitter;
@@ -281,6 +281,95 @@ pub async fn download_remote_file(
     remote_path: &str,
     local_path: &str,
 ) -> AppResult<()> {
+    let transfer_settings = crate::config::load_app_settings(&app)
+        .map(|s| s.transfer)
+        .unwrap_or_default();
+    let max_retries = transfer_settings.max_transfer_retries;
+    let actual_local_path =
+        match resolve_local_path(local_path, &transfer_settings.duplicate_strategy) {
+            Some(path) => path,
+            None => {
+                let file_name = remote_path.split('/').last().unwrap_or(remote_path);
+                let transfer_id = uuid::Uuid::new_v4().to_string();
+                let _ = app.emit(
+                    "transfer-event",
+                    &TransferEvent {
+                        id: transfer_id,
+                        session_id: session_id.to_string(),
+                        file_name: file_name.to_string(),
+                        remote_path: remote_path.to_string(),
+                        direction: "download".to_string(),
+                        status: "completed".to_string(),
+                        size: 0,
+                        bytes_transferred: 0,
+                        total_size: 0,
+                        error_msg: None,
+                    },
+                );
+                return Ok(());
+            }
+        };
+
+    let mut last_err = None;
+    for attempt in 0..=max_retries {
+        if attempt > 0 {
+            tracing::info!(attempt, "Retrying download of {}", remote_path);
+        }
+        match download_remote_file_inner(
+            &app,
+            &manager,
+            session_id,
+            remote_path,
+            &actual_local_path,
+            &transfer_settings,
+        )
+        .await
+        {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap())
+}
+
+/// Resolve the actual local path, applying duplicate strategy.
+fn resolve_local_path(local_path: &str, strategy: &str) -> Option<String> {
+    let path = std::path::Path::new(local_path);
+    if !path.exists() {
+        return Some(local_path.to_string());
+    }
+    match strategy {
+        "skip" => None,
+        "rename" => {
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+            let ext = path
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            let parent = path.parent().unwrap_or(std::path::Path::new("."));
+            for i in 1..=999 {
+                let candidate = parent.join(format!("{}({}){}", stem, i, ext));
+                if !candidate.exists() {
+                    return Some(candidate.to_string_lossy().to_string());
+                }
+            }
+            Some(local_path.to_string())
+        }
+        // "overwrite" or unknown => proceed with original path
+        _ => Some(local_path.to_string()),
+    }
+}
+
+async fn download_remote_file_inner(
+    app: &tauri::AppHandle,
+    manager: &SessionManager,
+    session_id: &str,
+    remote_path: &str,
+    actual_path: &str,
+    ts: &crate::config::TransferSettings,
+) -> AppResult<()> {
     use std::io::SeekFrom;
     use std::time::{Duration, Instant};
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -311,8 +400,11 @@ pub async fn download_remote_file(
 
     let _ = app.emit("transfer-event", &make_event("started", 0, 0, None));
 
+    let chunk_size = (ts.transfer_buffer_size as u64).max(1) * 1024;
+    let concurrency = (ts.download_threads as usize).max(1);
+
     let result: AppResult<u64> = async {
-        if let Some(parent) = std::path::Path::new(local_path).parent() {
+        if let Some(parent) = std::path::Path::new(&actual_path).parent() {
             if !parent.exists() {
                 tokio::fs::create_dir_all(parent)
                     .await
@@ -320,15 +412,12 @@ pub async fn download_remote_file(
             }
         }
 
-        let sftp = open_sftp(&manager, session_id).await?;
+        let sftp = open_sftp(manager, session_id).await?;
 
-        let total_size = sftp
-            .metadata(remote_path)
-            .await
-            .map(|m| m.size.unwrap_or(0))
-            .unwrap_or(0);
+        let remote_attrs = sftp.metadata(remote_path).await.ok();
+        let total_size = remote_attrs.as_ref().and_then(|m| m.size).unwrap_or(0);
 
-        let mut local_file = tokio::fs::File::create(local_path)
+        let mut local_file = tokio::fs::File::create(&actual_path)
             .await
             .map_err(|e| AppError::Channel(format!("Failed to create local file: {}", e)))?;
 
@@ -341,24 +430,8 @@ pub async fn download_remote_file(
         let mut bytes_transferred: u64 = 0;
 
         if total_size > 0 {
-            // ── Pipelined path ─────────────────────────────────────────────
-            //
-            // Open CONCURRENCY independent SFTP File handles all sharing the
-            // same Arc<RawSftpSession>. RawSftpSession uses a concurrent hash
-            // map keyed by request-id so every handle can have one
-            // SSH_FXP_READ in flight simultaneously, filling the pipe.
-            //
-            // Sliding-window pattern: when a task finishes it returns its
-            // handle so we immediately re-enqueue the next chunk on it,
-            // keeping the pipeline full for the entire transfer.
-
-            // 128 KiB per request (OpenSSH caps responses at ~64 KiB, so each
-            // task may do 1-2 round trips; 16 × 64 KiB ≈ 1 MiB in-flight).
-            const CHUNK_SIZE: u64 = 128 * 1024;
-            const CONCURRENCY: usize = 16;
-
-            let num_chunks = ((total_size + CHUNK_SIZE - 1) / CHUNK_SIZE) as usize;
-            let concurrency = CONCURRENCY.min(num_chunks);
+            let num_chunks = ((total_size + chunk_size - 1) / chunk_size) as usize;
+            let concurrency = concurrency.min(num_chunks);
 
             let mut handle_pool: Vec<russh_sftp::client::fs::File> =
                 Vec::with_capacity(concurrency);
@@ -372,20 +445,16 @@ pub async fn download_remote_file(
             let mut join_set: JoinSet<Task> = JoinSet::new();
             let mut next_offset: u64 = 0;
 
-            // Seed the pipeline
             while let Some(fh) = handle_pool.pop() {
                 if next_offset >= total_size {
                     break;
                 }
-                let len = CHUNK_SIZE.min(total_size - next_offset) as usize;
+                let len = chunk_size.min(total_size - next_offset) as usize;
                 let offset = next_offset;
                 next_offset += len as u64;
 
                 join_set.spawn(async move {
                     let mut f = fh;
-                    // seek(SeekFrom::Start) is a pure local offset update — no
-                    // network round trip. The offset is sent as part of the next
-                    // SSH_FXP_READ request.
                     f.seek(SeekFrom::Start(offset))
                         .await
                         .map_err(|e| AppError::Channel(format!("Seek failed: {}", e)))?;
@@ -397,13 +466,10 @@ pub async fn download_remote_file(
                 });
             }
 
-            // Drain results and keep the pipeline full
             while let Some(res) = join_set.join_next().await {
                 let (chunk_offset, data, fh) =
                     res.map_err(|e| AppError::Channel(format!("Task panicked: {}", e)))??;
 
-                // All writes are sequential in this loop; seek + write on a
-                // single local handle is safe and needs no mutex.
                 local_file
                     .seek(SeekFrom::Start(chunk_offset))
                     .await
@@ -423,9 +489,8 @@ pub async fn download_remote_file(
                     );
                 }
 
-                // Refill: recycle the returned handle for the next chunk
                 if next_offset < total_size {
-                    let len = CHUNK_SIZE.min(total_size - next_offset) as usize;
+                    let len = chunk_size.min(total_size - next_offset) as usize;
                     let offset = next_offset;
                     next_offset += len as u64;
 
@@ -441,19 +506,15 @@ pub async fn download_remote_file(
                         Ok((offset, buf, f))
                     });
                 }
-                // No more chunks → `fh` drops here, triggering SSH_FXP_CLOSE.
             }
         } else {
-            // ── Sequential fallback (file size unknown) ─────────────────────
-            // Used when the server does not report a size in metadata (e.g.
-            // virtual/proc files). Pipelining requires knowing offsets upfront.
             let mut remote_file = sftp
                 .open(remote_path)
                 .await
                 .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?;
 
-            const SEQ_CHUNK: usize = 512 * 1024;
-            let mut buf = vec![0u8; SEQ_CHUNK];
+            let seq_chunk = (chunk_size as usize).max(64 * 1024);
+            let mut buf = vec![0u8; seq_chunk];
             loop {
                 let n = remote_file
                     .read(&mut buf)
@@ -483,6 +544,20 @@ pub async fn download_remote_file(
             .await
             .map_err(|e| AppError::Channel(format!("Flush failed: {}", e)))?;
 
+        if ts.preserve_timestamps {
+            if let Some(ref attrs) = remote_attrs {
+                let mtime = attrs.mtime.unwrap_or(0);
+                if mtime > 0 {
+                    use std::time::UNIX_EPOCH;
+                    let set_mtime = UNIX_EPOCH + std::time::Duration::from_secs(u64::from(mtime));
+                    let local_file_for_ts = std::fs::File::open(&actual_path);
+                    if let Ok(f) = local_file_for_ts {
+                        let _ = f.set_modified(set_mtime);
+                    }
+                }
+            }
+        }
+
         let _ = sftp.close().await;
 
         Ok(bytes_transferred)
@@ -511,8 +586,118 @@ pub async fn upload_local_file(
     local_path: &str,
     remote_path: &str,
 ) -> AppResult<()> {
+    let transfer_settings = crate::config::load_app_settings(&app)
+        .map(|s| s.transfer)
+        .unwrap_or_default();
+    let max_retries = transfer_settings.max_transfer_retries;
+    let sftp_for_resolve = open_sftp(&manager, session_id).await?;
+    let actual_remote_path = match resolve_remote_path(
+        &sftp_for_resolve,
+        remote_path,
+        &transfer_settings.duplicate_strategy,
+    )
+    .await
+    {
+        Some(path) => path,
+        None => {
+            let file_name = remote_path.split('/').last().unwrap_or(remote_path);
+            let transfer_id = uuid::Uuid::new_v4().to_string();
+            let _ = app.emit(
+                "transfer-event",
+                &TransferEvent {
+                    id: transfer_id,
+                    session_id: session_id.to_string(),
+                    file_name: file_name.to_string(),
+                    remote_path: remote_path.to_string(),
+                    direction: "upload".to_string(),
+                    status: "completed".to_string(),
+                    size: 0,
+                    bytes_transferred: 0,
+                    total_size: 0,
+                    error_msg: None,
+                },
+            );
+            let _ = sftp_for_resolve.close().await;
+            return Ok(());
+        }
+    };
+    let _ = sftp_for_resolve.close().await;
+
+    let mut last_err = None;
+    for attempt in 0..=max_retries {
+        if attempt > 0 {
+            tracing::info!(attempt, "Retrying upload of {}", local_path);
+        }
+        match upload_local_file_inner(
+            &app,
+            &manager,
+            session_id,
+            local_path,
+            &actual_remote_path,
+            &transfer_settings,
+        )
+        .await
+        {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap())
+}
+
+/// Resolve the actual remote path for upload, applying duplicate strategy.
+async fn resolve_remote_path(
+    sftp: &SftpSession,
+    remote_path: &str,
+    strategy: &str,
+) -> Option<String> {
+    let exists = sftp.metadata(remote_path).await.is_ok();
+    if !exists {
+        return Some(remote_path.to_string());
+    }
+    match strategy {
+        "skip" => None,
+        "rename" => {
+            let path = std::path::Path::new(remote_path);
+            let stem = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let ext = path
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            let parent = path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| "/".to_string());
+            for i in 1..=999 {
+                let candidate = format!("{}/{}({}){}", parent.trim_end_matches('/'), stem, i, ext);
+                if sftp.metadata(&candidate).await.is_err() {
+                    return Some(candidate);
+                }
+            }
+            Some(remote_path.to_string())
+        }
+        _ => Some(remote_path.to_string()),
+    }
+}
+
+async fn upload_local_file_inner(
+    app: &tauri::AppHandle,
+    manager: &SessionManager,
+    session_id: &str,
+    local_path: &str,
+    remote_path: &str,
+    ts: &crate::config::TransferSettings,
+) -> AppResult<()> {
+    use std::io::SeekFrom;
     use std::time::{Duration, Instant};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+    use tokio::task::JoinSet;
 
     let file_name = remote_path
         .split('/')
@@ -539,56 +724,144 @@ pub async fn upload_local_file(
 
     let _ = app.emit("transfer-event", &make_event("started", 0, 0, None));
 
+    let chunk_size = ((ts.transfer_buffer_size as usize).max(1)) * 1024;
+    let concurrency = (ts.upload_threads as usize).max(1);
+
     let result: AppResult<u64> = async {
-        // Get file size from metadata instead of reading the whole file into memory
-        let total_size = tokio::fs::metadata(local_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let local_meta = tokio::fs::metadata(local_path).await;
+        let total_size = local_meta.as_ref().map(|m| m.len()).unwrap_or(0);
 
-        let mut local_file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| AppError::Channel(format!("Failed to open local file: {}", e)))?;
-
-        let sftp = open_sftp(&manager, session_id).await?;
-
-        let mut remote_file = sftp.create(remote_path).await?;
-
-        // Match the download chunk size for symmetric throughput
-        const CHUNK_SIZE: usize = 512 * 1024;
-        let mut buf = vec![0u8; CHUNK_SIZE];
+        let sftp = open_sftp(manager, session_id).await?;
         let mut bytes_transferred: u64 = 0;
 
         const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
         let mut last_progress = Instant::now();
 
-        loop {
-            let n = local_file
-                .read(&mut buf)
-                .await
-                .map_err(|e| AppError::Channel(format!("Failed to read local file: {}", e)))?;
-            if n == 0 {
-                break;
-            }
-            remote_file
-                .write_all(&buf[..n])
-                .await
-                .map_err(|e| AppError::Channel(format!("SFTP write failed: {}", e)))?;
-            bytes_transferred += n as u64;
-
-            if last_progress.elapsed() >= PROGRESS_INTERVAL {
-                last_progress = Instant::now();
-                let _ = app.emit(
-                    "transfer-event",
-                    &make_event("progress", bytes_transferred, total_size, None),
-                );
-            }
-        }
-
-        remote_file
+        let mut bootstrap_file = sftp.create(remote_path).await?;
+        bootstrap_file
             .shutdown()
             .await
             .map_err(|e| AppError::Channel(format!("SFTP flush failed: {}", e)))?;
+
+        if total_size > 0 {
+            let num_chunks = total_size.div_ceil(chunk_size as u64) as usize;
+            let concurrency = concurrency.min(num_chunks);
+
+            let mut handle_pool: Vec<(tokio::fs::File, russh_sftp::client::fs::File)> =
+                Vec::with_capacity(concurrency);
+            for _ in 0..concurrency {
+                let local_file = tokio::fs::File::open(local_path)
+                    .await
+                    .map_err(|e| AppError::Channel(format!("Failed to open local file: {}", e)))?;
+                let remote_file = sftp
+                    .open_with_flags(remote_path, OpenFlags::WRITE)
+                    .await
+                    .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?;
+                handle_pool.push((local_file, remote_file));
+            }
+
+            type Task = AppResult<(usize, tokio::fs::File, russh_sftp::client::fs::File)>;
+            let mut join_set: JoinSet<Task> = JoinSet::new();
+            let mut next_offset: u64 = 0;
+
+            while let Some((local_fh, remote_fh)) = handle_pool.pop() {
+                if next_offset >= total_size {
+                    break;
+                }
+                let len = chunk_size.min((total_size - next_offset) as usize);
+                let offset = next_offset;
+                next_offset += len as u64;
+
+                join_set.spawn(async move {
+                    let mut local = local_fh;
+                    let mut remote = remote_fh;
+                    local
+                        .seek(SeekFrom::Start(offset))
+                        .await
+                        .map_err(|e| AppError::Channel(format!("Local seek failed: {}", e)))?;
+                    let mut buf = vec![0u8; len];
+                    local.read_exact(&mut buf).await.map_err(|e| {
+                        AppError::Channel(format!("Failed to read local file: {}", e))
+                    })?;
+                    remote
+                        .seek(SeekFrom::Start(offset))
+                        .await
+                        .map_err(|e| AppError::Channel(format!("Remote seek failed: {}", e)))?;
+                    remote
+                        .write_all(&buf)
+                        .await
+                        .map_err(|e| AppError::Channel(format!("SFTP write failed: {}", e)))?;
+                    Ok((buf.len(), local, remote))
+                });
+            }
+
+            while let Some(res) = join_set.join_next().await {
+                let (written, local_fh, remote_fh) =
+                    res.map_err(|e| AppError::Channel(format!("Task panicked: {}", e)))??;
+
+                bytes_transferred += written as u64;
+
+                if last_progress.elapsed() >= PROGRESS_INTERVAL {
+                    last_progress = Instant::now();
+                    let _ = app.emit(
+                        "transfer-event",
+                        &make_event("progress", bytes_transferred, total_size, None),
+                    );
+                }
+
+                if next_offset < total_size {
+                    let len = chunk_size.min((total_size - next_offset) as usize);
+                    let offset = next_offset;
+                    next_offset += len as u64;
+
+                    join_set.spawn(async move {
+                        let mut local = local_fh;
+                        let mut remote = remote_fh;
+                        local
+                            .seek(SeekFrom::Start(offset))
+                            .await
+                            .map_err(|e| AppError::Channel(format!("Local seek failed: {}", e)))?;
+                        let mut buf = vec![0u8; len];
+                        local.read_exact(&mut buf).await.map_err(|e| {
+                            AppError::Channel(format!("Failed to read local file: {}", e))
+                        })?;
+                        remote
+                            .seek(SeekFrom::Start(offset))
+                            .await
+                            .map_err(|e| AppError::Channel(format!("Remote seek failed: {}", e)))?;
+                        remote
+                            .write_all(&buf)
+                            .await
+                            .map_err(|e| AppError::Channel(format!("SFTP write failed: {}", e)))?;
+                        Ok((buf.len(), local, remote))
+                    });
+                } else {
+                    let mut remote = remote_fh;
+                    let _ = remote.shutdown().await;
+                }
+            }
+        }
+
+        // Preserve timestamps
+        if ts.preserve_timestamps {
+            if let Ok(ref meta) = local_meta {
+                if let Ok(mtime) = meta.modified() {
+                    if let Ok(dur) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                        let atime_secs = meta
+                            .accessed()
+                            .ok()
+                            .and_then(|a| a.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs() as u32)
+                            .unwrap_or(dur.as_secs() as u32);
+                        if let Ok(mut attrs) = sftp.metadata(remote_path).await {
+                            attrs.mtime = Some(dur.as_secs() as u32);
+                            attrs.atime = Some(atime_secs);
+                            let _ = sftp.set_metadata(remote_path, attrs).await;
+                        }
+                    }
+                }
+            }
+        }
 
         let _ = sftp.close().await;
 

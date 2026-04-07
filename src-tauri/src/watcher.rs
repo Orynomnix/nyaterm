@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-
 use crate::error::AppResult;
 
 #[derive(Clone, Serialize)]
@@ -41,16 +40,31 @@ pub async fn start_file_watch(
     }
 
     let (tx, rx) = channel();
-    
+
     // Create the watcher (this has to happen synchronously or via std thread)
-    let mut watcher = notify::recommended_watcher(tx).map_err(|e| crate::error::AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
-    
+    let mut watcher = notify::recommended_watcher(tx).map_err(|e| {
+        crate::error::AppError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?;
+
     watcher
         .watch(Path::new(&local_path), RecursiveMode::NonRecursive)
-        .map_err(|e| crate::error::AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        .map_err(|e| {
+            crate::error::AppError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
+        })?;
 
     // Store the watcher to keep it alive
-    watchers.insert(watch_key.clone(), WatchState { _watcher: Some(watcher) });
+    watchers.insert(
+        watch_key.clone(),
+        WatchState {
+            _watcher: Some(watcher),
+        },
+    );
 
     let app_clone = app.clone();
     let session_id_clone = session_id.clone();
@@ -66,7 +80,7 @@ pub async fn start_file_watch(
             match res {
                 Ok(event) => {
                     tracing::info!("Notify event received: {:?}", event.kind);
-                    
+
                     // Most text editors do atomic saves (save to temp file, then rename/move)
                     // We need to catch Any/Data modify events inside the file OR rename events on the filepath
                     if let EventKind::Modify(_) = event.kind {
@@ -100,10 +114,7 @@ pub async fn start_file_watch(
 }
 
 #[tauri::command]
-pub async fn stop_file_watch(
-    session_id: String,
-    local_path: String,
-) -> AppResult<()> {
+pub async fn stop_file_watch(session_id: String, local_path: String) -> AppResult<()> {
     let watch_key = format!("{}:{}", session_id, local_path);
     let mut watchers = ACTIVE_WATCHERS.lock().unwrap();
     watchers.remove(&watch_key);

@@ -133,7 +133,7 @@ export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
             sessionId: session_id,
             localPath: local_path,
             remotePath: remote_path,
-          }).catch((err) => toast.error(String(err)));
+          }).catch((err) => console.error("Auto upload failed", err));
         } else {
           // Trigger the window
           openAutoUpload({
@@ -491,7 +491,7 @@ export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
         localPath,
       });
     } catch (e) {
-      toast.error(String(e));
+      console.error("Download failed", e);
     }
   };
 
@@ -535,12 +535,12 @@ export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
             remotePath,
           });
         } catch (e) {
-          toast.error(String(e));
+          console.error("Upload failed", e);
           pendingManualRefreshUploadsRef.current.delete(uploadKey);
         }
       }
     } catch (e) {
-      toast.error(String(e));
+      console.error("Upload selection failed", e);
     }
   };
 
@@ -560,7 +560,7 @@ export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
       });
       loadDirectory(currentPath);
     } catch (e) {
-      toast.error(String(e));
+      console.error("Upload folder failed", e);
     }
   };
 
@@ -581,7 +581,12 @@ export default function FileExplorer({ activeSessionId }: FileExplorerProps) {
         remotePath: getEntryFullPath(entry),
         localPath,
       });
+    } catch (e) {
+      console.error("Download for open failed", e);
+      return;
+    }
 
+    try {
       // Start watching the file for auto-upload
       await invoke("start_file_watch", {
         sessionId: activeSessionId,

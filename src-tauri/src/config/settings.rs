@@ -336,6 +336,57 @@ impl Default for TerminalSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferSettings {
+    #[serde(default = "default_transfer_threads")]
+    pub download_threads: u32,
+    #[serde(default = "default_transfer_threads")]
+    pub upload_threads: u32,
+    #[serde(default = "default_duplicate_strategy")]
+    pub duplicate_strategy: String,
+    #[serde(default = "default_true")]
+    pub preserve_timestamps: bool,
+    #[serde(default = "default_true")]
+    pub resume_broken_transfer: bool,
+    #[serde(default = "default_file_permissions")]
+    pub default_file_permissions: String,
+    #[serde(default = "default_max_retries")]
+    pub max_transfer_retries: u32,
+    #[serde(default = "default_buffer_size")]
+    pub transfer_buffer_size: u32,
+}
+
+fn default_transfer_threads() -> u32 {
+    3
+}
+fn default_duplicate_strategy() -> String {
+    "overwrite".to_string()
+}
+fn default_file_permissions() -> String {
+    "644".to_string()
+}
+fn default_max_retries() -> u32 {
+    2
+}
+fn default_buffer_size() -> u32 {
+    32
+}
+
+impl Default for TransferSettings {
+    fn default() -> Self {
+        Self {
+            download_threads: default_transfer_threads(),
+            upload_threads: default_transfer_threads(),
+            duplicate_strategy: default_duplicate_strategy(),
+            preserve_timestamps: true,
+            resume_broken_transfer: true,
+            default_file_permissions: default_file_permissions(),
+            max_transfer_retries: default_max_retries(),
+            transfer_buffer_size: default_buffer_size(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InteractionSettings {
     #[serde(default = "default_true")]
     pub copy_on_select: bool,
@@ -384,6 +435,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub interaction: InteractionSettings,
     #[serde(default)]
+    pub transfer: TransferSettings,
+    #[serde(default)]
     pub ui: UiConfig,
 }
 
@@ -391,8 +444,9 @@ pub fn load_app_settings(app: &AppHandle) -> AppResult<AppSettings> {
     let dir = get_config_dir(app)?;
     let mut settings: AppSettings = load_json(&dir.join("settings.json"))?;
 
-    // Migrate "keyManagement" → "securityAuth" in activity bar layout
     let mut migrated = false;
+
+    // Migrate "keyManagement" → "securityAuth" in activity bar layout
     for list in [
         &mut settings.ui.activity_bar_layout.left_top,
         &mut settings.ui.activity_bar_layout.left_bottom,
@@ -412,6 +466,51 @@ pub fn load_app_settings(app: &AppHandle) -> AppResult<AppSettings> {
             migrated = true;
         }
     }
+
+    // Migrate "fileTransfer" out of activity bar (now embedded below file explorer)
+    for list in [
+        &mut settings.ui.activity_bar_layout.left_top,
+        &mut settings.ui.activity_bar_layout.left_bottom,
+        &mut settings.ui.activity_bar_layout.right_top,
+        &mut settings.ui.activity_bar_layout.right_bottom,
+    ] {
+        let before = list.len();
+        list.retain(|id| id != "fileTransfer");
+        if list.len() != before {
+            migrated = true;
+        }
+    }
+    if settings.ui.active_left_panel.as_deref() == Some("fileTransfer") {
+        settings.ui.active_left_panel = Some("fileExplorer".to_string());
+        migrated = true;
+    }
+    if settings.ui.active_right_panel.as_deref() == Some("fileTransfer") {
+        settings.ui.active_right_panel = Some("savedConnections".to_string());
+        migrated = true;
+    }
+
+    // Ensure "network" is in left_top if not already in any zone
+    {
+        let all_ids: Vec<&str> = settings
+            .ui
+            .activity_bar_layout
+            .left_top
+            .iter()
+            .chain(&settings.ui.activity_bar_layout.left_bottom)
+            .chain(&settings.ui.activity_bar_layout.right_top)
+            .chain(&settings.ui.activity_bar_layout.right_bottom)
+            .map(|s| s.as_str())
+            .collect();
+        if !all_ids.contains(&"network") {
+            settings
+                .ui
+                .activity_bar_layout
+                .left_top
+                .push("network".to_string());
+            migrated = true;
+        }
+    }
+
     if migrated {
         let _ = save_app_settings(app, &settings);
     }
