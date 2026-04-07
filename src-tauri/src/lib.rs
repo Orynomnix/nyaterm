@@ -13,12 +13,14 @@ mod session;
 mod sftp;
 mod ssh;
 mod translate;
+mod tunnel;
 pub mod watcher;
 
 use session::SessionManager;
 use std::sync::Arc;
 use tauri::Manager;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tunnel::TunnelManager;
 
 fn init_tracing(log_dir: std::path::PathBuf) {
     let _ = std::fs::create_dir_all(&log_dir);
@@ -64,11 +66,13 @@ fn init_tracing(log_dir: std::path::PathBuf) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let session_manager = Arc::new(SessionManager::new());
+    let tunnel_manager = Arc::new(TunnelManager::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(session_manager.clone())
+        .manage(tunnel_manager.clone())
         .setup(move |app| {
             let home_dir = app
                 .path()
@@ -156,6 +160,7 @@ pub fn run() {
             commands::config_cmds::delete_connection,
             commands::config_cmds::reorder_items,
             commands::config_cmds::get_ssh_keys,
+            commands::config_cmds::get_ssh_key_passphrase,
             commands::config_cmds::save_ssh_key,
             commands::config_cmds::delete_ssh_key,
             commands::config_cmds::get_groups,
@@ -165,6 +170,7 @@ pub fn run() {
             commands::config_cmds::get_quick_commands,
             commands::config_cmds::save_quick_commands,
             commands::config_cmds::get_saved_passwords,
+            commands::config_cmds::get_saved_password_value,
             commands::config_cmds::save_password,
             commands::config_cmds::delete_password,
             commands::settings_cmds::get_app_settings,
@@ -176,6 +182,15 @@ pub fn run() {
             import::import_sessions,
             commands::stats::get_remote_stats,
             commands::stats::get_terminal_cwd,
+            commands::tunnel_cmds::get_tunnels,
+            commands::tunnel_cmds::save_tunnel,
+            commands::tunnel_cmds::delete_tunnel,
+            commands::tunnel_cmds::open_tunnel,
+            commands::tunnel_cmds::close_tunnel,
+            commands::proxy_cmds::get_proxies,
+            commands::proxy_cmds::save_proxy,
+            commands::proxy_cmds::delete_proxy,
+            commands::proxy_cmds::get_proxy_password,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

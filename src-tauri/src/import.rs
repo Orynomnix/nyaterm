@@ -83,10 +83,7 @@ fn parse_xsh_content(content: &str, entry_path: &str) -> Option<ImportedSession>
         return None;
     }
 
-    let port: u16 = conn
-        .get("Port")
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(22);
+    let port: u16 = conn.get("Port").and_then(|p| p.parse().ok()).unwrap_or(22);
 
     let auth = sections.get("CONNECTION:AUTHENTICATION");
     let username = auth
@@ -120,7 +117,11 @@ fn parse_xsh_content(content: &str, entry_path: &str) -> Option<ImportedSession>
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string())
                 .collect();
-            if segments.is_empty() { None } else { Some(segments) }
+            if segments.is_empty() {
+                None
+            } else {
+                Some(segments)
+            }
         }
     });
 
@@ -159,8 +160,8 @@ fn parse_ini_sections(content: &str) -> HashMap<String, HashMap<String, String>>
 // ── MobaXterm (.mxtsessions) ────────────────────────────────────────────────
 
 fn parse_mobaxterm(path: &str) -> AppResult<Vec<ImportedSession>> {
-    let raw = std::fs::read(path)
-        .map_err(|e| AppError::Config(format!("Cannot read file: {e}")))?;
+    let raw =
+        std::fs::read(path).map_err(|e| AppError::Config(format!("Cannot read file: {e}")))?;
     let content = decode_bytes(&raw);
 
     let sections = parse_ini_sections(&content);
@@ -181,7 +182,11 @@ fn parse_mobaxterm(path: &str) -> AppResult<Vec<ImportedSession>> {
                     .filter(|seg| !seg.is_empty())
                     .map(|seg| seg.trim().to_string())
                     .collect();
-                if segments.is_empty() { None } else { Some(segments) }
+                if segments.is_empty() {
+                    None
+                } else {
+                    Some(segments)
+                }
             }
         });
 
@@ -302,7 +307,11 @@ fn parse_windterm(path: &str) -> AppResult<Vec<ImportedSession>> {
                         .filter(|seg| !seg.is_empty())
                         .map(|seg| seg.trim().to_string())
                         .collect();
-                    if segments.is_empty() { None } else { Some(segments) }
+                    if segments.is_empty() {
+                        None
+                    } else {
+                        Some(segments)
+                    }
                 }
             });
 
@@ -373,13 +382,7 @@ pub fn import_sessions(app: tauri::AppHandle, file_path: String) -> AppResult<us
         path_map.insert(path, g.id.clone());
     }
 
-    let mut next_sort = cfg
-        .groups
-        .iter()
-        .map(|g| g.sort_order)
-        .max()
-        .unwrap_or(0)
-        + 1;
+    let mut next_sort = cfg.groups.iter().map(|g| g.sort_order).max().unwrap_or(0) + 1;
 
     for sess in imported {
         let group_id = sess.group_path.map(|segments| {
@@ -424,6 +427,8 @@ pub fn import_sessions(app: tauri::AppHandle, file_path: String) -> AppResult<us
             key_id: None,
             sort_order: 0,
             icon: None,
+            proxy_id: None,
+            network: Default::default(),
         });
     }
 

@@ -4,16 +4,20 @@
 
 mod keys;
 mod passwords;
+mod proxies;
 mod quick_commands;
 mod sessions;
 mod settings;
+mod tunnels;
 mod ui;
 
 pub use keys::*;
 pub use passwords::*;
+pub use proxies::*;
 pub use quick_commands::*;
 pub use sessions::*;
 pub use settings::*;
+pub use tunnels::*;
 
 use crate::error::{AppError, AppResult};
 use serde::Serialize;

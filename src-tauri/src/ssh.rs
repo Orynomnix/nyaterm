@@ -44,6 +44,8 @@ pub struct SshConfig {
     pub port: u16,
     pub username: String,
     pub auth: SshAuth,
+    #[serde(default)]
+    pub proxy: Option<crate::config::ProxySettings>,
 }
 
 /// Authentication method: password or key (with optional passphrase).
@@ -148,37 +150,59 @@ impl client::Handler for SshHandler {
 }
 
 pub async fn connect_with_proxy(
-    app: &AppHandle,
     config: &SshConfig,
     ssh_config: Arc<client::Config>,
     handler: SshHandler,
 ) -> AppResult<client::Handle<SshHandler>> {
-    let mut proxy_settings = None;
-    if let Ok(app_settings) = crate::config::load_app_settings(app) {
-        if app_settings.proxy.enabled {
-            proxy_settings = Some(app_settings.proxy);
-        }
-    }
-
     let target = (config.host.as_str(), config.port);
-    let handle = if let Some(proxy) = proxy_settings {
+    let handle = if let Some(proxy) = config.proxy.clone().filter(|proxy| proxy.enabled) {
         let proxy_addr = format!("{}:{}", proxy.host, proxy.port);
         match proxy.protocol.as_str() {
             "socks5" => {
-                let stream = tokio_socks::tcp::Socks5Stream::connect(proxy_addr.as_str(), target)
-                    .await
-                    .map_err(|e| {
-                        AppError::Auth(format!("SOCKS5 proxy connection failed: {}", e))
-                    })?;
+                let stream = match (&proxy.username, &proxy.password) {
+                    (Some(user), Some(pass)) => {
+                        tokio_socks::tcp::Socks5Stream::connect_with_password(
+                            proxy_addr.as_str(),
+                            target,
+                            user,
+                            pass,
+                        )
+                        .await
+                    }
+                    _ => {
+                        tokio_socks::tcp::Socks5Stream::connect(proxy_addr.as_str(), target).await
+                    }
+                }
+                .map_err(|e| {
+                    AppError::Auth(format!("SOCKS5 proxy connection failed: {}", e))
+                })?;
                 client::connect_stream(ssh_config, stream.into_inner(), handler).await
             }
             "http" => {
                 let mut stream = tokio::net::TcpStream::connect(&proxy_addr)
                     .await
                     .map_err(|e| AppError::Auth(format!("HTTP proxy connection failed: {}", e)))?;
-                async_http_proxy::http_connect_tokio(&mut stream, &config.host, config.port)
-                    .await
-                    .map_err(|e| AppError::Auth(format!("HTTP proxy tunnel failed: {}", e)))?;
+                match (&proxy.username, &proxy.password) {
+                    (Some(user), Some(pass)) => {
+                        async_http_proxy::http_connect_tokio_with_basic_auth(
+                            &mut stream,
+                            &config.host,
+                            config.port,
+                            user,
+                            pass,
+                        )
+                        .await
+                    }
+                    _ => {
+                        async_http_proxy::http_connect_tokio(
+                            &mut stream,
+                            &config.host,
+                            config.port,
+                        )
+                        .await
+                    }
+                }
+                .map_err(|e| AppError::Auth(format!("HTTP proxy tunnel failed: {}", e)))?;
                 client::connect_stream(ssh_config, stream, handler).await
             }
             _ => client::connect(ssh_config, target, handler).await,
@@ -191,11 +215,139 @@ pub async fn connect_with_proxy(
     Ok(handle)
 }
 
+/// Creates an authenticated SSH handle for a saved connection without opening a PTY/shell.
+/// Used by tunnels to establish their own independent SSH connections.
+pub async fn create_ssh_handle(
+    app: &AppHandle,
+    connection_id: &str,
+) -> AppResult<Arc<tokio::sync::Mutex<client::Handle<SshHandler>>>> {
+    let conn = crate::config::load_connection_by_id(app, connection_id)?;
+
+    let auth = match conn.auth_type.as_str() {
+        "password" => {
+            let pw_id = conn
+                .password_id
+                .as_deref()
+                .ok_or_else(|| AppError::Auth("No password for this connection".to_string()))?;
+            let pw_entry = crate::config::load_password_by_id(app, pw_id)?;
+            let password = pw_entry
+                .password
+                .ok_or_else(|| AppError::Auth("No stored password".to_string()))?;
+            SshAuth::Password { password }
+        }
+        "key" => {
+            let key_id = conn
+                .key_id
+                .as_deref()
+                .ok_or_else(|| AppError::Auth("No SSH key for this connection".to_string()))?;
+            let ssh_key = crate::config::load_key_by_id(app, key_id)?;
+            let key_data = crate::config::decrypt_key_pem(&ssh_key)?
+                .ok_or_else(|| AppError::Auth("No key data stored".to_string()))?;
+            let passphrase = ssh_key
+                .passphrase
+                .as_ref()
+                .and_then(|ct| crate::crypto::decrypt(ct).ok());
+            SshAuth::Key {
+                key_data,
+                passphrase,
+            }
+        }
+        other => return Err(AppError::Auth(format!("Unknown auth type: {}", other))),
+    };
+
+    let proxy = if let Some(proxy_id) = &conn.proxy_id {
+        crate::config::load_proxy_by_id(app, proxy_id)?.map(|p| {
+            let password = p
+                .password
+                .as_ref()
+                .and_then(|ct| crate::crypto::decrypt(ct).ok());
+            crate::config::ProxySettings {
+                enabled: true,
+                protocol: p.protocol,
+                host: p.host,
+                port: p.port,
+                username: p.username,
+                password,
+            }
+        })
+    } else {
+        None
+    };
+
+    let ssh_cfg = SshConfig {
+        name: conn.name,
+        host: conn.host.clone(),
+        port: conn.port,
+        username: conn.username.clone(),
+        auth,
+        proxy,
+    };
+
+    let mut client_cfg = client::Config {
+        window_size: 32 * 1024 * 1024,
+        maximum_packet_size: 32 * 1024,
+        nodelay: true,
+        ..Default::default()
+    };
+    if let Ok(app_settings) = crate::config::load_app_settings(app) {
+        let interval = app_settings.terminal.keep_alive_interval;
+        if interval > 0 {
+            client_cfg.keepalive_interval =
+                Some(std::time::Duration::from_secs(interval as u64));
+        }
+    }
+
+    let handler = SshHandler::new(app.clone(), conn.host.clone(), conn.port);
+    let mut handle = connect_with_proxy(&ssh_cfg, Arc::new(client_cfg), handler).await?;
+
+    match &ssh_cfg.auth {
+        SshAuth::Password { password } => {
+            let authenticated = handle
+                .authenticate_password(&ssh_cfg.username, password)
+                .await
+                .map_err(|e| AppError::Auth(format!("Authentication failed: {}", e)))?;
+            if !authenticated.success() {
+                return Err(AppError::Auth("Invalid credentials".to_string()));
+            }
+        }
+        SshAuth::Key {
+            key_data,
+            passphrase,
+        } => {
+            let key = russh::keys::decode_secret_key(key_data, passphrase.as_deref())?;
+            let hash_alg = handle
+                .best_supported_rsa_hash()
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+            let authenticated = handle
+                .authenticate_publickey(
+                    &ssh_cfg.username,
+                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key), hash_alg),
+                )
+                .await
+                .map_err(|e| AppError::Auth(format!("Key auth failed: {}", e)))?;
+            if !authenticated.success() {
+                return Err(AppError::Auth("Key authentication rejected".to_string()));
+            }
+        }
+    }
+
+    tracing::info!(
+        host = %conn.host,
+        port = conn.port,
+        "Tunnel SSH handle created"
+    );
+    Ok(Arc::new(tokio::sync::Mutex::new(handle)))
+}
+
 /// Connects via SSH, opens a PTY shell, and spawns the I/O loop.
 pub async fn create_ssh_session(
     app: AppHandle,
     manager: Arc<SessionManager>,
     config: SshConfig,
+    connection_id: Option<String>,
 ) -> AppResult<String> {
     tracing::info!(host = %config.host, port = config.port, user = %config.username, "Creating SSH session");
     let session_id = uuid::Uuid::new_v4().to_string();
@@ -217,7 +369,7 @@ pub async fn create_ssh_session(
     let ssh_config = Arc::new(ssh_config_obj);
     let handler = SshHandler::new(app.clone(), config.host.clone(), config.port);
 
-    let mut handle = connect_with_proxy(&app, &config, ssh_config, handler).await?;
+    let mut handle = connect_with_proxy(&config, ssh_config, handler).await?;
 
     match &config.auth {
         SshAuth::Password { password } => {
@@ -316,8 +468,8 @@ pub async fn create_ssh_session(
 
     let cwd: SharedCwd = Arc::new(tokio::sync::Mutex::new(None));
     let ssh_config_arc: Arc<dyn std::any::Any + Send + Sync> = Arc::new(config.clone());
-    let handle_arc = Arc::new(handle);
-    let ssh_handle_arc: Arc<dyn std::any::Any + Send + Sync> = handle_arc.clone();
+    let handle_mtx = Arc::new(tokio::sync::Mutex::new(handle));
+    let ssh_handle_arc: Arc<dyn std::any::Any + Send + Sync> = handle_mtx.clone();
 
     let session_handle = SessionHandle {
         info: session_info,
@@ -328,10 +480,24 @@ pub async fn create_ssh_session(
     };
     manager.add_session(session_handle).await;
 
+    // Auto-open tunnels bound to this connection
+    if let Some(ref conn_id) = connection_id {
+        if let Some(tunnel_mgr) = app.try_state::<Arc<crate::tunnel::TunnelManager>>() {
+            let tm = tunnel_mgr.inner().clone();
+            let cid = conn_id.clone();
+            let a = app.clone();
+            tokio::spawn(async move {
+                tm.auto_open_for_connection(&a, &cid).await;
+            });
+        }
+    }
+
     let sid = session_id.clone();
     let mgr = manager.clone();
+    let handle_for_io = handle_mtx.clone();
+    let cid_for_io = connection_id.clone();
     tokio::spawn(async move {
-        ssh_io_loop(app, sid, mgr, channel, handle_arc, cmd_rx, cwd).await;
+        ssh_io_loop(app, sid, mgr, channel, handle_for_io, cmd_rx, cwd, cid_for_io).await;
     });
 
     tracing::info!(session_id = %session_id, "SSH session created");
@@ -343,9 +509,10 @@ async fn ssh_io_loop(
     session_id: String,
     manager: Arc<SessionManager>,
     mut channel: russh::Channel<client::Msg>,
-    _handle: Arc<client::Handle<SshHandler>>,
+    _handle: Arc<tokio::sync::Mutex<client::Handle<SshHandler>>>,
     mut cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
     cwd: SharedCwd,
+    connection_id: Option<String>,
 ) {
     const READY_MARKER: &str = "\x1b]7777;DflyReady\x07";
 
@@ -431,6 +598,15 @@ async fn ssh_io_loop(
     }
 
     manager.remove_session(&session_id).await;
+
+    if let Some(ref conn_id) = connection_id {
+        if let Some(tunnel_mgr) = app.try_state::<Arc<crate::tunnel::TunnelManager>>() {
+            tunnel_mgr
+                .close_auto_tunnels_for_connection(&app, conn_id)
+                .await;
+        }
+    }
+
     tracing::info!(session_id = %session_id, "SSH session closed");
     let _ = app.emit(&closed_event, ());
 }

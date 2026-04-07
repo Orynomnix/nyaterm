@@ -1,4 +1,5 @@
-use crate::config;
+use crate::config::{self, ProxySettings};
+use crate::crypto;
 use crate::error::{AppError, AppResult};
 use crate::fuzzy::{fuzzy_search_items, FuzzyResult};
 use crate::pty;
@@ -45,7 +46,10 @@ pub async fn create_ssh_session(
         other => return Err(AppError::Auth(format!("Unknown auth type: {}", other))),
     };
 
+    let proxy = resolve_proxy(&app, &conn)?;
+
     let ssh_config = SshConfig {
+        proxy,
         name: conn.name,
         host: conn.host,
         port: conn.port,
@@ -53,7 +57,7 @@ pub async fn create_ssh_session(
         auth,
     };
 
-    ssh::create_ssh_session(app, state.inner().clone(), ssh_config).await
+    ssh::create_ssh_session(app, state.inner().clone(), ssh_config, Some(connection_id)).await
 }
 
 #[tauri::command]
@@ -177,4 +181,29 @@ pub fn fuzzy_search_commands(
         .map(|c| (c.label, c.command))
         .collect();
     Ok(fuzzy_search_items(&items, &pattern, "quickCommand", limit))
+}
+
+/// Resolves a standalone proxy config for a saved connection, decrypting the password if present.
+pub(crate) fn resolve_proxy(
+    app: &tauri::AppHandle,
+    conn: &config::SavedConnection,
+) -> AppResult<Option<ProxySettings>> {
+    let proxy_id = match &conn.proxy_id {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    let proxy_cfg = config::load_proxy_by_id(app, proxy_id)?
+        .ok_or_else(|| AppError::Config(format!("Proxy '{}' not found", proxy_id)))?;
+    let password = proxy_cfg
+        .password
+        .as_ref()
+        .and_then(|ct| crypto::decrypt(ct).ok());
+    Ok(Some(ProxySettings {
+        enabled: true,
+        protocol: proxy_cfg.protocol,
+        host: proxy_cfg.host,
+        port: proxy_cfg.port,
+        username: proxy_cfg.username,
+        password,
+    }))
 }

@@ -10,7 +10,10 @@ pub fn get_saved_connections(app: tauri::AppHandle) -> AppResult<Vec<SavedConnec
 }
 
 #[tauri::command]
-pub fn save_connection(app: tauri::AppHandle, mut connection: SavedConnection) -> AppResult<String> {
+pub fn save_connection(
+    app: tauri::AppHandle,
+    mut connection: SavedConnection,
+) -> AppResult<String> {
     let mut cfg = config::load_config(&app)?;
 
     if connection.id.is_empty() {
@@ -79,6 +82,11 @@ pub fn get_ssh_keys(app: tauri::AppHandle) -> AppResult<Vec<SshKey>> {
         k.passphrase = None;
     }
     Ok(cfg.keys)
+}
+
+#[tauri::command]
+pub fn get_ssh_key_passphrase(app: tauri::AppHandle, id: String) -> AppResult<Option<String>> {
+    Ok(config::load_key_by_id(&app, &id)?.passphrase)
 }
 
 #[tauri::command]
@@ -208,6 +216,11 @@ pub fn get_saved_passwords(app: tauri::AppHandle) -> AppResult<Vec<SavedPassword
         p.password = None;
     }
     Ok(cfg.passwords)
+}
+
+#[tauri::command]
+pub fn get_saved_password_value(app: tauri::AppHandle, id: String) -> AppResult<Option<String>> {
+    Ok(config::load_password_by_id(&app, &id)?.password)
 }
 
 #[tauri::command]

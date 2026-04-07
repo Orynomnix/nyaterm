@@ -14,6 +14,8 @@ pub struct GeneralSettings {
     pub minimize_to_tray: bool,
     #[serde(default)]
     pub boss_key: Option<String>,
+    #[serde(default = "default_true")]
+    pub confirm_on_close: bool,
 }
 
 fn default_shell() -> String {
@@ -31,6 +33,7 @@ impl Default for GeneralSettings {
             default_local_shell: default_shell(),
             minimize_to_tray: false,
             boss_key: None,
+            confirm_on_close: true,
         }
     }
 }
@@ -92,16 +95,45 @@ impl Default for AppearanceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxySettings {
-    #[serde(default)]
+    #[serde(default = "default_false")]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_proxy_protocol")]
     pub protocol: String,
-    #[serde(default)]
+    #[serde(default = "default_proxy_host")]
     pub host: String,
-    #[serde(default)]
+    #[serde(default = "default_proxy_port")]
     pub port: u16,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub password: Option<String>,
+}
+
+fn default_proxy_protocol() -> String {
+    "socks5".to_string()
+}
+
+fn default_proxy_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_proxy_port() -> u16 {
+    1080
+}
+
+impl Default for ProxySettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            protocol: default_proxy_protocol(),
+            host: default_proxy_host(),
+            port: default_proxy_port(),
+            username: None,
+            password: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
