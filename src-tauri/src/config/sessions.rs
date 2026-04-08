@@ -1,4 +1,7 @@
-use super::{get_config_dir, load_app_settings, load_json, load_proxies, save_app_settings, save_json, save_proxies, uuid_v4, ProxyConfig, ProxySettings};
+use super::{
+    get_config_dir, load_app_settings, load_json, load_proxies, save_app_settings, save_json,
+    save_proxies, uuid_v4, ProxyConfig, ProxySettings,
+};
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -170,7 +173,10 @@ fn migrate_global_proxy_to_connections(app: &AppHandle, cfg: &mut SessionsConfig
     Ok(())
 }
 
-fn migrate_connection_proxies_to_standalone(app: &AppHandle, cfg: &mut SessionsConfig) -> AppResult<()> {
+fn migrate_connection_proxies_to_standalone(
+    app: &AppHandle,
+    cfg: &mut SessionsConfig,
+) -> AppResult<()> {
     let needs_migration = cfg.connections.iter().any(|c| c.network.proxy.is_some());
     if !needs_migration {
         return Ok(());
