@@ -701,7 +701,10 @@
     "rightTop": "Right Top",
     "rightBottom": "Right Bottom",
     "showLabel": "Show Tool Name"
-  }}\" requires additional verification.",
+  },
+  "otp": {
+    "title": "Two-Factor Authentication",
+    "description": "\"{{name}}\" requires additional verification.",
     "submit": "Verify",
     "cancel": "Cancel",
     "cancelled": "2FA authentication cancelled"

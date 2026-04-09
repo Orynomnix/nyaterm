@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import AboutDialog from "./components/dialog/app/AboutDialog";
 import LockScreen from "./components/dialog/app/LockScreen";
+import { OtpDialog, type OtpRequest } from "./components/dialog/connections/OtpDialog";
 import type { ActivityBarItem } from "./components/layout/ActivityBar";
 import ActivityBar from "./components/layout/ActivityBar";
 import Header from "./components/layout/Header";
@@ -118,6 +119,9 @@ function App() {
   // Child window modal overlay
   const [childWindowCount, setChildWindowCount] = useState(0);
 
+  // OTP / 2FA dialog state
+  const [otpRequest, setOtpRequest] = useState<OtpRequest | null>(null);
+
   // Idle auto-lock
   useIdleLock(
     appSettings.security.enable_screen_lock ? appSettings.security.idle_lock_minutes : 0,
@@ -144,6 +148,12 @@ function App() {
           addTab(sessionId, sessionName, type);
         },
       ),
+    );
+
+    unsubs.push(
+      listen<OtpRequest>("otp-request", (event) => {
+        setOtpRequest(event.payload);
+      }),
     );
 
     unsubs.push(
@@ -916,6 +926,8 @@ function App() {
         </main>
 
         <AboutDialog open={showAbout} onClose={() => setShowAbout(false)} />
+
+        <OtpDialog request={otpRequest} onDone={() => setOtpRequest(null)} />
 
         <Toaster position="bottom-right" />
 
