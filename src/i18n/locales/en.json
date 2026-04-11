@@ -552,8 +552,6 @@
     "defaultEncodingDesc": "The character encoding used for the terminal PTY streams.",
     "defaultFilePermissions": "Default File Permissions",
     "defaultFilePermissionsDesc": "Octal permission mode for uploaded files (e.g. 644).",
-    "defaultLocalShell": "Default Local Shell",
-    "defaultLocalShellDesc": "The shell path to use when opening a local terminal.",
     "defaultShell": "Default Local Shell",
     "defaultShellDesc": "The command line shell to use when creating a new local terminal session.",
     "deleteKey": "Delete Key",

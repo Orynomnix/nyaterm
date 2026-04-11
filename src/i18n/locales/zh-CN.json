@@ -552,8 +552,6 @@
     "defaultEncodingDesc": "终端 PTY 流使用的字符编码。",
     "defaultFilePermissions": "默认文件权限",
     "defaultFilePermissionsDesc": "上传文件的八进制权限模式（例如 644）。",
-    "defaultLocalShell": "默认本地 Shell",
-    "defaultLocalShellDesc": "打开本地终端时使用的 Shell 路径。",
     "defaultShell": "默认本地 Shell",
     "defaultShellDesc": "创建新的本地终端会话时使用的命令行 shell。",
     "deleteKey": "删除密钥",
