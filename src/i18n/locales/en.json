@@ -137,7 +137,7 @@
     "cmUpload": "Upload to Current Folder...",
     "connectToSession": "Connect to a session to browse files",
     "copyDirPath": "Copy Directory Path",
-    "cwdTrackingUnavailable": "CWD tracking unavailable (shell integration not supported)",
+    "cwdTrackingUnavailable": "Terminal path sync unavailable for this session",
     "delete": "Delete",
     "downloadSelected": "Download Selected",
     "editPath": "Click to edit path",

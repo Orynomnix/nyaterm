@@ -719,6 +719,8 @@ function App() {
   // --- Panel content rendering (side-independent) ---
 
   const activeSessionId = activeTab?.connecting ? null : (activeTab?.sessionId ?? null);
+  const activeSshSessionId =
+    activeTab && !activeTab.connecting && activeTab.type === "SSH" ? activeTab.sessionId : null;
   const activeBottomPanel = uiConfig.show_serial_send_panel
     ? "serialSend"
     : uiConfig.show_quick_cmd_bar
@@ -769,7 +771,7 @@ function App() {
       case "commandHistory":
         return <CommandHistory onCommandSend={handleHistoryCommand} />;
       case "resourceMonitor":
-        return <ResourceMonitor activeSessionId={activeSessionId} />;
+        return <ResourceMonitor activeSessionId={activeSshSessionId} />;
       default:
         return null;
     }

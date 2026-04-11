@@ -80,6 +80,6 @@ pub async fn get_terminal_cwd(
     }
 
     Err(AppError::Config(
-        "Working directory not yet available. Please execute a command or press Enter in the terminal to trigger sync.".to_string(),
+        "Working directory is not available for this session. Terminal path sync is only available when the backend receives directory updates from the session.".to_string(),
     ))
 }

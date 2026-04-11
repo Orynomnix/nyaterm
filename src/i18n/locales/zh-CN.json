@@ -137,7 +137,7 @@
     "cmUpload": "上传到当前文件夹...",
     "connectToSession": "连接会话以浏览文件",
     "copyDirPath": "复制目录路径",
-    "cwdTrackingUnavailable": "目录跟踪不可用（Shell 集成不受支持）",
+    "cwdTrackingUnavailable": "该会话不支持终端路径同步",
     "delete": "删除",
     "downloadSelected": "下载选中",
     "editPath": "点击编辑路径",
