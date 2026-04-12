@@ -59,7 +59,7 @@ export function useActionLinks(
 
   const matcherSettings =
     appSettings.terminal.action_links_matchers ?? DEFAULT_ACTION_LINK_MATCHERS;
-  const enabled = appSettings.terminal.action_links_enabled ?? true;
+  const enabled = appSettings.terminal.action_links_enabled ?? false;
 
   const matchers = useMemo(() => {
     const list = [];

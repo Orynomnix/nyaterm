@@ -49,7 +49,7 @@ export function useKeywordHighlighter(
     const highlighter = new KeywordHighlighter(term);
     highlighter.setRules(
       mergedRules,
-      appSettings.terminal.keyword_highlights_enabled ?? true,
+      appSettings.terminal.keyword_highlights_enabled ?? false,
       appSettings.terminal.keyword_highlights_across_wrapped_lines ?? false,
     );
     highlighterRef.current = highlighter;
@@ -67,7 +67,7 @@ export function useKeywordHighlighter(
     if (!highlighter) return;
     highlighter.setRules(
       mergedRules,
-      appSettings.terminal.keyword_highlights_enabled ?? true,
+      appSettings.terminal.keyword_highlights_enabled ?? false,
       appSettings.terminal.keyword_highlights_across_wrapped_lines ?? false,
     );
   }, [

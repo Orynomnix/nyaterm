@@ -47,10 +47,10 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     scrollback_lines: 10000,
     keep_alive_interval: 60,
     hardware_acceleration: false,
-    keyword_highlights_enabled: true,
+    keyword_highlights_enabled: false,
     keyword_highlights_across_wrapped_lines: false,
     keyword_highlights: [],
-    action_links_enabled: true,
+    action_links_enabled: false,
     action_links_matchers: {
       ipv4: true,
       archive: true,

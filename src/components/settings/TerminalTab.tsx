@@ -31,7 +31,7 @@ export function TerminalTab() {
 
   const builtinRules = useMemo(() => getBuiltinRules(isDark), [isDark]);
   const userRules = appSettings.terminal.keyword_highlights ?? [];
-  const actionLinksEnabled = appSettings.terminal.action_links_enabled ?? true;
+  const actionLinksEnabled = appSettings.terminal.action_links_enabled ?? false;
   const actionLinkMatchers =
     appSettings.terminal.action_links_matchers ?? DEFAULT_ACTION_LINK_MATCHERS;
 
@@ -230,7 +230,7 @@ export function TerminalTab() {
           desc={t("settings.keywordHighlightingExperimentalDesc")}
         >
           <SettingSwitch
-            checked={appSettings.terminal.keyword_highlights_enabled ?? true}
+            checked={appSettings.terminal.keyword_highlights_enabled ?? false}
             onChange={(v) =>
               updateAppSettings({
                 terminal: { ...appSettings.terminal, keyword_highlights_enabled: v },
