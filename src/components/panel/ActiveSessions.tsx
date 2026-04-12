@@ -35,7 +35,14 @@ function ActiveSessions({ onSessionClick }: ActiveSessionsProps) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <PanelHeader title={t("panel.activeSessions")} meta={sessions.length} />
+      <PanelHeader
+        title={t("panel.activeSessions")}
+        actions={
+          <span className="text-[0.6875rem]" style={{ color: "var(--df-text-dimmed)" }}>
+            {sessions.length}
+          </span>
+        }
+      />
       <div className="flex-1 overflow-y-auto p-2 text-xs space-y-0.5 terminal-scroll">
         {sessions.length === 0 ? (
           <div
