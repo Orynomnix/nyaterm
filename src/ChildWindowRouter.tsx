@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { lazy, Suspense, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { isModalChildLabel, prepareForModalChildClose } from "./lib/windowManager";
 
@@ -24,7 +24,7 @@ export default function ChildWindowRouter({ windowType }: { windowType: string }
     let unlistenCloseRequested: (() => void) | undefined;
     let programmaticClose = false;
 
-    currentWindow.show().catch(() => { });
+    currentWindow.show().catch(() => {});
 
     currentWindow
       .onCloseRequested(async (event) => {
@@ -32,7 +32,7 @@ export default function ChildWindowRouter({ windowType }: { windowType: string }
 
         programmaticClose = true;
         event.preventDefault();
-        await prepareForModalChildClose(currentWindow.label).catch(() => { });
+        await prepareForModalChildClose(currentWindow.label).catch(() => {});
         await currentWindow.close().catch(() => {
           programmaticClose = false;
         });
@@ -40,7 +40,7 @@ export default function ChildWindowRouter({ windowType }: { windowType: string }
       .then((unlisten) => {
         unlistenCloseRequested = unlisten;
       })
-      .catch(() => { });
+      .catch(() => {});
 
     return () => {
       unlistenCloseRequested?.();

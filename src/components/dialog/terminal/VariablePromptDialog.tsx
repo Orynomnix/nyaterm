@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-
 export interface VariableDef {
   raw: string;
   name: string;
@@ -50,8 +49,7 @@ export default function VariablePromptDialog({
       const initial: Record<string, string> = {};
 
       variables.forEach((v) => {
-        initial[v.name] =
-          v.defaultValue || (v.options && v.options.length > 0 ? v.options[0] : "");
+        initial[v.name] = v.defaultValue || (v.options && v.options.length > 0 ? v.options[0] : "");
       });
       setValues(initial);
     }
@@ -69,9 +67,7 @@ export default function VariablePromptDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent aria-describedby={undefined} className="w-[400px] sm:max-w-[400px] p-0 gap-0">
         <DialogHeader className="px-5 py-3 border-b">
-          <DialogTitle className="text-sm">
-            {t("quickCommands.fillVariables")}
-          </DialogTitle>
+          <DialogTitle className="text-sm">{t("quickCommands.fillVariables")}</DialogTitle>
         </DialogHeader>
 
         <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -157,12 +153,10 @@ export function parseCommandVariables(command: string): VariableDef[] {
       const [name, optsStr] = content.split("|");
       const options = optsStr.split(",").map((s) => s.trim());
       vars.push({ raw, name: name.trim(), options });
-    }
-    else if (content.includes("=")) {
+    } else if (content.includes("=")) {
       const [name, defaultVal] = content.split("=");
       vars.push({ raw, name: name.trim(), defaultValue: defaultVal.trim() });
-    }
-    else {
+    } else {
       vars.push({ raw, name: content.trim() });
     }
   }

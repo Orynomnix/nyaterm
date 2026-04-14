@@ -27,15 +27,13 @@ export function useKeywordHighlighter(
   // so the highlighter engine always receives a single resolved color.
   const mergedRules = useMemo(() => {
     const builtin = getBuiltinRules(isDark);
-    const user = (appSettings.terminal.keyword_highlights ?? []).map(
-      (r: KeywordHighlightRule) => ({
-        id: r.id,
-        name: r.name,
-        patterns: r.patterns,
-        color: isDark ? r.color_dark : r.color_light,
-        enabled: r.enabled,
-      }),
-    );
+    const user = (appSettings.terminal.keyword_highlights ?? []).map((r: KeywordHighlightRule) => ({
+      id: r.id,
+      name: r.name,
+      patterns: r.patterns,
+      color: isDark ? r.color_dark : r.color_light,
+      enabled: r.enabled,
+    }));
     // User rules go first so they match and occupy string positions before built-ins
     return [...user, ...builtin];
   }, [isDark, appSettings.terminal.keyword_highlights]);

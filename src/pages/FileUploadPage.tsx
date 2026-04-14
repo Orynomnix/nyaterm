@@ -70,12 +70,7 @@ export default function AutoUploadPage() {
       </div>
 
       <div className="flex shrink-0 flex-row gap-2 border-t bg-muted/20 px-5 py-3 justify-end items-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs px-4"
-          onClick={handleClose}
-        >
+        <Button variant="ghost" size="sm" className="text-xs px-4" onClick={handleClose}>
           {t("dialog.cancel")}
         </Button>
         <Button
@@ -86,11 +81,7 @@ export default function AutoUploadPage() {
         >
           {t("fileExplorer.alwaysUpload")}
         </Button>
-        <Button
-          size="sm"
-          className="text-xs px-4"
-          onClick={() => handleUpload(false)}
-        >
+        <Button size="sm" className="text-xs px-4" onClick={() => handleUpload(false)}>
           {t("fileExplorer.uploadOnce")}
         </Button>
       </div>

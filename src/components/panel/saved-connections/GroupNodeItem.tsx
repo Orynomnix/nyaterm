@@ -14,9 +14,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useSavedConnectionsContext } from "./context";
-import type { GroupNode } from "./context";
 import ConnectionItem from "./ConnectionItem";
+import type { GroupNode } from "./context";
+import { useSavedConnectionsContext } from "./context";
 
 interface GroupNodeItemProps {
   node: GroupNode;
@@ -54,19 +54,28 @@ export default function GroupNodeItem({ node, depth }: GroupNodeItemProps) {
         <div
           className="relative"
           draggable={isDragEnabled}
-          onDragStart={isDragEnabled ? (e) => handleDragStart(e, "group", node.group.id) : undefined}
+          onDragStart={
+            isDragEnabled ? (e) => handleDragStart(e, "group", node.group.id) : undefined
+          }
           onDragEnd={isDragEnabled ? handleDragEnd : undefined}
         >
           {showGroupBefore && (
-            <div className="absolute top-0 right-2 h-0.5 rounded-full z-10" style={{ backgroundColor: "var(--df-primary)", left: indentPx }} />
+            <div
+              className="absolute top-0 right-2 h-0.5 rounded-full z-10"
+              style={{ backgroundColor: "var(--df-primary)", left: indentPx }}
+            />
           )}
           <div
             data-group-header
             className={`flex items-center gap-1.5 py-1.5 px-2 rounded cursor-pointer transition-colors select-none df-hover ${isInside ? "ring-1 ring-primary/60 bg-primary/10" : ""}`}
             style={{ paddingLeft: indentPx }}
             onClick={() => toggleGroup(node.group.id)}
-            onDragOver={isDragEnabled ? (e) => handleDragOverItem(e, node.group.id, "group") : undefined}
-            onDragLeave={isDragEnabled ? (e) => handleDragLeaveItem(e, node.group.id, "group") : undefined}
+            onDragOver={
+              isDragEnabled ? (e) => handleDragOverItem(e, node.group.id, "group") : undefined
+            }
+            onDragLeave={
+              isDragEnabled ? (e) => handleDragLeaveItem(e, node.group.id, "group") : undefined
+            }
             onDrop={isDragEnabled ? (e) => handleDropItem(e, node.group.id, "group") : undefined}
           >
             <MdExpandMore
@@ -81,10 +90,16 @@ export default function GroupNodeItem({ node, depth }: GroupNodeItemProps) {
             ) : (
               <MdFolderOpen className="text-sm text-amber-500/70 shrink-0" />
             )}
-            <span className="text-xs font-medium flex-1 truncate" style={{ color: "var(--df-text-muted)" }}>
+            <span
+              className="text-xs font-medium flex-1 truncate"
+              style={{ color: "var(--df-text-muted)" }}
+            >
               {node.group.name}
             </span>
-            <span className="text-xs tabular-nums shrink-0" style={{ color: "var(--df-text-dimmed)" }}>
+            <span
+              className="text-xs tabular-nums shrink-0"
+              style={{ color: "var(--df-text-dimmed)" }}
+            >
               {node.totalCount}
             </span>
           </div>
@@ -99,7 +114,10 @@ export default function GroupNodeItem({ node, depth }: GroupNodeItemProps) {
             </div>
           )}
           {showGroupAfter && (
-            <div className="absolute bottom-0 right-2 h-0.5 rounded-full z-10" style={{ backgroundColor: "var(--df-primary)", left: indentPx }} />
+            <div
+              className="absolute bottom-0 right-2 h-0.5 rounded-full z-10"
+              style={{ backgroundColor: "var(--df-primary)", left: indentPx }}
+            />
           )}
         </div>
       </ContextMenuTrigger>

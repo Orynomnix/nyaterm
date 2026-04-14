@@ -1,6 +1,11 @@
 import { type DragEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { HiMiniArrowTurnLeftUp, HiMiniArrowTurnRightUp, HiMiniArrowTurnLeftDown, HiMiniArrowTurnRightDown } from "react-icons/hi2";
+import {
+  HiMiniArrowTurnLeftDown,
+  HiMiniArrowTurnLeftUp,
+  HiMiniArrowTurnRightDown,
+  HiMiniArrowTurnRightUp,
+} from "react-icons/hi2";
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -141,11 +146,14 @@ function DropZone({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const dragItemIdRef = useRef<string | null>(null);
 
-  const handleDragStart = useCallback((e: DragEvent, itemId: string) => {
-    dragItemIdRef.current = itemId;
-    e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ id: itemId, zone: zoneName }));
-    e.dataTransfer.effectAllowed = "move";
-  }, [zoneName]);
+  const handleDragStart = useCallback(
+    (e: DragEvent, itemId: string) => {
+      dragItemIdRef.current = itemId;
+      e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ id: itemId, zone: zoneName }));
+      e.dataTransfer.effectAllowed = "move";
+    },
+    [zoneName],
+  );
 
   const handleDragOver = useCallback((e: DragEvent, index: number) => {
     if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
@@ -178,7 +186,9 @@ function DropZone({
         const insertAt = targetIndex > fromIdx ? targetIndex - 1 : targetIndex;
         reordered.splice(insertAt, 0, id);
         onReorder(zoneKey, reordered);
-      } catch { /* ignore malformed data */ }
+      } catch {
+        /* ignore malformed data */
+      }
     },
     [items, zoneName, zoneKey, onReorder, onMoveItem],
   );

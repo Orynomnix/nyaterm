@@ -248,7 +248,9 @@ export default function QuickCommandPage() {
         {/* Color Tag & Pinned */}
         <div className="flex flex-row items-center gap-4 border p-2 rounded-md bg-muted/20">
           <div className="min-w-0 flex-1 space-y-1">
-            <Label className="text-[0.6875rem] text-muted-foreground">{t("quickCommands.colorTag")}</Label>
+            <Label className="text-[0.6875rem] text-muted-foreground">
+              {t("quickCommands.colorTag")}
+            </Label>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {THEME_COLORS.map((color) => (
                 <button
@@ -304,7 +306,10 @@ export default function QuickCommandPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0 pl-4 border-l">
-            <Label htmlFor="qc-pinned" className="text-[0.6875rem] text-muted-foreground mr-1 cursor-pointer select-none">
+            <Label
+              htmlFor="qc-pinned"
+              className="text-[0.6875rem] text-muted-foreground mr-1 cursor-pointer select-none"
+            >
               {t("quickCommands.pin")}
             </Label>
             <Switch checked={pinned} onCheckedChange={setPinned} id="qc-pinned" className="mr-1" />
@@ -369,12 +374,7 @@ export default function QuickCommandPage() {
 
       {/* Footer */}
       <div className="flex shrink-0 flex-row gap-2 border-t px-5 py-3 justify-end items-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs px-4"
-          onClick={handleClose}
-        >
+        <Button variant="ghost" size="sm" className="text-xs px-4" onClick={handleClose}>
           {t("dialog.cancel")}
         </Button>
         <Button size="sm" className="text-xs px-4" onClick={handleSave}>

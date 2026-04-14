@@ -466,7 +466,7 @@ export default function FileExplorer({ activeSessionId, activeSessionType }: Fil
       const additive = event.ctrlKey || event.metaKey;
       setSelectedFiles((prev) => {
         const hasRangeAnchor = event.shiftKey && !!lastSelectedRef.current;
-        const anchor = hasRangeAnchor ? lastSelectedRef.current ?? entry.name : entry.name;
+        const anchor = hasRangeAnchor ? (lastSelectedRef.current ?? entry.name) : entry.name;
         const baseSelection = additive ? new Set(prev) : new Set<string>();
         let next: Set<string>;
 

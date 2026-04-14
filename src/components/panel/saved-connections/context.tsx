@@ -1,5 +1,5 @@
-import { createContext, useContext } from "react";
 import type { TFunction } from "i18next";
+import { createContext, useContext } from "react";
 import type { Group, SavedConnection } from "@/types/global";
 
 // ── Component-local types ─────────────────────────────────────────────────
@@ -50,7 +50,11 @@ export interface SavedConnectionsContextValue {
   handleDragEnd: () => void;
   handleDragOverItem: (e: React.DragEvent, id: string, type: "connection" | "group") => void;
   handleDragLeaveItem: (e: React.DragEvent, id: string, type: "connection" | "group") => void;
-  handleDropItem: (e: React.DragEvent, id: string, tgtType: "connection" | "group") => Promise<void>;
+  handleDropItem: (
+    e: React.DragEvent,
+    id: string,
+    tgtType: "connection" | "group",
+  ) => Promise<void>;
 
   t: TFunction;
 }
@@ -59,6 +63,9 @@ export const SavedConnectionsContext = createContext<SavedConnectionsContextValu
 
 export const useSavedConnectionsContext = () => {
   const ctx = useContext(SavedConnectionsContext);
-  if (!ctx) throw new Error("useSavedConnectionsContext must be used within SavedConnectionsContext.Provider");
+  if (!ctx)
+    throw new Error(
+      "useSavedConnectionsContext must be used within SavedConnectionsContext.Provider",
+    );
   return ctx;
 };

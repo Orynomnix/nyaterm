@@ -295,9 +295,7 @@ export default function FileTransfer({ activeSessionId }: FileTransferProps) {
   const handleCancelAll = useCallback(() => {
     void Promise.all(
       visibleTransfers
-        .filter(
-          (transfer) => transfer.status === "transferring" || transfer.status === "paused",
-        )
+        .filter((transfer) => transfer.status === "transferring" || transfer.status === "paused")
         .map((transfer) => cancelTransfer(transfer.id)),
     );
   }, [cancelTransfer, visibleTransfers]);

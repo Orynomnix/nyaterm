@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MdFlashOn, MdHistory, MdTipsAndUpdates } from "react-icons/md";
-import type { FuzzyResult } from "@/types/global";
 import { Kbd } from "@/components/ui/kbd";
+import type { FuzzyResult } from "@/types/global";
 
 interface CommandSuggestionsProps {
   suggestions: FuzzyResult[];
@@ -118,8 +118,9 @@ function CommandSuggestions({
           <div
             key={`${result.source}-${result.display}-${index}`}
             ref={index === selectedIndex ? selectedRef : null}
-            className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 transition-colors border-l-2 ${index === selectedIndex ? "" : "border-transparent"
-              } ${index !== selectedIndex ? "df-hover" : ""}`}
+            className={`px-3 py-1.5 cursor-pointer flex items-center gap-2 transition-colors border-l-2 ${
+              index === selectedIndex ? "" : "border-transparent"
+            } ${index !== selectedIndex ? "df-hover" : ""}`}
             style={{
               backgroundColor:
                 index === selectedIndex
@@ -154,7 +155,10 @@ function CommandSuggestions({
           {t("suggestions.select")}
         </span>
         <span>
-          <Kbd className="px-1 py-0.5 rounded text-[0.5625rem]" style={{ backgroundColor: "var(--df-bg-hover)", color: "var(--df-text-muted)" }}>
+          <Kbd
+            className="px-1 py-0.5 rounded text-[0.5625rem]"
+            style={{ backgroundColor: "var(--df-bg-hover)", color: "var(--df-text-muted)" }}
+          >
             Enter
           </Kbd>{" "}
           {t("suggestions.execute")}

@@ -1,9 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MdContentCopy, MdCheck } from "react-icons/md";
-import { useApp } from "@/context/AppContext";
-import type { TranslateResult } from "@/types/global";
+import { MdCheck, MdContentCopy } from "react-icons/md";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useApp } from "@/context/AppContext";
+import type { TranslateResult } from "@/types/global";
 
 interface TranslationDialogProps {
   open: boolean;
@@ -125,12 +125,7 @@ export default function TranslationDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopy}
-            disabled={!result?.translated}
-          >
+          <Button variant="outline" size="sm" onClick={handleCopy} disabled={!result?.translated}>
             {copied ? (
               <MdCheck className="text-[0.875rem] mr-1" />
             ) : (

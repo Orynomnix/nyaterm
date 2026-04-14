@@ -237,7 +237,7 @@ export function insertTabIntoLeaf(
           ? options.afterTabId
           : currentLeaf.activeTabId && nextTabIds.includes(currentLeaf.activeTabId)
             ? currentLeaf.activeTabId
-            : nextTabIds[nextTabIds.length - 1] ?? null;
+            : (nextTabIds[nextTabIds.length - 1] ?? null);
       const insertIndex = anchorTabId ? nextTabIds.indexOf(anchorTabId) + 1 : nextTabIds.length;
       nextTabIds.splice(insertIndex, 0, newTabId);
     }
@@ -245,7 +245,8 @@ export function insertTabIntoLeaf(
     return normalizeLeaf({
       ...currentLeaf,
       tabIds: nextTabIds,
-      activeTabId: options?.activeTabId === undefined ? currentLeaf.activeTabId : options.activeTabId,
+      activeTabId:
+        options?.activeTabId === undefined ? currentLeaf.activeTabId : options.activeTabId,
     });
   });
 }
@@ -335,7 +336,8 @@ export function splitTerminalWindowForTab(
     const remainingLeaf = normalizeLeaf({
       ...currentLeaf,
       tabIds: remainingTabIds,
-      activeTabId: currentLeaf.activeTabId === tabId ? (remainingTabIds[0] ?? null) : currentLeaf.activeTabId,
+      activeTabId:
+        currentLeaf.activeTabId === tabId ? (remainingTabIds[0] ?? null) : currentLeaf.activeTabId,
     });
 
     return {

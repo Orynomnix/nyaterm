@@ -274,7 +274,7 @@ export function TunnelDialog({
               <div className="space-y-1.5">
                 <Label className="text-sm">
                   {fieldCopy.targetPortLabel}
-                  <span className="ml-1 text-destructive">*</span>  
+                  <span className="ml-1 text-destructive">*</span>
                 </Label>
                 <NumberInput
                   className="h-9 text-sm [&_button]:h-9 [&_button]:w-9 [&_input]:h-9 [&_input]:text-sm"

@@ -188,7 +188,9 @@ export default function TerminalGutter({
     const value = Number(line.lineNumber);
     return Number.isFinite(value) ? Math.max(max, value) : max;
   }, 1);
-  const lineNumWidth = showLineNumbers ? Math.max(40, String(maxVisibleLineNumber).length * 8 + 12) : 0;
+  const lineNumWidth = showLineNumbers
+    ? Math.max(40, String(maxVisibleLineNumber).length * 8 + 12)
+    : 0;
   const tsWidth = showTimestamps ? 88 : 0;
   const gutterWidth = tsWidth + lineNumWidth;
 

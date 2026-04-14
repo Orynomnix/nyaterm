@@ -1,13 +1,7 @@
+import { Archive, Cable, Globe, Link2, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Globe,
-  Server,
-  Cable,
-  Archive,
-  Link2,
-} from "lucide-react";
 import type { TooltipState } from "@/hooks/useActionLinks";
 
 interface ActionLinkTooltipProps {
@@ -23,8 +17,10 @@ const KIND_CONFIG: Record<string, { color: string; icon: React.ElementType }> = 
 };
 
 function isMacPlatform(): boolean {
-  return typeof navigator !== "undefined" &&
-    /(Mac|iPhone|iPad|iPod)/i.test(`${navigator.platform} ${navigator.userAgent}`);
+  return (
+    typeof navigator !== "undefined" &&
+    /(Mac|iPhone|iPad|iPod)/i.test(`${navigator.platform} ${navigator.userAgent}`)
+  );
 }
 
 export default function ActionLinkTooltip({ state }: ActionLinkTooltipProps) {
@@ -79,8 +75,9 @@ export default function ActionLinkTooltip({ state }: ActionLinkTooltipProps) {
   return createPortal(
     <div
       ref={ref}
-      className={`fixed z-[9999] pointer-events-none transition-all duration-200 ease-out will-change-[opacity,transform] ${visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
-        }`}
+      className={`fixed z-[9999] pointer-events-none transition-all duration-200 ease-out will-change-[opacity,transform] ${
+        visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+      }`}
       style={{
         left: pos?.left ?? state.x + 16,
         top: pos?.top ?? state.y + 16,
@@ -95,7 +92,10 @@ export default function ActionLinkTooltip({ state }: ActionLinkTooltipProps) {
             <KindIcon className="w-3 h-3" />
             <span className="uppercase">{kindLabel}</span>
           </div>
-          <span className="font-mono text-foreground font-medium truncate flex-1" title={state.link.ctx.value}>
+          <span
+            className="font-mono text-foreground font-medium truncate flex-1"
+            title={state.link.ctx.value}
+          >
             {state.link.ctx.value}
           </span>
         </div>
@@ -112,7 +112,10 @@ export default function ActionLinkTooltip({ state }: ActionLinkTooltipProps) {
                 <span className="text-muted-foreground font-sans">{t("terminal.click")}</span>
               </div>
               <span className="text-muted-foreground/40 shrink-0">→</span>
-              <span className="text-foreground tracking-tight truncate border-b border-foreground/10 pb-[1px]" title={defaultAction.command}>
+              <span
+                className="text-foreground tracking-tight truncate border-b border-foreground/10 pb-[1px]"
+                title={defaultAction.command}
+              >
                 {defaultAction.command}
               </span>
             </div>
@@ -145,16 +148,15 @@ function computePosition(
   let top = clientY + cursorOffset;
 
   if (left + w + viewportMargin > window.innerWidth) {
-    left = clientX - w - (cursorOffset * 0.5);
+    left = clientX - w - cursorOffset * 0.5;
   }
 
   if (top + h + viewportMargin > window.innerHeight) {
-    top = clientY - h - (cursorOffset * 0.5);
+    top = clientY - h - cursorOffset * 0.5;
   }
 
   return {
     left: Math.max(viewportMargin, Math.min(left, window.innerWidth - w - viewportMargin)),
-    top: Math.max(viewportMargin, Math.min(top, window.innerHeight - h - viewportMargin))
+    top: Math.max(viewportMargin, Math.min(top, window.innerHeight - h - viewportMargin)),
   };
 }
-

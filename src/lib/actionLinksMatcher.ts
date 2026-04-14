@@ -1,3 +1,10 @@
+import {
+  ensureGlobalRegex,
+  isValidArchiveName,
+  isValidHostPort,
+  isValidIPv4,
+  shellQuote,
+} from "@/lib/utils";
 import type {
   ActionContext,
   ActionDefinition,
@@ -9,10 +16,7 @@ import type {
   MatchInput,
   MatchResult,
   RegexMatcherOptions,
-} from './actionLinksAddon';
-import { ensureGlobalRegex } from '@/lib/utils';
-import { isValidIPv4, isValidArchiveName, isValidHostPort } from '@/lib/utils';
-import { shellQuote } from '@/lib/utils';
+} from "./actionLinksAddon";
 
 function defaultTooltip(ctx: ActionContext, defaultAction?: ActionDefinition): string {
   const lines = [
@@ -29,28 +33,28 @@ function defaultTooltip(ctx: ActionContext, defaultAction?: ActionDefinition): s
     }
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function chooseDefaultActionId(
   actions: ActionDefinition[],
-  preferredId?: string
+  preferredId?: string,
 ): string | undefined {
   if (!actions.length) return undefined;
-  if (preferredId && actions.some(a => a.id === preferredId)) {
+  if (preferredId && actions.some((a) => a.id === preferredId)) {
     return preferredId;
   }
-  const declaredDefault = actions.find(a => a.isDefault);
+  const declaredDefault = actions.find((a) => a.isDefault);
   if (declaredDefault) return declaredDefault.id;
   return actions[0].id;
 }
 
 function finalizeDefaultAction(
   actions: ActionDefinition[],
-  preferredId?: string
+  preferredId?: string,
 ): ActionDefinition[] {
   const defaultId = chooseDefaultActionId(actions, preferredId);
-  return actions.map(action => ({
+  return actions.map((action) => ({
     ...action,
     isDefault: action.id === defaultId,
   }));
@@ -59,7 +63,7 @@ function finalizeDefaultAction(
 function buildMatchResult(
   matchText: string,
   match: RegExpExecArray,
-  options: RegexMatcherOptions
+  options: RegexMatcherOptions,
 ): MatchResult {
   const value = options.normalize ? options.normalize(matchText, match) : matchText;
   const data = options.mapData ? options.mapData(matchText, match) : {};
@@ -68,7 +72,7 @@ function buildMatchResult(
     text: matchText,
     startIndex: match.index,
     endIndex: match.index + matchText.length,
-    kind: options.kind ?? 'custom',
+    kind: options.kind ?? "custom",
     value,
     data,
     priority: options.priority,
@@ -120,54 +124,52 @@ export function createRegexMatcher(options: RegexMatcherOptions): ActionMatcher 
   };
 }
 
-
 function makeCommonTooltip(
-  customTooltip: CommonMatcherOptions['tooltip'],
-  fallbackActions: ActionDefinition[]
+  customTooltip: CommonMatcherOptions["tooltip"],
+  fallbackActions: ActionDefinition[],
 ): (ctx: ActionContext) => string {
   return (ctx: ActionContext) => {
     if (customTooltip) {
       return customTooltip(ctx);
     }
-    const defaultAction = fallbackActions.find(a => a.isDefault) ?? fallbackActions[0];
+    const defaultAction = fallbackActions.find((a) => a.isDefault) ?? fallbackActions[0];
     return defaultTooltip(ctx, defaultAction);
   };
 }
 
-
 export function createIPv4Matcher(options: IPv4MatcherOptions = {}): ActionMatcher {
-  const enabled = new Set(options.actions ?? ['ping', 'traceroute', 'ssh', 'curl-http']);
+  const enabled = new Set(options.actions ?? ["ping", "traceroute", "ssh", "curl-http"]);
 
   const actions: ActionDefinition[] = [];
 
-  if (enabled.has('ping')) {
+  if (enabled.has("ping")) {
     actions.push({
-      id: 'ping',
-      label: 'Ping',
+      id: "ping",
+      label: "Ping",
       buildCommand: (ctx) => `ping ${ctx.value}`,
     });
   }
 
-  if (enabled.has('traceroute')) {
+  if (enabled.has("traceroute")) {
     actions.push({
-      id: 'traceroute',
-      label: 'Traceroute',
+      id: "traceroute",
+      label: "Traceroute",
       buildCommand: (ctx) => `traceroute ${ctx.value}`,
     });
   }
 
-  if (enabled.has('ssh')) {
+  if (enabled.has("ssh")) {
     actions.push({
-      id: 'ssh',
-      label: 'SSH',
+      id: "ssh",
+      label: "SSH",
       buildCommand: (ctx) => `ssh ${ctx.value}`,
     });
   }
 
-  if (enabled.has('curl-http')) {
+  if (enabled.has("curl-http")) {
     actions.push({
-      id: 'curl-http',
-      label: 'curl http://',
+      id: "curl-http",
+      label: "curl http://",
       buildCommand: (ctx) => `curl http://${ctx.value}`,
     });
   }
@@ -175,26 +177,26 @@ export function createIPv4Matcher(options: IPv4MatcherOptions = {}): ActionMatch
   const finalizedActions = finalizeDefaultAction(actions, options.defaultAction);
 
   return createRegexMatcher({
-    id: 'builtin-ipv4',
-    label: options.label ?? 'IPv4',
-    kind: 'ip',
+    id: "builtin-ipv4",
+    label: options.label ?? "IPv4",
+    kind: "ip",
     priority: options.priority ?? 100,
     regex: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
     validate: (text) => isValidIPv4(text),
     getActions: () => finalizedActions,
     getTooltip: makeCommonTooltip(options.tooltip, finalizedActions),
-    prefilter: (input) => input.text.includes('.'),
+    prefilter: (input) => input.text.includes("."),
   });
 }
 
 export function createArchiveMatcher(options: ArchiveMatcherOptions = {}): ActionMatcher {
-  const enabled = new Set(options.actions ?? ['extract', 'list']);
+  const enabled = new Set(options.actions ?? ["extract", "list"]);
   const actions: ActionDefinition[] = [];
 
-  if (enabled.has('extract')) {
+  if (enabled.has("extract")) {
     actions.push({
-      id: 'extract',
-      label: 'Extract',
+      id: "extract",
+      label: "Extract",
       buildCommand: (ctx) => {
         const f = shellQuote(ctx.value);
 
@@ -209,10 +211,10 @@ export function createArchiveMatcher(options: ArchiveMatcherOptions = {}): Actio
     });
   }
 
-  if (enabled.has('list')) {
+  if (enabled.has("list")) {
     actions.push({
-      id: 'list',
-      label: 'List contents',
+      id: "list",
+      label: "List contents",
       buildCommand: (ctx) => {
         const f = shellQuote(ctx.value);
 
@@ -230,57 +232,57 @@ export function createArchiveMatcher(options: ArchiveMatcherOptions = {}): Actio
   const finalizedActions = finalizeDefaultAction(actions, options.defaultAction);
 
   return createRegexMatcher({
-    id: 'builtin-archive',
-    label: options.label ?? 'Archive',
-    kind: 'archive',
+    id: "builtin-archive",
+    label: options.label ?? "Archive",
+    kind: "archive",
     priority: options.priority ?? 80,
     regex: /\b(?:[^\s"'`<>|]+?\.(?:zip|7z|tar\.gz|tgz|tar\.bz2|tbz2|tar\.xz|txz))\b/gi,
     validate: (text) => isValidArchiveName(text),
     getActions: () => finalizedActions,
     getTooltip: makeCommonTooltip(options.tooltip, finalizedActions),
-    prefilter: (input) => input.text.includes('.'),
+    prefilter: (input) => input.text.includes("."),
   });
 }
 
 export function createHostPortMatcher(options: HostPortMatcherOptions = {}): ActionMatcher {
-  const enabled = new Set(options.actions ?? ['curl-http', 'curl-https', 'nc', 'telnet']);
+  const enabled = new Set(options.actions ?? ["curl-http", "curl-https", "nc", "telnet"]);
   const actions: ActionDefinition[] = [];
 
-  if (enabled.has('curl-http')) {
+  if (enabled.has("curl-http")) {
     actions.push({
-      id: 'curl-http',
-      label: 'curl http://',
+      id: "curl-http",
+      label: "curl http://",
       buildCommand: (ctx) => `curl http://${ctx.value}`,
     });
   }
 
-  if (enabled.has('curl-https')) {
+  if (enabled.has("curl-https")) {
     actions.push({
-      id: 'curl-https',
-      label: 'curl https://',
+      id: "curl-https",
+      label: "curl https://",
       buildCommand: (ctx) => `curl https://${ctx.value}`,
     });
   }
 
-  if (enabled.has('nc')) {
+  if (enabled.has("nc")) {
     actions.push({
-      id: 'nc',
-      label: 'nc -vz',
+      id: "nc",
+      label: "nc -vz",
       buildCommand: (ctx) => {
-        const host = ctx.data.host ?? ctx.value.split(':')[0];
-        const port = ctx.data.port ?? ctx.value.split(':')[1];
+        const host = ctx.data.host ?? ctx.value.split(":")[0];
+        const port = ctx.data.port ?? ctx.value.split(":")[1];
         return `nc -vz ${host} ${port}`;
       },
     });
   }
 
-  if (enabled.has('telnet')) {
+  if (enabled.has("telnet")) {
     actions.push({
-      id: 'telnet',
-      label: 'Telnet',
+      id: "telnet",
+      label: "Telnet",
       buildCommand: (ctx) => {
-        const host = ctx.data.host ?? ctx.value.split(':')[0];
-        const port = ctx.data.port ?? ctx.value.split(':')[1];
+        const host = ctx.data.host ?? ctx.value.split(":")[0];
+        const port = ctx.data.port ?? ctx.value.split(":")[1];
         return `telnet ${host} ${port}`;
       },
     });
@@ -289,19 +291,19 @@ export function createHostPortMatcher(options: HostPortMatcherOptions = {}): Act
   const finalizedActions = finalizeDefaultAction(actions, options.defaultAction);
 
   return createRegexMatcher({
-    id: 'builtin-host-port',
-    label: options.label ?? 'Host:Port',
-    kind: 'hostPort',
+    id: "builtin-host-port",
+    label: options.label ?? "Host:Port",
+    kind: "hostPort",
     priority: options.priority ?? 110,
-    regex: /\b((?:localhost|(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63})):(\d{1,5})\b/g,
+    regex:
+      /\b((?:localhost|(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)|(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63})):(\d{1,5})\b/g,
     validate: (text) => isValidHostPort(text),
     mapData: (_text, match) => ({
-      host: match[1] ?? '',
-      port: match[2] ?? '',
+      host: match[1] ?? "",
+      port: match[2] ?? "",
     }),
     getActions: () => finalizedActions,
     getTooltip: makeCommonTooltip(options.tooltip, finalizedActions),
-    prefilter: (input) => input.text.includes(':'),
+    prefilter: (input) => input.text.includes(":"),
   });
 }
-

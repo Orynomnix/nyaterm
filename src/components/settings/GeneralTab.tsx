@@ -2,12 +2,7 @@ import { useTranslation } from "react-i18next";
 import { SelectItem } from "@/components/ui/select";
 import { useApp } from "@/context/AppContext";
 import { AVAILABLE_LANGUAGES } from "@/i18n";
-import {
-  SettingRow,
-  SettingSection,
-  SettingSelect,
-  SettingSwitch,
-} from "./SettingFormItems";
+import { SettingRow, SettingSection, SettingSelect, SettingSwitch } from "./SettingFormItems";
 
 export function GeneralTab() {
   const { t, i18n } = useTranslation();
@@ -31,7 +26,6 @@ export function GeneralTab() {
             </SelectItem>
           ))}
         </SettingSelect>
-
       </SettingSection>
 
       <SettingSection contentClassName="space-y-4">

@@ -17,7 +17,7 @@ export function shellQuote(value: string): string {
 }
 
 export function ensureGlobalRegex(regex: RegExp): RegExp {
-  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;
+  const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
   return new RegExp(regex.source, flags);
 }
 
@@ -34,10 +34,10 @@ export function parseJsonSearchParam<T>(value: string | null): T | null {
 }
 
 export function isValidIPv4(text: string): boolean {
-  const parts = text.split('.');
+  const parts = text.split(".");
   if (parts.length !== 4) return false;
 
-  return parts.every(part => {
+  return parts.every((part) => {
     if (!/^\d{1,3}$/.test(part)) return false;
     const n = Number(part);
     return n >= 0 && n <= 255;
@@ -47,13 +47,11 @@ export function isValidIPv4(text: string): boolean {
 export function isValidDomain(text: string): boolean {
   if (!text || text.length > 253) return false;
 
-  const parts = text.split('.');
+  const parts = text.split(".");
   if (parts.length < 2) return false;
 
-  return parts.every(part => {
-    return /^[a-zA-Z0-9-]{1,63}$/.test(part)
-      && !part.startsWith('-')
-      && !part.endsWith('-');
+  return parts.every((part) => {
+    return /^[a-zA-Z0-9-]{1,63}$/.test(part) && !part.startsWith("-") && !part.endsWith("-");
   });
 }
 
@@ -72,5 +70,5 @@ export function isValidHostPort(text: string): boolean {
     return false;
   }
 
-  return host === 'localhost' || isValidIPv4(host) || isValidDomain(host);
+  return host === "localhost" || isValidIPv4(host) || isValidDomain(host);
 }

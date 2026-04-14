@@ -535,7 +535,10 @@ export class KeywordHighlighter implements IDisposable {
     // Expand the active zone with overscan so decorations survive typical scroll bursts
     // without being destroyed and recreated, eliminating highlight flicker.
     const scanStart = Math.max(0, viewportY - KeywordHighlighter.OVERSCAN_LINES);
-    const scanEnd = Math.min(totalLines - 1, viewportY + rows - 1 + KeywordHighlighter.OVERSCAN_LINES);
+    const scanEnd = Math.min(
+      totalLines - 1,
+      viewportY + rows - 1 + KeywordHighlighter.OVERSCAN_LINES,
+    );
 
     const requiredKeys = new Set<string>();
     const scratchCell = buffer.getNullCell();

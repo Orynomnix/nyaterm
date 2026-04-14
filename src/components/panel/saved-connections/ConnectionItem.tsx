@@ -1,11 +1,5 @@
-import {
-  MdContentCopy,
-  MdDelete,
-  MdDriveFileRenameOutline,
-  MdEdit,
-  MdLink,
-} from "react-icons/md";
 import { FaServer } from "react-icons/fa6";
+import { MdContentCopy, MdDelete, MdDriveFileRenameOutline, MdEdit, MdLink } from "react-icons/md";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -56,13 +50,20 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
           className="relative"
           draggable={isDragEnabled}
           onDragStart={isDragEnabled ? (e) => handleDragStart(e, "connection", conn.id) : undefined}
-          onDragOver={isDragEnabled ? (e) => handleDragOverItem(e, conn.id, "connection") : undefined}
-          onDragLeave={isDragEnabled ? (e) => handleDragLeaveItem(e, conn.id, "connection") : undefined}
+          onDragOver={
+            isDragEnabled ? (e) => handleDragOverItem(e, conn.id, "connection") : undefined
+          }
+          onDragLeave={
+            isDragEnabled ? (e) => handleDragLeaveItem(e, conn.id, "connection") : undefined
+          }
           onDrop={isDragEnabled ? (e) => handleDropItem(e, conn.id, "connection") : undefined}
           onDragEnd={isDragEnabled ? handleDragEnd : undefined}
         >
           {showBefore && (
-            <div className="absolute top-0 right-2 h-0.5 rounded-full z-10" style={{ backgroundColor: "var(--df-primary)", left: indentLeft }} />
+            <div
+              className="absolute top-0 right-2 h-0.5 rounded-full z-10"
+              style={{ backgroundColor: "var(--df-primary)", left: indentLeft }}
+            />
           )}
           <div
             className={`group/item relative flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer transition-colors df-hover ${isTarget && dragTarget.position === "inside" ? "ring-1 ring-primary/60" : ""}`}
@@ -87,7 +88,10 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
                 className="p-0.5 cursor-pointer transition-colors hover:opacity-80"
                 style={{ color: "var(--df-text-dimmed)" }}
                 title={t("savedConnections.connect")}
-                onClick={(e) => { e.stopPropagation(); handleConnect(conn); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleConnect(conn);
+                }}
               >
                 <MdLink className="text-sm cursor-pointer" />
               </button>
@@ -95,7 +99,10 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
                 className="p-0.5 cursor-pointer transition-colors hover:opacity-80"
                 style={{ color: "var(--df-text-dimmed)" }}
                 title={t("savedConnections.edit")}
-                onClick={(e) => { e.stopPropagation(); onEditConnection(conn); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditConnection(conn);
+                }}
               >
                 <MdEdit className="text-sm cursor-pointer" />
               </button>
@@ -103,14 +110,20 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
                 className="p-0.5 cursor-pointer hover:text-red-400 transition-colors"
                 style={{ color: "var(--df-text-dimmed)" }}
                 title={t("savedConnections.delete")}
-                onClick={(e) => { e.stopPropagation(); setDeleteTarget(conn); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget(conn);
+                }}
               >
                 <MdDelete className="text-sm cursor-pointer" />
               </button>
             </div>
           </div>
           {showAfter && (
-            <div className="absolute bottom-0 right-2 h-0.5 rounded-full z-10" style={{ backgroundColor: "var(--df-primary)", left: indentLeft }} />
+            <div
+              className="absolute bottom-0 right-2 h-0.5 rounded-full z-10"
+              style={{ backgroundColor: "var(--df-primary)", left: indentLeft }}
+            />
           )}
         </div>
       </ContextMenuTrigger>
@@ -124,7 +137,12 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
           {t("savedConnections.edit")}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => { setRenameValue(conn.name); setRenamingConn(conn); }}>
+        <ContextMenuItem
+          onClick={() => {
+            setRenameValue(conn.name);
+            setRenamingConn(conn);
+          }}
+        >
           <MdDriveFileRenameOutline className="text-[0.875rem] text-muted-foreground mr-2" />
           {t("savedConnections.rename")}
         </ContextMenuItem>

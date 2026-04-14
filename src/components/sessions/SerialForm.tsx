@@ -65,9 +65,7 @@ export function SerialForm({
             }}
           >
             <SelectTrigger className="mt-1 h-8 text-xs font-normal">
-              <SelectValue
-                placeholder={t("dialog.selectSerialPort", "Select Serial Port")}
-              />
+              <SelectValue placeholder={t("dialog.selectSerialPort", "Select Serial Port")} />
             </SelectTrigger>
             <SelectContent
               position="popper"

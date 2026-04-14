@@ -15,11 +15,7 @@ interface ClearAllDialogProps {
   onCancel: () => void;
 }
 
-export default function ClearAllDialog({
-  open,
-  onConfirm,
-  onCancel,
-}: ClearAllDialogProps) {
+export default function ClearAllDialog({ open, onConfirm, onCancel }: ClearAllDialogProps) {
   const { t } = useTranslation();
 
   return (
@@ -27,9 +23,7 @@ export default function ClearAllDialog({
       <DialogContent showCloseButton={false} className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{t("savedConnections.clearAll")}</DialogTitle>
-          <DialogDescription>
-            {t("savedConnections.clearAllConfirm")}
-          </DialogDescription>
+          <DialogDescription>{t("savedConnections.clearAllConfirm")}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>

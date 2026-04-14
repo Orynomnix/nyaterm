@@ -85,7 +85,8 @@ export default function TabContextMenu({
   const activePane = getActivePane(tab);
   const displayName = getTabDisplayName(tab);
   const tabIndex = tabs.findIndex((item) => item.id === tab.id);
-  const canSpawnSession = !!activePane && (activePane.type === "Local" || !!activePane.connectionId);
+  const canSpawnSession =
+    !!activePane && (activePane.type === "Local" || !!activePane.connectionId);
   const canReconnect = !!activePane && !activePane.connecting && canSpawnSession;
   const canSplit = canSpawnSession;
   const canCloseInactive = tabs.length > 1;
@@ -228,7 +229,10 @@ export default function TabContextMenu({
             {t("tabCtx.closeAll")}
           </ContextMenuItem>
 
-          <ContextMenuItem disabled={!canCloseInactive} onClick={() => void onCloseInactive(tab.id)}>
+          <ContextMenuItem
+            disabled={!canCloseInactive}
+            onClick={() => void onCloseInactive(tab.id)}
+          >
             {t("tabCtx.closeInactive")}
           </ContextMenuItem>
 
@@ -266,7 +270,11 @@ export default function TabContextMenu({
             <Button variant="outline" size="sm" onClick={() => setRenameOpen(false)}>
               {t("dialog.cancel")}
             </Button>
-            <Button size="sm" onClick={() => void handleRenameSubmit()} disabled={!renameValue.trim()}>
+            <Button
+              size="sm"
+              onClick={() => void handleRenameSubmit()}
+              disabled={!renameValue.trim()}
+            >
               {t("dialog.save")}
             </Button>
           </DialogFooter>

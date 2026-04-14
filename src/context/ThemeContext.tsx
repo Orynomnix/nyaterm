@@ -1,4 +1,12 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { DEFAULT_THEME_ID, type Theme, type ThemeColors, themeList, themes } from "@/lib/themes";
 import { useApp } from "./AppContext";
 
@@ -60,7 +68,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply CSS vars whenever UI theme changes and cache the ID
   useEffect(() => {
     applyThemeToDOM(current.colors);
-    try { localStorage.setItem(THEME_CACHE_KEY, current.id); } catch { }
+    try {
+      localStorage.setItem(THEME_CACHE_KEY, current.id);
+    } catch {}
   }, [current]);
 
   // Sync UI theme from backend

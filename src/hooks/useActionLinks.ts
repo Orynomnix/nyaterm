@@ -1,8 +1,8 @@
 import type { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActionLinksAddon,
   type ActionLink,
+  ActionLinksAddon,
   type ActionLinksAddonOptions,
   type ResolvedAction,
 } from "../lib/actionLinksAddon";
@@ -67,11 +67,7 @@ export function useActionLinks(
     if (matcherSettings.ipv4) list.push(createIPv4Matcher());
     if (matcherSettings.archive) list.push(createArchiveMatcher());
     return list;
-  }, [
-    matcherSettings?.ipv4,
-    matcherSettings?.archive,
-    matcherSettings?.host_port,
-  ]);
+  }, [matcherSettings?.ipv4, matcherSettings?.archive, matcherSettings?.host_port]);
 
   // Create and load addon once per terminal session
   useEffect(() => {

@@ -1,34 +1,28 @@
 import type {
-  Terminal,
-  ITerminalAddon,
+  IBufferRange,
   IDecoration,
   IDisposable,
-  IBufferRange,
   ILink,
   ILinkProvider,
   IMarker,
-} from '@xterm/xterm';
+  ITerminalAddon,
+  Terminal,
+} from "@xterm/xterm";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export type EntityKind =
-  | 'url'
-  | 'ip'
-  | 'hostPort'
-  | 'archive'
-  | 'file'
-  | 'custom';
+export type EntityKind = "url" | "ip" | "hostPort" | "archive" | "file" | "custom";
 
 export type ExecutionTrigger =
-  | 'plainClick'
-  | 'ctrlOrMetaClick'
-  | 'altClick'
-  | 'menu'
-  | 'programmatic';
+  | "plainClick"
+  | "ctrlOrMetaClick"
+  | "altClick"
+  | "menu"
+  | "programmatic";
 
-export type ModifierKey = 'ctrl' | 'meta' | 'alt' | 'shift';
+export type ModifierKey = "ctrl" | "meta" | "alt" | "shift";
 
 export interface BufferPosition {
   x: number;
@@ -153,16 +147,8 @@ export interface ExecutionPolicy {
     ctx: ActionContext,
     trigger: ExecutionTrigger,
   ) => boolean | Promise<boolean>;
-  transformCommand?: (
-    command: string,
-    ctx: ActionContext,
-    trigger: ExecutionTrigger,
-  ) => string;
-  resolveAliasCommand?: (
-    command: string,
-    ctx: ActionContext,
-    trigger: ExecutionTrigger,
-  ) => string;
+  transformCommand?: (command: string, ctx: ActionContext, trigger: ExecutionTrigger) => string;
+  resolveAliasCommand?: (command: string, ctx: ActionContext, trigger: ExecutionTrigger) => string;
   onExecutionError?: (
     error: unknown,
     action: ResolvedAction,
@@ -202,30 +188,27 @@ export interface CommonMatcherOptions {
 }
 
 export interface IPv4MatcherOptions extends CommonMatcherOptions {
-  actions?: Array<'ping' | 'traceroute' | 'ssh' | 'curl-http'>;
+  actions?: Array<"ping" | "traceroute" | "ssh" | "curl-http">;
 }
 
 export interface ArchiveMatcherOptions extends CommonMatcherOptions {
-  actions?: Array<'extract' | 'list'>;
+  actions?: Array<"extract" | "list">;
 }
 
 export interface HostPortMatcherOptions extends CommonMatcherOptions {
-  actions?: Array<'curl-http' | 'curl-https' | 'nc' | 'telnet'>;
+  actions?: Array<"curl-http" | "curl-https" | "nc" | "telnet">;
 }
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                       */
 /* -------------------------------------------------------------------------- */
 
-function resolveActions(
-  matcher: ActionMatcher,
-  ctx: ActionContext,
-): ResolvedAction[] {
+function resolveActions(matcher: ActionMatcher, ctx: ActionContext): ResolvedAction[] {
   const defs = matcher.getActions(ctx);
   return defs
     .filter((d) => !d.when || d.when(ctx))
     .map((d) => {
-      const command = d.buildCommand(ctx) ?? '';
+      const command = d.buildCommand(ctx) ?? "";
       return {
         id: d.id,
         label: d.label,
@@ -241,7 +224,7 @@ function resolveActions(
 function readLogicalLineAtAbsoluteY(terminal: Terminal, absY: number): string {
   const buffer = terminal.buffer.active;
   const line = buffer.getLine(absY);
-  if (!line) return '';
+  if (!line) return "";
 
   const text = line.translateToString(true);
 
@@ -254,7 +237,7 @@ function readLogicalLineAtAbsoluteY(terminal: Terminal, absY: number): string {
   }
 
   // Rebuild the full logical line from startY up through wrapped continuations
-  let full = '';
+  let full = "";
   for (let y = startY; ; y++) {
     const l = buffer.getLine(y);
     if (!l) break;
@@ -300,13 +283,8 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
   private _decoTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastViewportY = -1;
 
-  constructor(
-    matchers: ActionMatcher[] = [],
-    options: ActionLinksAddonOptions = {},
-  ) {
-    this._matchers = [...matchers].sort(
-      (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
-    );
+  constructor(matchers: ActionMatcher[] = [], options: ActionLinksAddonOptions = {}) {
+    this._matchers = [...matchers].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     this._options = {
       allowCtrlOrMetaClickExecute: true,
       allowAltClickMenu: true,
@@ -363,9 +341,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
   }
 
   setMatchers(matchers: ActionMatcher[]): void {
-    this._matchers = [...matchers].sort(
-      (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
-    );
+    this._matchers = [...matchers].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     this._cache.clear();
     this._clearAllDecorations();
     this._scheduleDecoRefresh();
@@ -428,7 +404,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
 
   private _refreshDecorations(terminal: Terminal): void {
     if (!terminal.buffer?.active || this._matchers.length === 0) return;
-    if (terminal.buffer.active.type === 'alternate') {
+    if (terminal.buffer.active.type === "alternate") {
       this._clearAllDecorations();
       return;
     }
@@ -446,7 +422,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
 
       // Reuse memoized result for immutable scrollback lines
       if (this._scannedAbsLines.has(absLineY)) {
-        for (const k of (this._lineToDecoKeys.get(absLineY) ?? [])) requiredKeys.add(k);
+        for (const k of this._lineToDecoKeys.get(absLineY) ?? []) requiredKeys.add(k);
         continue;
       }
 
@@ -465,8 +441,8 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
 
       const lineKeys: string[] = [];
       for (const al of actionLinks) {
-        const startIndex = Number(al.ctx.data._startIndex ?? '0');
-        const endIndex = Number(al.ctx.data._endIndex ?? '0');
+        const startIndex = Number(al.ctx.data._startIndex ?? "0");
+        const endIndex = Number(al.ctx.data._endIndex ?? "0");
         const lineStart = lineOffset;
         const lineEnd = lineOffset + lineText.length;
         if (endIndex <= lineStart || startIndex >= lineEnd) continue;
@@ -524,7 +500,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
       marker,
       x: colStart,
       width,
-      layer: 'top',
+      layer: "top",
     });
 
     if (!deco) {
@@ -533,9 +509,9 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
     }
 
     deco.onRender((el) => {
-      el.style.borderBottom = '1px dashed rgba(100, 160, 255, 0.4)';
-      el.style.boxSizing = 'border-box';
-      el.style.pointerEvents = 'none';
+      el.style.borderBottom = "1px dashed rgba(100, 160, 255, 0.4)";
+      el.style.boxSizing = "border-box";
+      el.style.pointerEvents = "none";
     });
 
     deco.onDispose(() => {
@@ -619,18 +595,14 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
     const results: ActionLink[] = [];
     const covered: Array<[number, number]> = [];
 
-    const sorted = [...this._matchers].sort(
-      (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
-    );
+    const sorted = [...this._matchers].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
     for (const matcher of sorted) {
       if (matcher.prefilter && !matcher.prefilter(input)) continue;
 
       const matches = matcher.match(input);
       for (const m of matches) {
-        const overlaps = covered.some(
-          ([s, e]) => m.startIndex < e && m.endIndex > s,
-        );
+        const overlaps = covered.some(([s, e]) => m.startIndex < e && m.endIndex > s);
         if (overlaps) continue;
         covered.push([m.startIndex, m.endIndex]);
 
@@ -642,7 +614,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
         const ctx: ActionContext = {
           matcherId: matcher.id,
           matcherLabel: matcher.label,
-          kind: m.kind ?? 'custom',
+          kind: m.kind ?? "custom",
           text: m.text,
           value: m.value ?? m.text,
           data: m.data ?? {},
@@ -674,8 +646,8 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
     lineOffset: number,
     bufferLineNumber: number,
   ): ILink | null {
-    const startIndex = Number(al.ctx.data._startIndex ?? '0');
-    const endIndex = Number(al.ctx.data._endIndex ?? '0');
+    const startIndex = Number(al.ctx.data._startIndex ?? "0");
+    const endIndex = Number(al.ctx.data._endIndex ?? "0");
     const lineStart = lineOffset;
     const lineEnd = lineOffset + lineText.length;
 
@@ -692,20 +664,19 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
 
     const ctxWithRange: ActionContext = { ...al.ctx, range };
     const alWithRange: ActionLink = { ...al, range, ctx: ctxWithRange };
-    const addon = this;
 
     return {
       range,
       text: al.text,
       decorations: { pointerCursor: true, underline: false },
       activate: (event: MouseEvent) => {
-        addon._handleActivate(event, alWithRange);
+        this._handleActivate(event, alWithRange);
       },
       hover: (event: MouseEvent) => {
-        addon._handleHover(event, alWithRange);
+        this._handleHover(event, alWithRange);
       },
       leave: () => {
-        addon._options.hideTooltip?.();
+        this._options.hideTooltip?.();
       },
     };
   }
@@ -736,23 +707,23 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
           range: al.range,
           link: al,
           actions: al.actions,
-          execute: (actionId) => this._executeById(al, actionId, 'menu'),
+          execute: (actionId) => this._executeById(al, actionId, "menu"),
         });
         return;
       }
       if (fallbackAltClickToDefaultAction) {
-        await this._executeDefault(al, 'altClick');
+        await this._executeDefault(al, "altClick");
       }
       return;
     }
 
     if (isCtrlMeta && allowCtrlOrMetaClickExecute) {
-      await this._executeDefault(al, 'ctrlOrMetaClick');
+      await this._executeDefault(al, "ctrlOrMetaClick");
       return;
     }
 
     if (!isCtrlMeta && !isAlt && allowPlainClickExecute) {
-      await this._executeDefault(al, 'plainClick');
+      await this._executeDefault(al, "plainClick");
     }
   }
 
@@ -786,7 +757,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
       if (executeCommand) {
         await executeCommand(cmd, action, al.ctx, trigger);
       } else if (sendInput) {
-        sendInput(cmd + '\r');
+        sendInput(cmd + "\r");
       }
     } catch (err) {
       policy?.onExecutionError?.(err, action, al.ctx, trigger);
@@ -796,7 +767,7 @@ export class ActionLinksAddon implements ITerminalAddon, ILinkProvider {
   async executeAction(
     link: ActionLink,
     actionId?: string,
-    trigger: ExecutionTrigger = 'programmatic',
+    trigger: ExecutionTrigger = "programmatic",
   ): Promise<void> {
     if (actionId) {
       await this._executeById(link, actionId, trigger);

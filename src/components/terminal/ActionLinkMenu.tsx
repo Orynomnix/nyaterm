@@ -1,13 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import {
-  MdArchive,
-  MdLink,
-  MdRouter,
-  MdStorage,
-  MdTerminal,
-} from "react-icons/md";
+import { MdArchive, MdLink, MdRouter, MdStorage, MdTerminal } from "react-icons/md";
 import type { MenuState } from "@/hooks/useActionLinks";
 import type { EntityKind } from "@/lib/actionLinksAddon";
 

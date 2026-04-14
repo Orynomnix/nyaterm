@@ -169,9 +169,7 @@ export function ProxyDialog({
                 placeholder={t("network.proxyUsernamePlaceholder")}
                 value={form.username}
                 autoComplete="off"
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, username: event.target.value }))
-                }
+                onChange={(event) => setForm((prev) => ({ ...prev, username: event.target.value }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -179,12 +177,12 @@ export function ProxyDialog({
               <Input
                 className="h-9 text-sm"
                 type="password"
-                placeholder={editing ? t("network.proxyPasswordKeep") : t("network.proxyPasswordPlaceholder")}
+                placeholder={
+                  editing ? t("network.proxyPasswordKeep") : t("network.proxyPasswordPlaceholder")
+                }
                 value={form.password}
                 autoComplete="off"
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, password: event.target.value }))
-                }
+                onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
               />
             </div>
           </div>

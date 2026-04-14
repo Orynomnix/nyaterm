@@ -647,7 +647,10 @@ async fn download_remote_file_inner(
         "download".to_string(),
     ));
     register_transfer(controller.clone());
-    let _ = app.emit("transfer-event", &controller.build_event("started", 0, None));
+    let _ = app.emit(
+        "transfer-event",
+        &controller.build_event("started", 0, None),
+    );
 
     let chunk_size = (ts.transfer_buffer_size as u64).max(1) * 1024;
     let concurrency = (ts.download_threads as usize).max(1);
@@ -823,7 +826,10 @@ async fn download_remote_file_inner(
     match result {
         Ok(size) => {
             controller.update_progress(size, size);
-            let _ = app.emit("transfer-event", &controller.build_event("completed", size, None));
+            let _ = app.emit(
+                "transfer-event",
+                &controller.build_event("completed", size, None),
+            );
             unregister_transfer(&controller.id());
             Ok(())
         }
@@ -981,7 +987,10 @@ async fn upload_local_file_inner(
         "upload".to_string(),
     ));
     register_transfer(controller.clone());
-    let _ = app.emit("transfer-event", &controller.build_event("started", 0, None));
+    let _ = app.emit(
+        "transfer-event",
+        &controller.build_event("started", 0, None),
+    );
 
     let chunk_size = ((ts.transfer_buffer_size as usize).max(1)) * 1024;
     let concurrency = (ts.upload_threads as usize).max(1);
@@ -1136,7 +1145,10 @@ async fn upload_local_file_inner(
     match result {
         Ok(size) => {
             controller.update_progress(size, size);
-            let _ = app.emit("transfer-event", &controller.build_event("completed", size, None));
+            let _ = app.emit(
+                "transfer-event",
+                &controller.build_event("completed", size, None),
+            );
             unregister_transfer(&controller.id());
             Ok(())
         }
@@ -1281,7 +1293,11 @@ async fn apply_remote_mode(sftp: &SftpSession, path: &str, requested_mode: u32) 
         AppError::from(error)
     })?;
 
-    let actual_permissions = sftp.metadata(path).await.ok().and_then(|attrs| attrs.permissions);
+    let actual_permissions = sftp
+        .metadata(path)
+        .await
+        .ok()
+        .and_then(|attrs| attrs.permissions);
     tracing::debug!(
         target: "user_action",
         action = "chmod",
