@@ -35,7 +35,9 @@ interface FileListItemProps {
   entry: FileEntry;
   isSelected: boolean;
   activeSessionId: string | null;
-  onSelect: (entry: FileEntry, event: React.MouseEvent) => void;
+  onSelectionStart: (entry: FileEntry, event: React.MouseEvent) => void;
+  onSelectionDrag: (entry: FileEntry, event: React.MouseEvent) => void;
+  onContextMenuSelect: (entry: FileEntry, event: React.MouseEvent) => void;
   onItemClick: (entry: FileEntry) => void;
   onOpenDefault: (entry: FileEntry) => void;
   onRefresh: () => void;
@@ -54,7 +56,9 @@ export function FileListItem({
   entry,
   isSelected,
   activeSessionId,
-  onSelect,
+  onSelectionStart,
+  onSelectionDrag,
+  onContextMenuSelect,
   onItemClick,
   onOpenDefault,
   onRefresh,
@@ -75,7 +79,7 @@ export function FileListItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <li
-          className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors"
+          className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer transition-colors select-none"
           style={{
             backgroundColor: isSelected
               ? "color-mix(in srgb, var(--df-primary) 10%, transparent)"
@@ -84,11 +88,12 @@ export function FileListItem({
           }}
           onMouseEnter={(e) => {
             if (!isSelected) e.currentTarget.style.backgroundColor = "var(--df-bg-hover)";
+            onSelectionDrag(entry, e);
           }}
           onMouseLeave={(e) => {
             if (!isSelected) e.currentTarget.style.backgroundColor = "";
           }}
-          onClick={(e) => onSelect(entry, e)}
+          onMouseDown={(e) => onSelectionStart(entry, e)}
           onDoubleClick={() => {
             if (entry.is_dir) {
               onItemClick(entry);
@@ -96,7 +101,7 @@ export function FileListItem({
               onOpenDefault(entry);
             }
           }}
-          onContextMenu={(e) => onSelect(entry, e)}
+          onContextMenu={(e) => onContextMenuSelect(entry, e)}
           title={`${entry.permissions} ${formatSize(entry.size)}`}
         >
           <entryIcon.icon
