@@ -36,7 +36,8 @@ Dragonfly 的快捷键分成两类理解最不容易混淆：
 | `Ctrl / Cmd + Shift + W` | 关闭当前标签 |
 | `Ctrl + Tab` | 切换到下一个标签 |
 | `Ctrl + Shift + Tab` | 切换到上一个标签 |
-| `Ctrl / Cmd + 1-9` | 跳转到指定标签 |
+| `Ctrl / Cmd + 1-8` | 跳转到指定标签 |
+| `Ctrl / Cmd + 9` | 跳转到最后一个标签 |
 
 ## 视图与面板
 
@@ -44,8 +45,8 @@ Dragonfly 的快捷键分成两类理解最不容易混淆：
 |--------|------|
 | `Ctrl / Cmd + Shift + E` | 切换左侧活动栏 / 面板 |
 | `Ctrl / Cmd + Shift + B` | 切换右侧活动栏 / 面板 |
-| `Ctrl / Cmd + =` | 放大界面 |
-| `Ctrl / Cmd + -` | 缩小界面 |
+| `Ctrl / Cmd + =` | 放大 |
+| `Ctrl / Cmd + -` | 缩小 |
 | `Ctrl / Cmd + 0` | 重置缩放 |
 
 ## 特殊功能

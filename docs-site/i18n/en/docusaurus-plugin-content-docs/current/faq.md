@@ -4,84 +4,125 @@ sidebar_position: 100
 
 # FAQ
 
-## Connection Issues
+## Sessions and connections
 
-### SSH connection times out?
+### SSH works, so why do Local Terminal, Telnet, and Serial behave differently?
 
-1. Verify the server address and port
-2. Confirm the SSH service is running on the server
-3. Check firewall rules for the SSH port
-4. If using a proxy, verify proxy configuration
-5. Try increasing Keep-Alive interval (**Settings → Terminal → Keep-Alive Interval**)
+Because Dragonfly supports multiple session types, and their capabilities are not identical:
 
-### Terminal unresponsive after connecting?
+- **SSH** — the most complete workflow, including SFTP, OTP, resource monitoring, proxy, jump host, and tunnels
+- **Local Terminal** — local shell workflow only
+- **Telnet** — lightweight remote terminal without SSH-specific features
+- **Serial** — serial debugging, not an SSH network path
 
-- Try pressing `Enter`
-- Check if authentication succeeded
-- View application logs (**Help → View Logs**)
+If you need the file explorer, remote resource monitoring, or OTP, make sure the current tab is an **SSH session**.
 
-### How to use private key authentication?
+### Why is the file explorer missing for some sessions?
 
-1. Go to **Settings → Security → Key Management**
-2. Click **Add Key** and import your private key file
-3. When creating a connection, select **Private Key** authentication and choose the key
+The file explorer depends on SFTP, so it is only available for **SSH sessions**.
 
-## File Transfer
+These session types do not provide the remote file explorer:
 
-### Slow upload/download speeds?
+- Local Terminal
+- Telnet
+- Serial
 
-Dragonfly uses pipelined transfers for optimized large file speeds. Slow speeds may indicate network bandwidth limitations.
+### Why can’t I see remote resource monitoring?
 
-### Cannot delete a file?
+Check both of these:
 
-Check if the current user has delete permissions. View permissions in file properties.
+1. The current tab is an **SSH session**
+2. **Show Remote Resource Stats** is enabled in **Settings → Terminal**
 
-## Interface Issues
+Resource monitoring is off by default.
 
-### Fonts display incorrectly?
+### What should I do if the serial port list is empty?
 
-1. Go to **Settings → Appearance → Font Family**
-2. Confirm the primary font is installed
-3. Add fallback fonts
+Check that:
 
-### Terminal rendering is laggy?
+- The device is physically connected
+- The operating system recognizes the serial port
+- Another tool is not already holding the port open
 
-In **Settings → Terminal**:
-- Toggle **Hardware Acceleration** (requires app restart)
-- Reduce **Scrollback Buffer** line count
+When you reopen the port dropdown on the Serial tab, Dragonfly reloads the available ports.
 
-### How to reset the interface layout?
+## Terminal experience
 
-Use **View → Reset Panel Layout**.
+### Why can’t I click action links?
 
-## Security
+Usually one of these is true:
 
-### Forgot the master password?
+1. **Action Links** is not enabled in **Settings → Terminal**
+2. You are not using **Ctrl / Cmd + click**
 
-The master password encrypts session data. If forgotten, delete the config files in `~/.dragonfly/` and reconfigure.
+Action links are disabled by default, and opening them requires a modifier key to avoid accidental activation.
 
-:::warning
-Deleting config files will lose all saved connections and keys.
-:::
+### Why can’t I see keyword highlighting?
 
-### Forgot the screen lock password?
+Keyword highlighting is disabled by default. Enable it first in **Settings → Terminal**, then confirm the current output actually matches one of the configured rules.
 
-Manually edit `~/.dragonfly/settings.json` and reset the lock-related settings.
+### Why are line numbers and timestamps not visible?
 
-## Other
+These are also optional enhancements. Enable them separately in **Settings → Terminal**.
 
-### How to import sessions from other SSH clients?
+## File transfer
 
-Currently supports WindTerm:
+### Why didn’t the auto-upload prompt appear after I opened a remote file?
 
-1. Right-click the sidebar and select **Import Sessions**
-2. Choose WindTerm
-3. Select the WindTerm session config file
+The auto-upload prompt only appears in this workflow:
 
-### Where are config files stored?
+1. You choose **Open** on a remote file from the SSH file explorer
+2. Dragonfly downloads it into a local temporary directory and starts watching it
+3. You save that watched file in your local editor
 
-All configs are in `~/.dragonfly/`, including connections, keys, and settings.
+If you copied the file elsewhere and edited that copy manually, Dragonfly no longer knows it maps back to the remote file.
 
-### How to view application logs?
+### Why didn’t the file explorer follow my `cd` command automatically?
 
-Via **Help → View Logs**. Logs rotate daily with 7-day retention.
+Auto-follow depends on terminal path tracking support for the session. If the current session does not support it, automatic sync is disabled and you need to trigger sync manually.
+
+### Where do uploads and downloads go?
+
+That depends on your transfer settings:
+
+- If **ask every time** is enabled, Dragonfly prompts for a destination on each download
+- Otherwise it uses the default download directory
+
+You can also change the default download path and the default editor in settings.
+
+## Security and authentication
+
+### Why can I unlock the screen without entering a password?
+
+Because screen lock is enabled, but **no master password is set yet**.
+
+In the current behavior:
+
+- With a master password: unlocking requires the master password
+- Without a master password: unlocking can be done directly
+
+### What if I forget the master password?
+
+There is currently no built-in recovery flow for the master password. If your local data is protected by it and you can no longer provide the correct password, those protected sensitive settings cannot continue to be used in the original way.
+
+Before making manual changes, back up `~/.dragonfly/` first, then decide how to rebuild local configuration.
+
+### Where should OTP entries be managed?
+
+Manage them centrally in the **OTP** tab of the **Security/Auth** panel, then bind them to individual SSH connections in the connection form.
+
+## Import and migration
+
+### Which clients can Dragonfly import sessions from?
+
+Current supported imports are:
+
+- Xshell (`.xts`)
+- MobaXterm (`.mxtsessions`)
+- WindTerm (`.sessions`)
+
+After import, it is a good idea to review the username, port, authentication method, and whether proxy / jump host / OTP still needs to be configured.
+
+### Where are Dragonfly’s config files stored?
+
+Application configuration is stored under `~/.dragonfly/`, including settings, connections, keys, OTP data, tunnels, proxies, and history.

@@ -4,50 +4,91 @@ sidebar_position: 4
 
 # Quick Commands
 
-Quick Commands let you save and execute frequent commands with a single click.
+Quick Commands let you save common commands as reusable actions, then send them to the current terminal from inside the workspace.
 
-## Create a Quick Command
+## Good use cases
 
-1. In the **Quick Commands** panel on the right sidebar, click **Add**
-2. Fill in:
+- Frequently repeated operational commands
+- Deployment or troubleshooting scripts with parameters
+- Organizing commands by product, environment, or team
+- Placing risky commands into the prompt first so you can review them before execution
+
+## Create a quick command
+
+1. Open the **Quick Commands** area in the bottom helper section or side panel
+2. Click **Add**
+3. Fill in the command details in the dedicated child window
+
+Available fields include:
 
 | Field | Description |
-|-------|-------------|
+|------|------|
 | Label | Display name for the command |
-| Category | Command category (e.g., K8s, Docker) |
-| Description | Optional description |
+| Category | Command grouping |
+| Description | Optional note |
 | Color Tag | Custom display color |
 | Icon | Custom icon |
-| Pin to Top | Show at the top of the list |
-| Execution Mode | Execute immediately or append to prompt |
-| Command Script | The command content |
+| Pin to Top | Whether it stays near the top of the list |
+| Execution Mode | Execute immediately or append to the input line |
+| Command Script | The command text to send |
 
-## Execution Modes
+After saving, the command appears in the list and can still be edited or deleted later.
 
-### Execute Immediately
+## Execution modes
 
-The command runs automatically in the terminal when clicked. Best for well-known, safe commands.
+### Execute immediately
 
-### Append to Prompt
+Clicking the command sends it to the current terminal and runs it at once. Good for:
 
-The command is placed at the terminal prompt for review before execution. Best for commands that need parameter verification.
+- Well-understood routine commands
+- Daily inspection tasks
+- Fixed-format read-only queries
 
-## Variable Substitution
+### Append to prompt
 
-Command scripts support `{{variableName}}` syntax for dynamic parameters:
+Clicking the command only inserts it into the current input line without pressing Enter. Good for:
+
+- Commands whose parameters still need checking
+- Script fragments that usually need a small edit
+- Higher-risk operations that should be reviewed manually first
+
+## Variable prompts
+
+Command scripts support `{{variableName}}` placeholders for dynamic parameters, for example:
 
 ```bash
 docker exec -it {{container_name}} bash
 ```
 
-A dialog will prompt you to fill in variable values when executing.
+When you run the command, Dragonfly opens a variable input dialog so the template can be completed before sending it.
 
-## Category Management
+## Categories, search, and pinned items
 
-- Create categories to organize commands
-- Filter by category using the dropdown next to the search bar
-- Search or create new categories inline
+The Quick Commands panel supports these management patterns:
 
-## Search Commands
+- Search by label, command content, or description
+- Filter by category from the dropdown
+- Keep pinned commands at the top
+- Reuse existing categories when creating new commands
 
-Type keywords in the search box to quickly filter the command list.
+That makes it useful for organizing sets like:
+
+- Kubernetes
+- Docker
+- Database
+- Release scripts
+- Environment inspection
+
+## How it fits the workspace
+
+Quick Commands are not tied to one specific session type. As long as the current terminal can accept input, you can send commands to:
+
+- SSH sessions
+- Local Terminal sessions
+- Some serial workflows that need repeated fixed input
+
+Common combinations include:
+
+- Watching logs on one side while triggering diagnostics from Quick Commands on the other
+- Running deploy commands remotely while building or using Git locally
+- Turning variable-based commands into team-friendly templates

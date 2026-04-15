@@ -4,44 +4,64 @@ sidebar_position: 8
 
 # Keyboard Shortcuts
 
-Dragonfly provides comprehensive keyboard shortcut support.
+The easiest way to understand Dragonfly shortcuts is to split them into two groups:
 
-## Terminal Operations
+1. **App-level shortcuts** — toggle panels, create sessions, copy terminal content, and so on
+2. **Shell-level keys** — keys that are sent to the remote or local shell, such as `Ctrl+C`
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+C` | Copy selected text / Send interrupt |
-| `Ctrl+V` | Paste |
+If you want to copy text from the terminal, use Dragonfly's app-level shortcuts rather than assuming shell shortcuts become copy actions.
 
-## Tabs & Sessions
+## Conventions
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+N` | New SSH Session |
-| `Ctrl+Shift+T` | New Local Terminal |
-| `Ctrl+W` | Close Active Tab |
-| `Ctrl+Tab` | Next Tab |
-| `Ctrl+Shift+Tab` | Previous Tab |
-| `Ctrl+1~9` | Switch to Tab 1-9 |
+- **Ctrl / Cmd** means `Ctrl` on Windows/Linux and `Cmd` on macOS
+- `Ctrl+Tab` and `Ctrl+Shift+Tab` are kept as-is because that matches the current implementation
 
-## View & Layout
+## Terminal operations
 
 | Shortcut | Action |
-|----------|--------|
-| `Ctrl+B` | Toggle Left Sidebar |
-| `Ctrl+Shift+B` | Toggle Right Sidebar |
-| `Ctrl++` | Zoom In |
-| `Ctrl+-` | Zoom Out |
-| `Ctrl+0` | Reset Zoom |
-| `F11` | Toggle Fullscreen |
+|--------|------|
+| `Ctrl / Cmd + Shift + C` | Copy |
+| `Ctrl / Cmd + Shift + V` | Paste |
+| `Ctrl / Cmd + Shift + X` | Paste selected text |
+| `Ctrl / Cmd + Shift + F` | Find |
+| `Ctrl / Cmd + Shift + K` | Clear screen |
+| `Ctrl / Cmd + Shift + A` | Select all |
 
-## Special Features
+## Tabs and workspace
 
 | Shortcut | Action |
-|----------|--------|
-| `Ctrl+,` | Open Settings |
-| `Ctrl+L` | Lock Screen |
+|--------|------|
+| `Ctrl / Cmd + Shift + N` | New session |
+| ``Ctrl / Cmd + ` `` | New local terminal |
+| `Ctrl / Cmd + Shift + W` | Close current tab |
+| `Ctrl + Tab` | Next tab |
+| `Ctrl + Shift + Tab` | Previous tab |
+| `Ctrl / Cmd + 1-8` | Jump to a specific tab |
+| `Ctrl / Cmd + 9` | Jump to the last tab |
+
+## View and panels
+
+| Shortcut | Action |
+|--------|------|
+| `Ctrl / Cmd + Shift + E` | Toggle left activity bar / panel |
+| `Ctrl / Cmd + Shift + B` | Toggle right activity bar / panel |
+| `Ctrl / Cmd + =` | Zoom in |
+| `Ctrl / Cmd + -` | Zoom out |
+| `Ctrl / Cmd + 0` | Reset zoom |
+
+## Special actions
+
+| Shortcut | Action |
+|--------|------|
+| `Ctrl / Cmd + Shift + L` | Lock screen |
+| `Ctrl / Cmd + ,` | Open settings |
+
+## Usage tips
+
+- If you often copy logs from the terminal, memorize `Ctrl / Cmd + Shift + C`
+- If you frequently switch between remote and local sessions, `Ctrl / Cmd + Shift + N` and the new-local-terminal shortcut will be your fastest entry points
+- If you rely on screen lock, remember `Ctrl / Cmd + Shift + L`
 
 :::tip
-Shortcuts may vary by operating system. On macOS, `Ctrl` corresponds to `Cmd`.
+Use the current app settings and UI as the source of truth for shortcuts. If a future version adds configurable shortcuts, prefer the in-app interaction settings over this page.
 :::

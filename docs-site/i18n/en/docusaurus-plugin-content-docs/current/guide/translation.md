@@ -4,31 +4,55 @@ sidebar_position: 6
 
 # Translation
 
-Dragonfly includes a multi-engine text translation feature for quickly translating unfamiliar text in the terminal.
+Dragonfly includes multi-provider text translation, which is useful for quickly translating logs, errors, command descriptions, or any unfamiliar text you see in the terminal.
 
-## Usage
+## How to use it
 
 1. Select text in the terminal
-2. Right-click and choose **Translate**
-3. The translation result appears in a popup window
+2. Right-click to open the context menu
+3. Open the **Translate** submenu
+4. Choose one of the available providers
+5. Read the result in the popup dialog
 
-## Supported Engines
+The dialog shows:
 
-| Engine | Configuration Required |
-|--------|----------------------|
-| Google Translate | No configuration needed |
-| Microsoft Translate | No configuration needed |
-| DeepL | API Key required |
-| Baidu Translate | App ID + App Key required |
-| Alibaba Translate | App ID + App Key required |
-| Youdao Translate | App ID + App Key required |
+- The original text
+- The translated result
+- The detected source language, when provided
+- A one-click copy action for the translated text
 
-## Configuration
+## Which providers appear
 
-Configure in **Settings → Translation**:
+Not every provider is always shown in the terminal context menu.
 
-- **Provider** — Select the default translation engine
-- **Target Language** — Set the translation target language
-- **API Credentials** — Enter API credentials for engines that require them
+### Available out of the box
 
-Google and Microsoft Translate work out of the box with no configuration needed.
+These providers do not require extra setup:
+
+- **Google**
+- **Microsoft**
+
+### Shown after credentials are configured
+
+These providers appear only after credentials are entered in **Settings → Translation**:
+
+- **DeepL**
+- **Baidu**
+- **Alibaba**
+- **Youdao**
+
+## Translation settings
+
+In **Settings → Translation**, you can configure:
+
+- **Target language**
+- **API credentials** for each provider
+
+One important detail: the settings page mainly manages target language and credentials. It does **not** define one permanent default provider for all translation actions. The actual provider is still chosen from the terminal context menu when you translate.
+
+## Good use cases
+
+- Quickly understanding English errors or third-party logs
+- Reading mixed-language output more efficiently
+- Comparing translated operational notes or config comments
+- Translating selected output before forwarding it to a teammate

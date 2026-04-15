@@ -4,47 +4,71 @@ sidebar_position: 5
 
 # Themes & Appearance
 
-Dragonfly supports highly customizable interface appearance.
+Dragonfly lets you tune the workspace appearance in fairly fine detail, including UI theme, terminal theme, fonts, and cursor behavior.
 
-## Theme Switching
+## UI theme and terminal theme
 
-Select a color theme in **Settings → Appearance → Theme**. Supports dark and light modes.
+In **Settings → Appearance**, you can configure these separately:
 
-Also accessible via **View → Theme** menu.
+- **UI Theme** — controls the app-wide color scheme
+- **Terminal Theme** — controls terminal colors, or can follow the UI theme
 
-## Zoom
+If you just want a quick theme switch, you can also use **View → Theme** from the top menu.
 
-- **Zoom In** — `Ctrl++` or **View → Zoom In**
-- **Zoom Out** — `Ctrl+-` or **View → Zoom Out**
-- **Reset** — `Ctrl+0` or **View → Reset Zoom**
+## Fonts and font size
 
-## Panel Layout
+In **Settings → Appearance**, you can adjust:
 
-The interface uses a three-column layout with resizable panels:
+- **Font family** — primary font plus multi-level fallback fonts
+- **Terminal font size**
+- **UI font size**
 
-- **Left Sidebar** — Saved connections, active sessions, command history
-- **Center Area** — Terminal tabs
-- **Right Sidebar** — File explorer, file transfer, quick commands
+Dragonfly includes these built-in fonts:
 
-Reset to default via **View → Reset Panel Layout**.
+- `JetBrains Mono`
+- `Noto Sans SC Variable`
+- `Inter`
 
-## Fullscreen
+System-installed fonts are also listed so you can extend the fallback chain.
 
-Press `F11` or use **View → Fullscreen**.
+## Cursor and ligatures
 
-## Language
+Appearance settings also expose terminal details such as:
 
-Switch interface language in **Settings → Appearance → Language**:
+- **Cursor style** — Block / Underline / Bar
+- **Cursor blink**
+- **Font ligatures**
+
+If you switch between dark and light themes often, it is worth checking the terminal theme together with keyword highlighting and action links so the overall result stays readable.
+
+## Language switching
+
+Dragonfly currently provides:
 
 - Simplified Chinese
 - English
 
-## Font Configuration
+You can switch language in either of these places:
 
-Configure fonts in **Settings → Appearance**:
+- **Settings → General → Language**
+- **View → Language** in the top menu
 
-- **Font Family** — Terminal and UI fonts with multi-level fallback
-- **Terminal Font Size** — Terminal text size in pixels
-- **UI Font Size** — Interface text size in pixels
+## Panels and workspace appearance
 
-Built-in fonts include JetBrains Mono and Noto Sans SC. System-installed fonts are also listed.
+Besides colors and fonts, the workspace itself can be tuned to match your habits:
+
+- Left and right panel widths are resizable
+- Split ratios inside a tab are resizable
+- Left and right activity bars can be shown or hidden quickly with shortcuts
+
+These layout states are saved with app settings, which makes it practical to keep a preferred long-term workspace arrangement.
+
+## Zoom and quick adjustments
+
+Dragonfly provides these common shortcuts:
+
+- **Zoom In** — `Ctrl / Cmd + =`
+- **Zoom Out** — `Ctrl / Cmd + -`
+- **Reset Zoom** — `Ctrl / Cmd + 0`
+
+These are especially useful for demos, screen sharing, or high-DPI displays.

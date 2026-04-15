@@ -4,51 +4,98 @@ sidebar_position: 2
 
 # Quick Start
 
-This guide will walk you through creating and using your first SSH connection.
+This chapter helps you experience Dragonfly's core workflow as quickly as possible: create a connection, open sessions, split the workspace, browse files, and turn on terminal enhancements when you need them.
 
-## Create an SSH Connection
+## Step 1: Pick a session type
 
-1. Click **New Connection** in the left sidebar, or use **File → New SSH Connection**
-2. Fill in the dialog:
-   - **Connection Name** — A friendly display name
-   - **Host** — Server IP address or domain name
-   - **Port** — SSH port (default 22)
-   - **Username** — Login username
-   - **Authentication** — Password or private key
-3. Click **Save**
+When you click **New Connection**, Dragonfly offers four session types:
 
-## Connect to a Server
+- **SSH** — the most complete remote-operations workflow
+- **Local Terminal** — open a local shell inside Dragonfly
+- **Telnet** — useful for legacy systems or lab environments
+- **Serial** — useful for serial debugging devices
 
-Double-click a connection in the sidebar, or right-click and select **Connect** to start an SSH session.
+If this is your first time using Dragonfly, start with one **SSH** session and then add one **Local Terminal** to compare the mixed-workspace experience.
 
-A new terminal tab will appear in the center area upon successful connection.
+## Step 2: Create your first SSH connection
 
-## Basic Operations
+In the new-session window, fill in:
 
-### Multi-Tab Management
+- **Connection Name** — a friendly display name
+- **Host** and **Port**
+- **Username**
+- **Authentication** — password or private key
 
-- Open multiple SSH connections simultaneously, each in its own tab
-- Use `Ctrl+Tab` to switch between tabs
-- Use `Ctrl+W` to close the current tab
+If needed, expand the advanced section to configure:
 
-### File Browsing
+- Proxy
+- Jump host
+- OTP binding and auto-fill
+- Icon, group, description, and other metadata
 
-After connecting, the right-side file explorer automatically shows the remote filesystem:
+After saving, the connection appears in the saved-connections list.
 
-- Browse directory structure
-- Upload/download files
-- Right-click for file operations (rename, delete, move, etc.)
+## Step 3: Understand the workspace
 
-### Command History
+Double-click a saved connection, or use the connection context menu, to launch the session.
 
-Dragonfly automatically records your commands, searchable via fuzzy matching.
+After the connection is established, you will see:
 
-## Create a Local Terminal
+- **Center area** — the current terminal tab and any split panes inside it
+- **Left activity bar** — entry points for file explorer, network, Security/Auth, and related panels
+- **Right activity bar** — saved connections, active sessions, command history, and resource monitor
+- **Bottom area** — quick commands, serial send, recording, and lock actions
 
-You can also create local shell sessions via **Terminal → New Local Terminal**.
+## Step 4: Try the highest-frequency workflows
 
-## Next Steps
+### 1. Open a local terminal too
 
-- Learn more about [SSH Connection Management](../guide/ssh-connection)
-- Explore [SFTP File Transfer](../guide/file-transfer)
-- Set up [Quick Commands](../guide/quick-commands) for productivity
+Use the ``Ctrl/Cmd + ` `` shortcut or the menu entry to create a local terminal so you can compare local and remote work in one app.
+
+### 2. Try split panes
+
+Right-click a tab and choose:
+
+- **Horizontal Split**
+- **Vertical Split**
+
+This is useful when you want to watch logs, run commands, and compare output from different hosts at the same time.
+
+### 3. Open the remote file explorer and transfer queue
+
+Once an SSH session is active, the file explorer lets you browse remote directories and perform upload, download, delete, move, rename, and properties actions.
+
+When you start uploads or downloads, the transfer panel shows queue progress and supports pause, resume, cancel, and retry.
+
+### 4. Open command history and quick commands
+
+- **Command History** is useful for recall and fuzzy lookup
+- **Quick Commands** is useful for reusable actions with categories, execution modes, and variable prompts
+
+### 5. Try search / online search / translation
+
+When text is selected in the terminal, the context menu can:
+
+- **Find** inside the current output
+- Send text to an **online search** engine
+- Open a **translation** dialog with a configured provider
+
+### 6. Turn on optional terminal enhancements
+
+In **Settings → Terminal**, you can enable:
+
+- Line numbers
+- Timestamps
+- Action links
+- Keyword highlighting
+- Remote resource stats
+
+These features are intentionally conservative by default, so you can enable them only where they help your workflow.
+
+## Step 5: Keep exploring by use case
+
+- Want to understand the differences between sessions? See [Session Types](../guide/session-types)
+- Want to configure auth, proxy, or jump hosts? See [SSH Connection Management](../guide/ssh-connection)
+- Want to manage files and auto-upload? See [SFTP File Transfer](../guide/file-transfer)
+- Want to learn terminal enhancements and recording? See [Terminal Features](../guide/terminal)
+- Want to configure OTP? See [OTP and Authentication](../guide/otp-and-auth)

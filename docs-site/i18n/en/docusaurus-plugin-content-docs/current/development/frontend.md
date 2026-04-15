@@ -4,114 +4,151 @@ sidebar_position: 3
 
 # Frontend Development
 
-## Project Structure
+Frontend code lives in `src/` and uses React 19 + TypeScript.
 
-Frontend code is in `src/`, using React 19 + TypeScript.
+## Entry points and window model
 
-## Component Development
+The frontend entry point is `src/main.tsx`. It decides which app tree to load based on the `?window=` query parameter in the URL:
 
-### UI Component Library
+- **Main window** — `AppProvider` + `App.tsx`
+- **Child windows** — `ChildAppProvider` + `ChildWindowRouter`
 
-The project uses [shadcn/ui](https://ui.shadcn.com/):
+Current child-window flows include:
 
-- Components in `src/components/ui/`
-- Built on Radix UI primitives
-- Styled with TailwindCSS
+- settings
+- new-session
+- quick-command
+- auto-upload
 
-### Adding Components
+If you are changing these flows, start with:
 
-```bash
-npx shadcn@latest add button
+- `src/main.tsx`
+- `src/ChildWindowRouter.tsx`
+- `src/lib/windowManager.ts`
+
+## Component and directory structure
+
+```text
+src/
+├── components/          # UI components
+│   ├── dialog/          # Dialog and child-window related components
+│   ├── panel/           # Left/right sidebar and bottom helper panels
+│   ├── terminal/        # xterm workspace and terminal-related components
+│   ├── layout/          # Outer layout, title bar, activity bars
+│   └── ui/              # Shared base UI components (shadcn/ui)
+├── context/             # React Context providers
+├── hooks/               # Custom hooks
+├── i18n/                # Internationalization
+├── lib/                 # invoke wrapper, window manager, workspace helpers
+├── pages/               # Child-window pages
+├── types/               # Shared type definitions
+├── App.tsx              # Main application shell
+└── main.tsx             # Frontend entry point
 ```
 
-### Icons
-
-Uses [Lucide React](https://lucide.dev/):
-
-```tsx
-import { Terminal } from 'lucide-react';
-
-<Terminal className="w-4 h-4" />
-```
-
-## State Management
+## State management
 
 ### AppContext
-Core application state: active sessions, saved connections, active tab, settings.
 
-### ThemeContext
-Theme state: current theme, terminal color scheme, font configuration.
+`src/context/AppContext.tsx` is the main state container for the primary window. It manages:
+
+- Tabs and pane trees
+- Active tab and active pane
+- Saved connections and group refreshes
+- App settings and UI settings
+- Startup restoration of the workspace
+
+### ChildAppProvider
+
+`src/context/ChildAppProvider.tsx` is the lightweight provider for child windows:
+
+- Loads and saves settings only
+- Does not hold the full workspace state
+- Syncs settings changes back to the main window through events
 
 ### TransferContext
-File transfer state: transfer queue, progress, completion/error status.
 
-## Calling Tauri Commands
+`src/context/TransferContext.tsx` listens to `transfer-event` and centrally manages:
 
-Use `@tauri-apps/api` to invoke backend commands:
+- Transfer queue items
+- Progress, paused, canceled, and error state
+- Pause / resume / cancel / retry actions
 
-```typescript
-import { invoke } from '@tauri-apps/api/core';
+## Calling Tauri commands
+
+Frontend code should prefer the shared wrapper in `src/lib/invoke.ts` rather than scattering raw `@tauri-apps/api/core` `invoke()` calls everywhere.
+
+```ts
+import { invoke } from '@/lib/invoke';
 
 const sessionId = await invoke<string>('create_ssh_session', {
-  connectionId: 'uuid-here'
-});
-
-const files = await invoke<FileEntry[]>('list_remote_dir', {
-  sessionId: 'session-id',
-  path: '/home/user'
+  connectionId: 'uuid-here',
 });
 ```
 
-## Listening to Events
+This wrapper centralizes error logging and makes future call behavior easier to change.
 
-```typescript
-import { listen } from '@tauri-apps/api/event';
+## Listening to backend events
 
-const unlisten = await listen<string>(`terminal-output-${sessionId}`, (event) => {
-  terminal.write(event.payload);
-});
+Many frontend features rely on Tauri events, for example:
 
-unlisten(); // Cleanup
-```
+- `terminal-output-{id}`
+- `cwd-changed-{id}`
+- `session-closed-{id}`
+- `transfer-event`
+- `sessions-changed`
+- `connections-changed`
+- `otp-request`
+
+Terminal rendering, file browsing, resource monitoring, transfer queues, and OTP flows all sit on top of these events.
+
+## Workspace model
+
+The workspace has two layers.
+
+### `workspaceTabs.ts`
+
+This file manages the persisted logical workspace:
+
+- Tabs
+- Pane trees
+- In-tab splits
+- Serialization / restoration of `ui.open_tabs`
+
+### `tabWindows.ts`
+
+This file manages the live runtime terminal layout:
+
+- Which tabs are attached to which leaf
+- The active tab for each leaf
+- Runtime split ratios
+
+When editing tabs, splits, or multi-area terminal layout behavior, first decide which layer you are actually changing.
+
+## Terminal integration
+
+`src/components/terminal/XTerminal.tsx` is the main xterm.js integration point. It handles:
+
+- Search / Fit / WebLinks addons
+- Shell integration and command suggestions
+- Gutter rendering for line numbers and timestamps
+- Action links and keyword highlighting
+- Large-output protection
+- Reconnect-related behavior
+
+If you are changing terminal presentation, this is usually the first file to inspect.
 
 ## Internationalization
 
-### Adding Translations
+User-facing UI text uses `react-i18next`. Locale files are in:
 
-Add key-value pairs to JSON files in `src/i18n/locales/`.
+- `src/i18n/locales/zh-CN.json`
+- `src/i18n/locales/en.json`
 
-### Using Translations
+Whenever you add or change visible UI text, update both locale files.
 
-```tsx
-import { useTranslation } from 'react-i18next';
+## UI component conventions
 
-function MyComponent() {
-  const { t } = useTranslation();
-  return <span>{t('menu.file')}</span>;
-}
-```
+The project uses shadcn/ui as its base component layer. Shared UI components live in `src/components/ui/`.
 
-## Terminal Integration
-
-Terminal uses xterm.js with key addons:
-
-- **WebGL Addon** — GPU-accelerated rendering
-- **Fit Addon** — Auto-resize to container
-- **Search Addon** — Text search
-- **Web Links Addon** — Clickable URLs
-
-```typescript
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
-
-const terminal = new Terminal({
-  fontFamily: 'JetBrains Mono, monospace',
-  fontSize: 16,
-  cursorBlink: true,
-});
-
-const fitAddon = new FitAddon();
-terminal.loadAddon(fitAddon);
-terminal.loadAddon(new WebglAddon());
-```
+If you need a new reusable UI piece, prefer existing components and project style patterns over building a parallel base component system.

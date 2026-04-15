@@ -4,73 +4,159 @@ sidebar_position: 1
 
 # SSH Connection Management
 
-## Connection Configuration
+SSH is still Dragonfly's most complete session type. Beyond a basic login, an SSH connection can also be tied to:
 
-### Basic Information
+- SFTP file explorer
+- Remote resource monitoring
+- Proxy
+- Jump host
+- OTP binding and auto-fill
+- Port tunnels
 
-| Field | Description | Required |
-|-------|-------------|----------|
-| Connection Name | Display name for identification | No |
-| Icon | Custom icon | No |
-| Group | Connection group | No |
-| Host | Server IP or domain | Yes |
-| Port | SSH port (default 22) | No |
-| Username | Login username | Yes |
-| Authentication | Password or private key | Yes |
-| Description | Notes about the connection | No |
+If you are new to Dragonfly, it usually makes sense to configure SSH first, then expand into file workflows, terminal enhancements, and network features.
 
-### Authentication Methods
+## Create an SSH connection
 
-#### Password Authentication
+In the **New Session** window, switch to the **SSH** tab and fill in these fields.
 
-Enter the server password directly. Passwords are encrypted with AES-256-GCM before storage.
+### Basic information
 
-#### Key Authentication
+| Field | Description |
+|------|------|
+| Connection Name | Display name in the saved-connections list |
+| Host | Server IP or domain |
+| Port | Defaults to `22` |
+| Username | Login user |
+| Icon | Helps distinguish services or environments |
+| Group | Organizes connections into folders |
+| Description | Notes about the environment or purpose |
 
-Select an imported SSH private key. Supports RSA, Ed25519, and other common key formats.
+### Authentication methods
 
-Manage keys in **Settings → Security → Key Management**.
+Dragonfly supports two common SSH authentication methods:
 
-## Connection Groups
+- **Password**
+- **Private key**
 
-Organize connections with folders:
+You can select saved passwords or saved keys instead of re-entering them every time.
 
-- Right-click the sidebar and select **New Folder**
-- Support nested folders
-- Drag connections into folders
-- Right-click folders to rename or delete
+#### Password authentication
 
-## Sorting
+Useful for:
 
-Three sorting modes:
+- Temporary test hosts
+- Environments that have not issued private keys yet
+- Accounts that are combined with OTP
 
-- **Custom Order** — Manual drag-and-drop
-- **Name A → Z** — Ascending alphabetical
-- **Name Z → A** — Descending alphabetical
+#### Private key authentication
 
-## Import Sessions
+Useful for:
 
-Import sessions from other SSH clients:
+- Daily operations work
+- Reusing one identity across many hosts
+- Workflows that involve jump hosts or automation
 
-1. Right-click the sidebar and select **Import Sessions**
-2. Select the source application (currently supports WindTerm)
-3. Choose the session configuration file
-4. Confirm import
+Both passwords and keys can be managed centrally in **Security/Auth**.
 
-## Host Key Verification
+## Advanced configuration
 
-Dragonfly uses TOFU (Trust On First Use) for host key management:
+The advanced section is where an SSH connection goes from "can connect" to "fits a real daily workflow."
 
-- **Prompt** — Ask on first connection (default)
-- **Accept** — Automatically accept new host keys
-- **Strict** — Reject all unknown host keys
+### Proxy
 
-Configure in **Settings → Security → Connection Security**.
+If the connection must go through a proxy, you can select a saved proxy profile.
 
-## Proxy Support
+Supported proxy types:
 
-Configure proxy in **Settings → Proxy**:
+- **SOCKS5**
+- **HTTP**
 
-- SOCKS5 protocol support
-- Configure proxy host and port
-- Enable/disable proxy
+A proxy record can store:
+
+- Name
+- Protocol
+- Host
+- Port
+- Username / password
+
+### Jump host
+
+If the target host is not directly reachable, you can pick another saved SSH connection as the **jump host**.
+
+Typical cases include:
+
+- Connecting through a bastion host
+- Reaching internal production hosts
+- Multi-hop SSH login chains
+
+### OTP binding
+
+If the environment requires a second-factor code, you can bind an OTP entry to the SSH connection.
+
+After binding, you can either:
+
+- Quickly inspect the code during login
+- Enable **auto-fill OTP** for compatible interactive prompts
+
+This works well together with [OTP & Authentication](./otp-and-auth).
+
+## Manage saved connections
+
+After saving, the connection appears in the **Saved Connections** panel on the right.
+
+Common operations include:
+
+- Double-click to connect
+- Organize by group
+- Edit an existing connection
+- Duplicate a connection as a template
+- Reconnect from an existing saved source
+
+If you manage many hosts, using groups, icons, and descriptions helps separate environments, projects, and roles.
+
+## Import sessions from other clients
+
+Dragonfly can import session definitions from other terminal clients. Current supported imports are:
+
+- **Xshell** (`.xts`)
+- **MobaXterm** (`.mxtsessions`)
+- **WindTerm** (`.sessions`)
+
+After importing, it is a good idea to verify:
+
+- Host and port
+- Username
+- Whether proxy / jump host / OTP binding still needs to be added
+- Whether saved passwords or keys are already matched correctly
+
+## Host key policy
+
+Dragonfly maintains known-host records and offers three SSH host key policies:
+
+| Policy | Behavior |
+|------|------|
+| Prompt | Ask whether to trust an unknown host key on first connect (default) |
+| Accept | Automatically accept and record new host keys |
+| Strict | Reject all unknown host keys |
+
+Known host records are stored in `~/.dragonfly/known_hosts`.
+
+If you operate in a stricter environment, verify the host key source before accepting it.
+
+## When should you choose SSH?
+
+SSH is the right first choice when:
+
+- You need the file explorer or SFTP
+- You need OTP, jump hosts, proxies, or tunnels
+- You need remote resource monitoring
+- You want a saved connection you can reuse long term
+
+If you only want a local shell inside Dragonfly, use **Local Terminal** from [Session Types](./session-types) instead.
+
+:::tip Screenshot suggestion
+- Suggested image path: `/img/docs/session-types/ssh-advanced-form.png`
+- Show the SSH form with host, authentication, and the advanced area for proxy / jump host / OTP binding
+- Another good image path: `/img/docs/network/ssh-import-and-groups.png`
+- Show saved-connection groups and the import entry
+:::

@@ -4,125 +4,162 @@ sidebar_position: 4
 
 # Backend Development
 
-## Project Structure
+Backend code lives in `src-tauri/src/` and is written in Rust. It is the runtime core of Dragonfly: session management, SSH/SFTP, recording, translation, tunnels, authentication, and config persistence all land here.
 
-Backend code is in `src-tauri/src/`, written in Rust.
+## Command entry points and module organization
 
-## Adding Tauri Commands
+Backend command registration is centralized in `src-tauri/src/lib.rs`:
 
-### 1. Define the Command
+- Shared manager state is created there
+- Tauri plugins are mounted there
+- Commands are registered there through `tauri::generate_handler![]`
 
-Add commands in `src-tauri/src/commands/`:
+Command modules live in:
 
-```rust
-use tauri::State;
-use crate::session::SessionManager;
-
-#[tauri::command]
-pub async fn my_command(
-    session_manager: State<'_, SessionManager>,
-    param: String,
-) -> Result<String, String> {
-    Ok("result".to_string())
-}
+```text
+src-tauri/src/cmd/
+├── session.rs
+├── sftp.rs
+├── connection.rs
+├── settings.rs
+├── watcher.rs
+├── translate.rs
+├── stats.rs
+├── tunnel.rs
+├── proxy.rs
+├── otp.rs
+├── importer.rs
+├── clipboard.rs
+└── log.rs
 ```
 
-### 2. Register the Command
+When adding a new command, the usual flow is:
 
-In `src-tauri/src/lib.rs`, add to `invoke_handler`:
+1. Define a `#[tauri::command]` in the appropriate `cmd/*.rs` file
+2. Reuse existing logic in `core/` or `config/` where possible
+3. Register the command in `src-tauri/src/lib.rs`
+4. Call it from the frontend through `src/lib/invoke.ts`
 
-```rust
-.invoke_handler(tauri::generate_handler![
-    // ...existing commands
-    commands::my_command,
-])
-```
+## Shared runtime state
 
-### 3. Call from Frontend
+`src-tauri/src/lib.rs` injects these shared objects into Tauri state:
 
-```typescript
-const result = await invoke<string>('my_command', { param: 'value' });
-```
+- `SessionManager`
+- `TunnelManager`
+- `RecordingManager`
+- `PendingAuthManager`
 
-## SSH Module
+Their roles are:
 
-### Connection Flow
+- Active session lifecycle and command history
+- SSH tunnel state
+- Recording state
+- Pending keyboard-interactive / OTP authentication requests
 
-1. Load connection info from config
-2. Decrypt password/private key
-3. Establish TCP connection (optional proxy)
-4. TOFU host key verification
-5. Authenticate (password/key)
-6. Open PTY channel
-7. Inject OSC 7 script (CWD tracking)
-8. Start async I/O loop
+## SessionManager
 
-### I/O Loop
+`src-tauri/src/core/session.rs` contains `SessionManager`, the center of session runtime behavior. It is responsible for:
 
-Each session maintains an async task:
+- Registering and removing active sessions
+- Sending `Write`, `Resize`, `Close`, and `Attach` commands into session I/O loops
+- Managing command history and fuzzy search storage
+- Emitting events such as `sessions-changed` and `command-history-changed`
 
-```rust
-tokio::spawn(async move {
-    loop {
-        tokio::select! {
-            cmd = cmd_rx.recv() => {
-                // Handle: Write, Resize, Close, Attach
-            }
-            msg = channel.wait() => {
-                // Handle: Data, ExtendedData, Eof
-            }
-        }
-    }
-});
-```
+The session metadata exposed to the frontend also includes `injection_active`, which indicates whether the current session supports shell-integration features such as terminal path tracking.
 
-## SFTP Module
+## Session implementations
 
-### Transfer Optimization
+Concrete session types are implemented under `src-tauri/src/core/`:
 
-Downloads use pipelined concurrent reads:
-- 16 concurrent file handles
-- 128 KiB per chunk
-- ~1 MiB in-flight buffer
-- Sliding window for known-size files
-- Sequential reads for unknown-size files (e.g., `/proc`)
+- `ssh/` — SSH connections, authentication, OSC/CWD tracking, SFTP, tunnels
+- `pty.rs` — local terminal sessions
+- `telnet.rs` — Telnet sessions
+- `serial.rs` — serial sessions
+- `recording.rs` — session recording
+- `watcher.rs` — local file watching and auto-upload flows
+- `importer.rs` — external client session import
 
-### Directory Operations
+## SSH modules
 
-Recursive deletion uses a fault-tolerant strategy — partial failures don't affect other deletions.
+`src-tauri/src/core/ssh/` is the most central backend area:
 
-## Encryption Module
+- `client.rs` — russh client setup, known-host verification, proxy-aware connection setup
+- `auth.rs` — loading saved authentication data and handling keyboard-interactive / OTP flows
+- `io.rs` — terminal I/O and cwd update events
+- `sftp.rs` — remote file operations and transfer queue handling
+- `tunnel.rs` — local / remote / dynamic tunnels
+- `session.rs` — SSH session lifecycle coordination
 
-AES-256-GCM for sensitive data:
+A typical SSH flow is:
 
-```rust
-let encrypted = encrypt_string("plaintext", &key)?;
-let decrypted = decrypt_string(&encrypted, &key)?;
-```
+1. Read the connection configuration
+2. Decrypt passwords, private keys, or other credentials
+3. Establish the TCP or proxy connection
+4. Apply host-key policy verification
+5. Complete authentication, possibly entering OTP / interactive flow
+6. Open the PTY channel and enter the async I/O loop
+7. Inject OSC/CWD tracking when supported
 
-Key sources: OS Keyring or master password derivation.
+## SFTP and the transfer queue
 
-## Configuration Management
+`src-tauri/src/core/ssh/sftp.rs` is responsible for:
 
-JSON-based configs in `~/.dragonfly/`:
+- Listing directories
+- Uploading / downloading files and directories
+- Delete / rename / mkdir / symlink / stat operations
+- Transfer queue control such as pause / resume / cancel
+- Emitting `transfer-event` for the frontend
 
-```rust
-let config = SessionConfig::load()?;
-config.save()?;
-```
+The frontend transfer panel and `TransferContext` are built on top of these events.
 
-Config changes emit `connections-changed` events to notify the frontend.
+## Watcher and auto-upload
 
-## Logging
+`src-tauri/src/core/watcher.rs` handles local file watching.
 
-Uses the `tracing` crate:
+A typical flow is:
 
-```rust
-use tracing::{info, warn, error, debug};
+1. The frontend chooses **Open** on a remote file from the file explorer
+2. The backend downloads it into a local temp directory and starts watching it
+3. After the local file is saved, a `file-modified` event is emitted
+4. The frontend decides whether to open the auto-upload window or upload immediately when the user previously chose an always-upload behavior
 
-info!("Session created: {}", session_id);
-warn!("Connection timeout for: {}", host);
-error!("SSH error: {:?}", err);
-```
+This flow involves:
 
-Log files are in the app log directory with daily rotation and 7-day retention.
+- `cmd/watcher.rs`
+- `core/watcher.rs`
+- Frontend `FileUploadPage.tsx`
+
+## Configuration and encryption
+
+Configuration files are stored under `~/.dragonfly/` and are mainly managed by `src-tauri/src/config/`.
+
+Common files include:
+
+- `settings.json`
+- `sessions.json`
+- `keys.json`
+- `passwords.json`
+- `otp.json`
+- `quick-command.json`
+- `tunnels.json`
+- `proxies.json`
+- `history.json`
+- `known_hosts`
+
+Sensitive fields are encrypted before being written, so when adding new configuration you should verify whether it crosses a sensitive-data boundary.
+
+## Event model
+
+The backend relies heavily on Tauri events to notify the frontend. Typical events include:
+
+| Event | Description |
+|------|------|
+| `terminal-output-{id}` | Terminal output |
+| `cwd-changed-{id}` | Working directory changed |
+| `session-closed-{id}` | Session closed |
+| `sessions-changed` | Session list changed |
+| `connections-changed` | Saved connections changed |
+| `transfer-event` | Transfer progress |
+| `otp-request` | OTP / keyboard-interactive authentication requested |
+
+When designing new backend features, prefer exposing them through the existing event flow where appropriate rather than introducing extra polling APIs.

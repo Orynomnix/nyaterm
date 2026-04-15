@@ -4,138 +4,151 @@ sidebar_position: 3
 
 # 前端开发指南
 
-## 项目结构
+前端代码位于 `src/`，使用 React 19 + TypeScript。
 
-前端代码位于 `src/` 目录，使用 React 19 + TypeScript。
+## 入口与窗口模型
 
-## 组件开发
+前端入口在 `src/main.tsx`，它会根据 URL 中的 `?window=` 参数决定加载哪套应用：
 
-### UI 组件库
+- **主窗口**：`AppProvider` + `App.tsx`
+- **子窗口**：`ChildAppProvider` + `ChildWindowRouter`
 
-项目使用 [shadcn/ui](https://ui.shadcn.com/) 作为基础组件库：
+当前子窗口包括：
 
-- 组件位于 `src/components/ui/`
-- 基于 Radix UI 原语构建
-- 使用 TailwindCSS 样式
+- settings
+- new-session
+- quick-command
+- auto-upload
 
-### 添加新组件
+如果你要修改这些流程，优先查看：
 
-使用 shadcn CLI 添加组件：
+- `src/main.tsx`
+- `src/ChildWindowRouter.tsx`
+- `src/lib/windowManager.ts`
 
-```bash
-npx shadcn@latest add button
-```
+## 组件与目录结构
 
-### 图标
-
-使用 [Lucide React](https://lucide.dev/) 图标库：
-
-```tsx
-import { Terminal } from 'lucide-react';
-
-<Terminal className="w-4 h-4" />
+```text
+src/
+├── components/          # UI 组件
+│   ├── dialog/          # 对话框与子窗口相关组件
+│   ├── panel/           # 左右侧栏 / 底部区域面板
+│   ├── terminal/        # xterm 工作区与终端相关组件
+│   ├── layout/          # 外层布局、标题栏、活动栏
+│   └── ui/              # 基础 UI 组件（shadcn/ui）
+├── context/             # React Context providers
+├── hooks/               # 自定义 hooks
+├── i18n/                # 国际化
+├── lib/                 # invoke、window 管理、工作区模型等工具
+├── pages/               # 子窗口页面
+├── types/               # 类型定义
+├── App.tsx              # 主应用壳层
+└── main.tsx             # 前端入口
 ```
 
 ## 状态管理
 
 ### AppContext
 
-应用核心状态，包括：
+`src/context/AppContext.tsx` 是主窗口核心状态容器，管理：
 
-- 活动会话列表
-- 已保存的连接
-- 当前活动标签
-- 设置配置
+- 标签页与 pane 树
+- 活动 tab / pane
+- 已保存连接 / 分组刷新
+- 应用设置与 UI 设置
+- 启动恢复工作区
 
-### ThemeContext
+### ChildAppProvider
 
-主题相关状态：
+`src/context/ChildAppProvider.tsx` 是子窗口用的轻量 Provider：
 
-- 当前主题（深色/浅色）
-- 终端主题配色方案
-- 字体配置
+- 只加载 / 保存设置
+- 不持有完整工作区状态
+- 通过事件向主窗口同步设置变化
 
 ### TransferContext
 
-文件传输状态：
+`src/context/TransferContext.tsx` 监听 `transfer-event`，集中维护：
 
-- 传输队列
-- 传输进度
-- 完成/错误状态
+- 传输队列列表
+- 进度 / 暂停 / 取消 / 错误状态
+- pause / resume / cancel / retry 操作
 
 ## 调用 Tauri 命令
 
-通过 `@tauri-apps/api` 调用后端命令：
+前端应优先通过 `src/lib/invoke.ts` 中的统一包装调用后端，而不是直接到处散写 `@tauri-apps/api/core` 的 `invoke()`。
 
-```typescript
-import { invoke } from '@tauri-apps/api/core';
+```ts
+import { invoke } from '@/lib/invoke';
 
-// 创建 SSH 会话
 const sessionId = await invoke<string>('create_ssh_session', {
-  connectionId: 'uuid-here'
-});
-
-// 列出远程目录
-const files = await invoke<FileEntry[]>('list_remote_dir', {
-  sessionId: 'session-id',
-  path: '/home/user'
+  connectionId: 'uuid-here',
 });
 ```
 
-## 监听事件
+这个包装会统一做错误日志记录，也便于以后集中调整调用行为。
 
-监听后端发送的事件：
+## 监听后端事件
 
-```typescript
-import { listen } from '@tauri-apps/api/event';
+前端大量能力依赖 Tauri 事件系统，例如：
 
-// 监听终端输出
-const unlisten = await listen<string>(`terminal-output-${sessionId}`, (event) => {
-  terminal.write(event.payload);
-});
+- `terminal-output-{id}`
+- `cwd-changed-{id}`
+- `session-closed-{id}`
+- `transfer-event`
+- `sessions-changed`
+- `connections-changed`
+- `otp-request`
 
-// 清理监听
-unlisten();
-```
+终端、文件浏览器、资源监控、传输队列等功能都建立在这些事件之上。
 
-## 国际化
+## 工作区模型
 
-### 添加翻译
+工作区有两层模型：
 
-在 `src/i18n/locales/` 下的 JSON 文件中添加键值对。
+### `workspaceTabs.ts`
 
-### 使用翻译
+负责“会保存下来的逻辑工作区”：
 
-```tsx
-import { useTranslation } from 'react-i18next';
+- 标签页
+- pane 树
+- 标签页内分屏
+- `ui.open_tabs` 序列化 / 恢复
 
-function MyComponent() {
-  const { t } = useTranslation();
-  return <span>{t('menu.file')}</span>;
-}
-```
+### `tabWindows.ts`
+
+负责“运行时终端布局”：
+
+- 哪些标签当前挂在哪个 leaf
+- 每个 leaf 当前的 active tab
+- 运行时 split ratio
+
+修改标签 / 分屏 / 多区域终端布局时，先判断你碰的是哪一层。
 
 ## 终端集成
 
-终端使用 xterm.js，关键配置：
+`src/components/terminal/XTerminal.tsx` 是 xterm.js 集成核心，负责：
 
-- **WebGL 插件** — GPU 加速渲染
-- **Fit 插件** — 自适应容器大小
-- **Search 插件** — 文本搜索
-- **Web Links 插件** — URL 点击
+- Search / Fit / WebLinks addon
+- shell integration 与命令建议
+- gutter（行号 / 时间戳）
+- 动作链接与关键词高亮
+- 大输出保护
+- 会话重连相关行为
 
-```typescript
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
+如果你改的是终端表现层，这通常是第一落点。
 
-const terminal = new Terminal({
-  fontFamily: 'JetBrains Mono, monospace',
-  fontSize: 16,
-  cursorBlink: true,
-});
+## 国际化
 
-const fitAddon = new FitAddon();
-terminal.loadAddon(fitAddon);
-terminal.loadAddon(new WebglAddon());
-```
+界面文案使用 `react-i18next`，语言包位于：
+
+- `src/i18n/locales/zh-CN.json`
+- `src/i18n/locales/en.json`
+
+新增或修改用户可见文本时，应同时更新两个 locale 文件。
+
+## UI 组件约定
+
+项目使用 shadcn/ui 作为基础组件层，共享组件位于 `src/components/ui/`。
+
+如果需要新增通用 UI，优先复用现有组件与项目里的样式模式，而不是单独造一套新的基础组件。

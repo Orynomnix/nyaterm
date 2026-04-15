@@ -5,33 +5,68 @@ slug: /
 
 # Introduction
 
-**Dragonfly** is a modern, high-performance SSH client built with [Tauri](https://tauri.app/) and [React](https://react.dev/). It combines a polished user interface with a powerful Rust backend, providing developers and system administrators with an excellent remote server management experience.
+**Dragonfly** is a desktop client built around remote terminal workflows. It pairs a Tauri + React interface with a Rust backend that handles SSH, SFTP, session lifecycle, tunnels, authentication, and config persistence, so you can work with remote servers, local shells, serial devices, and network helpers inside one workspace.
 
-## Key Features
+## Where Dragonfly fits best
 
-- **Secure & Fast SSH** — Powered by Rust's `russh` library for native-level performance
-- **Multi-Tab Interface** — Manage multiple SSH and local terminal sessions simultaneously
-- **Session Management** — Save, organize, and quickly connect to frequently used servers
-- **Integrated File Explorer** — Browse and manage remote files via SFTP directly from the sidebar
-- **Command History** — Automatically recorded with fuzzy search support
-- **Quick Commands** — One-click execution of frequent commands with variable substitution
-- **Customizable UI** — Resizable panels with dark/light theme support
-- **Cross-Platform** — Windows, macOS, and Linux
+- Managing multiple SSH hosts at the same time
+- Switching between local terminals, Telnet sessions, and serial devices during troubleshooting
+- Working with remote files while watching terminal output
+- Standardizing common operations with reusable commands, jump-host chains, and saved connection metadata
+- Using OTP, recording, resource monitoring, and auto-upload in the same desktop app
 
-## Tech Stack
+## Core capabilities
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, TypeScript, Vite, TailwindCSS 4 |
-| Backend | Tauri 2, Rust |
-| Terminal | xterm.js (WebGL accelerated) |
-| SSH | russh (pure Rust SSH implementation) |
-| File Transfer | russh-sftp (pipelined transfers) |
+### Multiple session types
 
-## Why Dragonfly?
+Dragonfly supports more than SSH:
 
-1. **Native Performance** — Rust backend ensures high-performance SSH and file transfers
-2. **Security First** — AES-256-GCM encrypted credential storage with system keychain support
-3. **Modern UI** — Polished interface built with React and TailwindCSS
-4. **Lightweight** — Tauri-based, much smaller than Electron apps
-5. **Open Source** — MIT licensed, fully open source
+- **SSH** — remote login, file transfer, resource monitoring, tunnels, OTP, and related workflows
+- **Local Terminal** — open a local shell inside the same workspace
+- **Telnet** — support for legacy systems and lab environments
+- **Serial** — useful for network gear, embedded boards, and debug ports
+
+### Composable workspace
+
+- Multi-tab workflow for different tasks and environments
+- **Horizontal and vertical splits** inside a tab
+- Left and right activity bars for file explorer, network, Security/Auth, saved connections, active sessions, command history, and resource monitor panels
+- Bottom helper areas for quick commands, serial send, recording, and lock controls
+- Separate child windows for settings, new-session, quick-command editing, and auto-upload prompts
+
+### Terminal-focused enhancements
+
+- Command history and fuzzy suggestions
+- Terminal search, copy/paste, and context actions
+- **Online search** and **translation** from selected terminal text
+- Optional **line-number / timestamp gutter**
+- Optional **action links** for IPv4 addresses, `host:port`, and archive names
+- Optional **keyword highlighting** with built-in presets and custom rules
+- Large-output protection, session recording, and SSH keep-alive
+
+### Remote file and transfer workflows
+
+- Built-in SFTP file explorer for SSH sessions
+- Upload, download, rename, move, delete, properties, and symlink actions
+- Transfer queue with pause, resume, cancel, retry, timestamp preservation, and configurable concurrency
+- Open a remote file in a local editor, then send changes back through the watcher-driven auto-upload flow
+
+### Security and networking
+
+- Passwords, private keys, host-key policies, and encrypted local storage
+- OTP management with TOTP/HOTP, QR import, and SSH auto-fill support
+- Proxy configs, jump hosts, and local / remote / dynamic tunnels
+- Screen lock and master-password support
+
+## Suggested reading order
+
+If you are new to Dragonfly, this order works well:
+
+1. [Quick Start](./getting-started/quick-start)
+2. [Session Types](./guide/session-types)
+3. [SSH Connection Management](./guide/ssh-connection)
+4. [Layout and Workspace](./guide/layout-and-workspace)
+5. [Terminal Features](./guide/terminal)
+6. [SFTP File Transfer](./guide/file-transfer)
+7. [Tunnels and Proxy](./guide/tunnels-and-proxy)
+8. [OTP and Authentication](./guide/otp-and-auth)

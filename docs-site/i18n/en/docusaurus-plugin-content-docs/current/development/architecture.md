@@ -4,139 +4,172 @@ sidebar_position: 1
 
 # Architecture
 
-Dragonfly uses a Tauri 2 architecture with separated frontend and backend communicating via IPC.
+Dragonfly is a **Tauri 2** desktop application. The frontend lives in `src/`, the backend lives in `src-tauri/src/`, and they communicate through Tauri commands and events.
 
-## Overall Architecture
+## Overall architecture
 
-```
-┌─────────────────────────────────────┐
-│           Frontend (React)          │
-│  ┌──────┐ ┌──────┐ ┌─────────────┐ │
-│  │ Term │ │ File │ │ Connection  │ │
-│  │ Panel│ │ Expl │ │  Manager    │ │
-│  └──┬───┘ └──┬───┘ └──────┬──────┘ │
-│     └────────┴────────────┘         │
-│              │ Tauri invoke         │
-├──────────────┼──────────────────────┤
-│              │ IPC Bridge           │
-├──────────────┼──────────────────────┤
-│           Backend (Rust)            │
-│  ┌──────────┐ ┌──────┐ ┌────────┐  │
-│  │ Session  │ │ SSH  │ │ Config │  │
-│  │ Manager  │ │ SFTP │ │ Store  │  │
-│  └──────────┘ └──────┘ └────────┘  │
-└─────────────────────────────────────┘
+```text
+┌─────────────────────────────────────────────────────────┐
+│ Frontend (React / TypeScript)                          │
+│  ├─ Main window: AppProvider + App.tsx                 │
+│  ├─ Child windows: ChildAppProvider + ChildWindowRouter│
+│  ├─ Terminal workspace, side panels, dialogs           │
+│  └─ invoke wrapper + Tauri event listeners             │
+├─────────────────────────────────────────────────────────┤
+│ Tauri IPC bridge                                       │
+├─────────────────────────────────────────────────────────┤
+│ Backend (Rust)                                         │
+│  ├─ SessionManager / TunnelManager / RecordingManager  │
+│  ├─ PendingAuthManager                                 │
+│  ├─ SSH / SFTP / watcher / importer / stats            │
+│  └─ JSON config + encrypted credential storage         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Frontend Architecture
+## Frontend window model
 
-### Tech Stack
+The frontend entry path is selected in `src/main.tsx`:
 
-- **React 19** — UI framework
-- **TypeScript** — Type safety
-- **Vite** — Build tool
-- **TailwindCSS 4** — Styling
-- **xterm.js** — Terminal emulator
+- **Main window** — loads `AppProvider` and `App.tsx`
+- **Child windows** — load `ChildAppProvider` and `ChildWindowRouter`
 
-### Directory Structure
+Current child-window flows include:
 
-```
-src/
-├── components/          # UI components
-│   ├── dialogs/         # Dialog components
-│   ├── panels/          # Panel components (sidebars, file explorer)
-│   ├── layout/          # Layout components
-│   └── ui/              # Base UI components (shadcn/ui)
-├── context/             # React Context providers
-│   ├── AppContext.tsx    # Global application state
-│   ├── ThemeContext.tsx  # Theme management
-│   └── TransferContext.tsx # File transfer state
-├── hooks/               # Custom Hooks
-├── i18n/                # Internationalization
-├── lib/                 # Utilities
-├── pages/               # Child window pages
-├── types/               # TypeScript type definitions
-├── App.tsx              # Main application component
-└── main.tsx             # Entry point
-```
+- Settings
+- New session
+- Quick command editing
+- Auto-upload prompts
 
-### State Management
+Relevant files:
 
-React Context for global state:
+- `src/main.tsx`
+- `src/ChildWindowRouter.tsx`
+- `src/lib/windowManager.ts`
 
-- **AppContext** — Session list, connection configs, active tab
-- **ThemeContext** — Theme configuration and switching
-- **TransferContext** — File transfer queue and progress
+`windowManager.ts` also coordinates focus and interactivity between modal child windows and the main window.
 
-## Backend Architecture
+## Frontend state model
 
-### Module Organization
+### AppContext
 
-```
-src-tauri/src/
-├── commands/            # Tauri command handlers
-│   ├── session_cmds.rs  # Session management
-│   ├── sftp_cmds.rs     # SFTP file operations
-│   ├── config_cmds.rs   # Configuration read/write
-│   ├── settings_cmds.rs # Settings management
-│   └── stats.rs         # System info
-├── config/              # Configuration management
-├── translate/           # Translation services
-├── lib.rs               # App entry, Tauri setup
-├── session.rs           # SessionManager
-├── ssh.rs               # SSH client
-├── sftp.rs              # SFTP file transfer
-├── pty.rs               # Local PTY management
-├── crypto.rs            # AES-256-GCM encryption
-├── fuzzy.rs             # Command fuzzy search
-├── error.rs             # Error types
-├── watcher.rs           # File watching
-└── import.rs            # Session import
-```
+`src/context/AppContext.tsx` is the main state container for the primary window. It owns:
 
-### Core Components
+- Workspace tabs and pane trees
+- Application settings and UI settings
+- Saved connections and group refreshes
+- Startup restoration for `ui.open_tabs`
 
-#### SessionManager
+### ChildAppProvider
 
-Manages all active sessions (SSH and local terminals) with a shared HashMap, MPSC channels for commands, and buffered output for late-joining frontends.
+`src/context/ChildAppProvider.tsx` is a lightweight provider used by child windows:
 
-#### SSH Client
+- Loads and saves settings only
+- Syncs with the main window through events
+- Does not manage the full workspace or active session state
 
-Async SSH client based on `russh`:
-- TOFU host key verification
-- Password and key authentication
-- Proxy support (SOCKS5)
-- OSC 7 integration for remote CWD tracking
+### TransferContext
 
-#### SFTP Implementation
+`src/context/TransferContext.tsx` manages the file transfer queue separately. It consumes backend `transfer-event` notifications and drives pause, resume, cancel, and retry behavior in the UI.
 
-High-performance file transfers:
-- Channel multiplexing on existing SSH connections
-- Pipelined concurrent downloads (16 concurrent, 128 KiB chunks)
-- Real-time transfer progress events
+## Workspace model
 
-### Event Communication
+Dragonfly's terminal workspace has two layers that are easy to confuse but serve different purposes.
 
-Backend emits events to frontend via Tauri:
+### Logical tabs and pane trees
+
+`src/lib/workspaceTabs.ts` is responsible for:
+
+- Creating tabs and session panes
+- Horizontal and vertical splits inside a tab
+- Persisting `ui.open_tabs`
+- Restoring the serializable workspace structure on startup
+
+### Runtime window layout
+
+`src/lib/tabWindows.ts` is responsible for:
+
+- Which tabs are currently attached to which window leaf
+- The active tab inside each leaf
+- Runtime window split ratios
+
+A practical shorthand is:
+
+- `workspaceTabs.ts` = the logical workspace that gets persisted
+- `tabWindows.ts` = the live runtime arrangement of terminal areas
+
+## Terminal integration
+
+`src/components/terminal/XTerminal.tsx` is the xterm.js integration center. It is responsible for:
+
+- Fit / Search / WebLinks and related addons
+- Shell integration and command-history suggestions
+- Line-number / timestamp gutter
+- Action links and keyword highlighting
+- Large-output protection and recovery messaging
+- Session event subscriptions and reconnect behavior
+
+## Backend runtime model
+
+`src-tauri/src/lib.rs` is the backend entry point. It constructs and stores shared runtime state such as:
+
+- `SessionManager`
+- `TunnelManager`
+- `RecordingManager`
+- `PendingAuthManager`
+
+It also registers Tauri commands centrally, including commands for:
+
+- Session creation / close / write / recording / OTP flows
+- SFTP file and transfer operations
+- Connections, keys, passwords, OTP, and settings persistence
+- Watcher, translation, importer, stats, tunnel, and proxy flows
+
+## SessionManager and event flow
+
+`src-tauri/src/core/session.rs` contains `SessionManager`, the central registry for active sessions. It is responsible for:
+
+- Tracking all active sessions
+- Routing commands into per-session I/O loops
+- Maintaining command history and fuzzy search storage
+- Emitting `sessions-changed`, `command-history-changed`, and related events
+
+The backend also emits these common events to the frontend:
 
 | Event | Description |
-|-------|-------------|
-| `terminal-output-{id}` | Terminal output data |
-| `cwd-changed-{id}` | Working directory changed |
+|------|------|
+| `terminal-output-{id}` | Terminal output |
+| `cwd-changed-{id}` | Working directory updates |
 | `session-closed-{id}` | Session closed |
-| `transfer-event` | SFTP transfer progress |
-| `sessions-changed` | Session list updated |
-| `connections-changed` | Connection config changed |
+| `sessions-changed` | Session list changed |
+| `connections-changed` | Saved connections changed |
+| `transfer-event` | Transfer queue progress changed |
+| `otp-request` | OTP / keyboard-interactive authentication requested |
 
-### Configuration Files
+## SSH, SFTP, watcher, and import flows
 
-All configs stored in `~/.dragonfly/`:
+Core backend capabilities are mainly organized under these modules:
 
-| File | Content |
-|------|---------|
-| `sessions.json` | SSH connections and groups |
-| `keys.json` | SSH private keys (encrypted) |
-| `settings.json` | Application settings |
-| `quick-command.json` | Quick commands |
-| `history.json` | Command history |
-| `known_hosts` | SSH host keys |
+- `src-tauri/src/core/ssh/` — SSH connection setup, authentication, OSC/CWD tracking, SFTP, tunnels
+- `src-tauri/src/core/pty.rs` — local terminal sessions
+- `src-tauri/src/core/telnet.rs` — Telnet sessions
+- `src-tauri/src/core/serial.rs` — serial sessions
+- `src-tauri/src/core/watcher.rs` — local file watching and auto-upload workflows
+- `src-tauri/src/core/importer.rs` — Xshell / MobaXterm / WindTerm session import
+- `src-tauri/src/core/recording.rs` — session recording
+
+## Configuration and persistence
+
+Application data is stored under `~/.dragonfly/`. Typical files include:
+
+- `settings.json`
+- `sessions.json`
+- `keys.json`
+- `passwords.json`
+- `otp.json`
+- `quick-command.json`
+- `tunnels.json`
+- `proxies.json`
+- `history.json`
+- `known_hosts`
+
+Sensitive values are encrypted before being written, so the app manages reusable credential records rather than plain-text secrets.

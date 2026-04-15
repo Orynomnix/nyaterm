@@ -4,63 +4,122 @@ sidebar_position: 7
 
 # Security
 
-Dragonfly provides multiple layers of security protection.
+Dragonfly's security features mainly focus on three areas:
 
-## Credential Storage
+1. Safely storing local credentials and authentication materials
+2. Managing host verification and second-factor flows during SSH login
+3. Providing master-password and screen-lock protection in the desktop workspace
 
-### System Keychain
+## How sensitive local data is stored
 
-Enable **Use OS Keyring** to securely store credentials in the OS native keychain:
+Dragonfly stores connection-related configuration locally, but sensitive values are encrypted before being written to disk. Typical sensitive data includes:
 
-- **macOS** — Keychain
-- **Windows** — Credential Manager
-- **Linux** — Secret Service (GNOME Keyring / KWallet)
+- Saved passwords
+- SSH private keys and key passphrases
+- OTP secrets
+- The persisted representation of the master password
+- Proxy or other authentication materials that need protection
 
-### Encrypted Storage
+So in day-to-day use, you work with reusable password, key, and OTP entries rather than scattering plaintext secrets through config files.
 
-All sensitive data (passwords, private keys, passphrases) is encrypted with **AES-256-GCM** before being stored locally.
+## The Security/Auth panel
 
-## Master Password
+The **Security/Auth** panel in the left activity bar centralizes authentication-related records into three groups:
 
-Enable **Require Master Password** to encrypt session data with a master password that must be entered on each application startup.
+- **Keys**
+- **Passwords**
+- **OTP**
 
-Configure in **Settings → Security → Authentication**.
+This means you do not need to re-enter every secret in every connection. You save reusable entries first, then reference them from the connection form.
 
-## Screen Lock
+### SSH key management
 
-### Manual Lock
+Good for storing:
 
-Click the **Lock** button in the status bar, or use the keyboard shortcut.
+- Common login keys
+- Keys protected by passphrases
+- Multiple identities separated by environment
 
-### Auto Lock
+When you switch an SSH connection to **Private Key** authentication, you can pick from these saved keys directly.
 
-When **Screen Lock Protection** is enabled, the app locks automatically:
+### Password management
 
-- On application startup
-- After a configurable idle period (set to 0 to disable)
+Good for storing:
 
-### Unlock Password
+- SSH passwords
+- Proxy passwords
+- Other credentials you need to reuse
 
-An optional unlock password can be set. Without a password, a simple click unlocks.
+In the SSH connection form, password authentication can reference these saved password entries directly.
 
-## SSH Key Management
+### OTP management
 
-Manage SSH private keys in **Settings → Security → Key Management**:
+OTP management supports:
 
-- Import private key files
-- Set key names and passphrases
-- Delete unused keys
+- **TOTP**
+- **HOTP**
+- Import from QR code images
+- Viewing and generating current codes
+- Binding OTP entries to SSH connections
 
-Imported keys are encrypted before storage.
+For details, see [OTP & Authentication](./otp-and-auth).
 
-## Host Key Policy
+## Master password
 
-Control how unknown SSH host keys are handled:
+The master password is Dragonfly's most important local desktop protection feature.
+
+You can configure it in **Settings → Security**. After it is set:
+
+- The app uses it for unlock verification
+- Sensitive local configuration protection is built around it
+- The lock screen requires it before unlocking
+
+If you have not set a master password, the lock screen is only a visual lock layer, not full password-based protection.
+
+## Screen lock
+
+### Manual lock
+
+You can trigger lock from the UI or by keyboard shortcut at any time.
+
+### Auto lock
+
+In **Settings → Security**, once screen lock is enabled, you can also configure the idle timeout:
+
+- `0` means no idle auto-lock
+- Values greater than `0` trigger automatic lock after that many idle minutes
+
+### Unlock behavior
+
+- **With a master password** — entering the correct master password is required
+- **Without a master password** — unlocking can happen directly
+
+If you plan to use Dragonfly on a shared machine or during demos, enabling both **master password** and **screen lock** is the safer setup.
+
+## SSH host key policies
+
+When SSH first connects to an unknown host, Dragonfly supports three policies:
 
 | Policy | Behavior |
-|--------|----------|
-| Prompt | Ask on first connection (default) |
-| Accept | Automatically accept and record new keys |
+|------|------|
+| Prompt | Ask whether to trust the host key on first connect (default) |
+| Accept | Automatically accept new host keys |
 | Strict | Reject all unknown host keys |
 
-Known host keys are stored in `~/.dragonfly/known_hosts`.
+Known host records are stored in `~/.dragonfly/known_hosts`.
+
+If host identity validation matters in your environment, prefer **Prompt** or **Strict** over unconditional acceptance.
+
+## Practical security advice
+
+- Prefer **private key + OTP** in production environments instead of relying on one password
+- Enable both **master password** and **screen lock** on shared computers or demo machines
+- Save **jump host** and **proxy** definitions explicitly for environments that depend on them
+- Verify the source of a new host key before trusting it
+
+:::tip Screenshot suggestion
+- Suggested image path: `/img/docs/security/security-settings.png`
+- Show master password, screen lock, idle lock time, and host key policy
+- Another good image path: `/img/docs/security/security-auth-panel.png`
+- Show the Keys, Passwords, and OTP tabs in the Security/Auth panel
+:::
