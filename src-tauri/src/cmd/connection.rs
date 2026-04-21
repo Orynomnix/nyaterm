@@ -1,6 +1,8 @@
 use crate::config::{self, Group, QuickCommandsConfig, SavedConnection, SavedPassword, SshKey};
+use crate::core::QuickCommandsStore;
 use crate::error::{AppError, AppResult};
 use crate::utils::crypto;
+use std::sync::Arc;
 use tauri::Emitter;
 
 #[tauri::command]
@@ -370,13 +372,33 @@ pub fn clear_all_connections(app: tauri::AppHandle) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn get_quick_commands(app: tauri::AppHandle) -> AppResult<QuickCommandsConfig> {
-    config::load_quick_commands(&app)
+pub fn get_quick_commands(
+    state: tauri::State<'_, Arc<QuickCommandsStore>>,
+) -> AppResult<QuickCommandsConfig> {
+    Ok(state.snapshot())
 }
 
 #[tauri::command]
-pub fn save_quick_commands(app: tauri::AppHandle, config: QuickCommandsConfig) -> AppResult<()> {
-    crate::config::save_quick_commands(&app, &config)
+pub fn save_quick_commands(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<QuickCommandsStore>>,
+    config: QuickCommandsConfig,
+) -> AppResult<()> {
+    state.save_all(&app, config)?;
+    let _ = app.emit("quick-commands-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn upsert_quick_command(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<QuickCommandsStore>>,
+    command: config::QuickCommand,
+    new_category: Option<config::QuickCommandCategory>,
+) -> AppResult<()> {
+    state.upsert(&app, command, new_category)?;
+    let _ = app.emit("quick-commands-changed", ());
+    Ok(())
 }
 
 // --- Password management ---

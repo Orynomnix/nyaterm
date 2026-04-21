@@ -58,6 +58,7 @@ function QuickCommands({ onSend }: QuickCommandsProps) {
   const [savedCategories, setSavedCategories] = useState<QuickCommandCategory[]>([]);
   const loaded = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNextSaveRef = useRef(false);
 
   // UI State
   const [search, setSearch] = useState("");
@@ -73,6 +74,7 @@ function QuickCommands({ onSend }: QuickCommandsProps) {
   useEffect(() => {
     invoke<QuickCommandsConfig>("get_quick_commands")
       .then((cfg) => {
+        skipNextSaveRef.current = true;
         setCommands(cfg.commands || []);
         setSavedCategories(cfg.categories || []);
         loaded.current = true;
@@ -85,6 +87,10 @@ function QuickCommands({ onSend }: QuickCommandsProps) {
   // Debounced save to backend on change
   useEffect(() => {
     if (!loaded.current) return;
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       invoke("save_quick_commands", { config: { commands, categories: savedCategories } }).catch(
@@ -106,6 +112,7 @@ function QuickCommands({ onSend }: QuickCommandsProps) {
       "quick-command-saved",
       (event) => {
         const { command: cmd, newCategory } = event.payload;
+        skipNextSaveRef.current = true;
         setCommands((prev) => {
           const exists = prev.some((c) => c.id === cmd.id);
           return exists ? prev.map((c) => (c.id === cmd.id ? cmd : c)) : [...prev, cmd];

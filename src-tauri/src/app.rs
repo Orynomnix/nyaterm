@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use tauri::Manager;
 
-use crate::core::SessionManager;
+use crate::core::{QuickCommandsStore, SessionManager};
 
 pub fn setup(
     app: &mut tauri::App,
     session_manager: Arc<SessionManager>,
+    quick_commands_store: Arc<QuickCommandsStore>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let home_dir = app
         .path()
@@ -49,6 +50,10 @@ pub fn setup(
     tauri::async_runtime::spawn(async move {
         mgr.init_history_store(config_dir).await;
     });
+
+    if let Err(error) = quick_commands_store.load_from_disk(app.handle()) {
+        tracing::warn!("Failed to load quick commands: {}", error);
+    }
 
     let _tray = tauri::tray::TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())

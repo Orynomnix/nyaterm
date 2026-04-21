@@ -8,7 +8,7 @@ use crate::error::{AppError, AppResult};
 use crate::utils::fuzzy::{fuzzy_search_items, FuzzyResult};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -107,7 +107,7 @@ pub struct SessionHandle {
 
 #[derive(Debug, Default)]
 struct CommandSubmissionState {
-    pending_candidate: Option<String>,
+    pending_candidates: VecDeque<String>,
     last_shell_event: Option<String>,
     awaits_shell_event: bool,
 }
@@ -227,7 +227,7 @@ impl SessionManager {
             let mut submissions = self.command_submissions.lock().await;
             if let Some(state) = submissions.get_mut(session_id) {
                 if state.awaits_shell_event {
-                    state.pending_candidate = Some(command.clone());
+                    state.pending_candidates.push_back(command.clone());
                     false
                 } else {
                     true
@@ -243,7 +243,7 @@ impl SessionManager {
     }
 
     /// Records a shell-confirmed command emitted by the backend integration
-    /// channel. Duplicate confirmations are ignored once the pending
+    /// channel. Duplicate confirmations are ignored once the matching pending
     /// candidate has already been consumed.
     pub async fn confirm_command_submission(&self, session_id: &str, command: String) {
         let Some(command) = sanitize_history_command(&command) else {
@@ -254,7 +254,12 @@ impl SessionManager {
             let mut submissions = self.command_submissions.lock().await;
             let state = submissions.entry(session_id.to_string()).or_default();
 
-            if state.pending_candidate.take().is_some() {
+            if let Some(index) = state
+                .pending_candidates
+                .iter()
+                .position(|pending| pending == &command)
+            {
+                state.pending_candidates.remove(index);
                 state.last_shell_event = Some(command.clone());
                 Some(command)
             } else if state.last_shell_event.as_deref() == Some(command.as_str()) {
@@ -273,14 +278,15 @@ impl SessionManager {
     /// Flushes any pending client candidate when a shell-capable session ends
     /// without sending a matching backend confirmation.
     pub async fn flush_pending_submission(&self, session_id: &str) {
-        let pending = {
+        let pending_commands = {
             let mut submissions = self.command_submissions.lock().await;
             submissions
                 .get_mut(session_id)
-                .and_then(|state| state.pending_candidate.take())
+                .map(|state| state.pending_candidates.drain(..).collect::<Vec<_>>())
+                .unwrap_or_default()
         };
 
-        if let Some(command) = pending {
+        for command in pending_commands {
             self.add_history_entry(command).await;
         }
     }
@@ -352,7 +358,7 @@ impl SessionManager {
             let mut submissions = self.command_submissions.blocking_lock();
             submissions
                 .values_mut()
-                .filter_map(|state| state.pending_candidate.take())
+                .flat_map(|state| state.pending_candidates.drain(..).collect::<Vec<_>>())
                 .collect()
         };
 
@@ -431,12 +437,10 @@ impl SessionManager {
         let mut commands = Vec::new();
 
         for state in submissions.values() {
-            let Some(command) = state.pending_candidate.as_deref() else {
-                continue;
-            };
-
-            if seen.insert(command.to_string()) {
-                commands.push(command.to_string());
+            for command in &state.pending_candidates {
+                if seen.insert(command.clone()) {
+                    commands.push(command.clone());
+                }
             }
         }
 
@@ -592,6 +596,37 @@ mod tests {
         assert!(
             manager.get_all_history().await.is_empty(),
             "pending submissions should not be committed to history until confirmation"
+        );
+    }
+
+    #[tokio::test]
+    async fn newer_pending_submission_survives_out_of_order_confirmation() {
+        let manager = SessionManager::new();
+        manager
+            .add_session(test_handle("ssh-3", SessionType::SSH, true))
+            .await;
+
+        manager
+            .register_command_submission("ssh-3", "docker ps".to_string())
+            .await;
+        manager
+            .register_command_submission("ssh-3", "docker images".to_string())
+            .await;
+
+        manager
+            .confirm_command_submission("ssh-3", "docker ps".to_string())
+            .await;
+
+        let results = manager.fuzzy_search("docker im", 8).await;
+        assert!(
+            results
+                .iter()
+                .any(|result| result.command == "docker images"),
+            "later pending submission should remain searchable after an earlier confirmation"
+        );
+        assert_eq!(
+            manager.get_all_history().await,
+            vec!["docker ps".to_string()]
         );
     }
 

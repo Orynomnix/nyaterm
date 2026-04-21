@@ -104,6 +104,7 @@ export default function QuickCommandPage() {
       execution_mode: executionMode,
     };
 
+    await invoke("upsert_quick_command", { command: cmd, newCategory });
     await emit("quick-command-saved", { command: cmd, newCategory });
     getCurrentWindow().close();
   };

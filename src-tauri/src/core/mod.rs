@@ -8,6 +8,7 @@ pub mod history;
 pub mod importer;
 mod output;
 mod pty;
+mod quick_commands;
 mod recording;
 pub mod serial;
 mod session;
@@ -19,6 +20,7 @@ pub mod watcher;
 
 pub(crate) use output::SessionOutputCoalescer;
 pub use pty::{create_local_session, LocalSessionConfig};
+pub use quick_commands::QuickCommandsStore;
 pub use recording::RecordingManager;
 pub use serial::{create_serial_session, list_serial_ports, SerialConfig};
 pub(crate) use session::update_cwd_if_changed;

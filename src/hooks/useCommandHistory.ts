@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import type { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@/lib/invoke";
@@ -39,6 +40,7 @@ export function useCommandHistory(
   const showSuggestionsRef = useRef(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enabledRef = useRef(enabled);
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -76,6 +78,7 @@ export function useCommandHistory(
       clearTimeout(searchTimerRef.current);
       searchTimerRef.current = null;
     }
+    searchRequestIdRef.current += 1;
     if (
       !showSuggestionsRef.current &&
       suggestionsRef.current.length === 0 &&
@@ -107,6 +110,7 @@ export function useCommandHistory(
 
   const triggerSearch = useCallback(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    const requestId = ++searchRequestIdRef.current;
 
     if (!enabledRef.current) {
       dismissSuggestions();
@@ -119,6 +123,10 @@ export function useCommandHistory(
     }
 
     searchTimerRef.current = setTimeout(async () => {
+      if (requestId !== searchRequestIdRef.current) {
+        return;
+      }
+
       if (!enabledRef.current) {
         dismissSuggestions();
         return;
@@ -136,6 +144,9 @@ export function useCommandHistory(
           invoke<FuzzyResult[]>("fuzzy_search_history", { pattern, limit: 8 }),
           invoke<FuzzyResult[]>("fuzzy_search_commands", { pattern, limit: 8 }),
         ]);
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
 
         // Merge, sort by score descending, and cap total
         const merged = [...historyResults, ...commandResults]
@@ -162,6 +173,22 @@ export function useCommandHistory(
       }
     }, 80);
   }, [dismissSuggestions, getCursorViewportPosition, inputStateRef]);
+
+  useEffect(() => {
+    const refreshSuggestions = () => {
+      if (!enabledRef.current) return;
+      if (!canSuggestFromTracker(inputStateRef.current)) return;
+      triggerSearch();
+    };
+
+    const historyListener = listen("command-history-changed", refreshSuggestions);
+    const quickCommandsListener = listen("quick-commands-changed", refreshSuggestions);
+
+    return () => {
+      historyListener.then((unlisten) => unlisten());
+      quickCommandsListener.then((unlisten) => unlisten());
+    };
+  }, [inputStateRef, triggerSearch]);
 
   const handleSelectSuggestion = useCallback(
     (command: string) => {

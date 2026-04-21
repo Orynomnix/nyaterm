@@ -11,7 +11,7 @@ mod utils;
 use std::sync::Arc;
 
 use crate::core::ssh::{PendingAuthManager, TunnelManager};
-use crate::core::{RecordingManager, SessionManager};
+use crate::core::{QuickCommandsStore, RecordingManager, SessionManager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +19,7 @@ pub fn run() {
     let tunnel_manager = Arc::new(TunnelManager::new());
     let recording_manager = Arc::new(RecordingManager::new());
     let pending_auth_manager = Arc::new(PendingAuthManager::new());
+    let quick_commands_store = Arc::new(QuickCommandsStore::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -29,7 +30,8 @@ pub fn run() {
         .manage(tunnel_manager.clone())
         .manage(recording_manager.clone())
         .manage(pending_auth_manager.clone())
-        .setup(move |a| app::setup(a, session_manager))
+        .manage(quick_commands_store.clone())
+        .setup(move |a| app::setup(a, session_manager, quick_commands_store))
         .on_window_event(app::on_window_event)
         .invoke_handler(tauri::generate_handler![
             cmd::clipboard::read_clipboard_text,
@@ -86,6 +88,7 @@ pub fn run() {
             cmd::connection::clear_all_connections,
             cmd::connection::get_quick_commands,
             cmd::connection::save_quick_commands,
+            cmd::connection::upsert_quick_command,
             cmd::connection::get_saved_passwords,
             cmd::connection::get_saved_password_value,
             cmd::connection::save_password,

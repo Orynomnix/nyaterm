@@ -1,6 +1,8 @@
 use crate::config;
 use crate::core::ssh::{self, PendingAuthManager};
-use crate::core::{self, RecordingManager, SessionCommand, SessionInfo, SessionManager};
+use crate::core::{
+    self, QuickCommandsStore, RecordingManager, SessionCommand, SessionInfo, SessionManager,
+};
 use crate::error::{AppError, AppResult};
 use crate::observability::{self, StructuredLog, StructuredLogLevel};
 use crate::utils::fuzzy::{fuzzy_search_items, FuzzyResult};
@@ -272,21 +274,17 @@ pub async fn fuzzy_search_history(
 
 #[tauri::command]
 pub async fn fuzzy_search_commands(
-    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<QuickCommandsStore>>,
     pattern: String,
     limit: usize,
 ) -> AppResult<Vec<FuzzyResult>> {
-    tokio::task::spawn_blocking(move || {
-        let cfg = config::load_quick_commands(&app)?;
-        let items: Vec<(&str, &str)> = cfg
-            .commands
-            .iter()
-            .map(|c| (c.label.as_str(), c.command.as_str()))
-            .collect();
-        Ok(fuzzy_search_items(&items, &pattern, "quickCommand", limit))
-    })
-    .await
-    .map_err(|e| AppError::Config(format!("Task join error: {e}")))?
+    let cfg = state.snapshot();
+    let items: Vec<(&str, &str)> = cfg
+        .commands
+        .iter()
+        .map(|c| (c.label.as_str(), c.command.as_str()))
+        .collect();
+    Ok(fuzzy_search_items(&items, &pattern, "quickCommand", limit))
 }
 
 #[tauri::command]
