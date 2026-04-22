@@ -86,6 +86,10 @@
   background: transparent;
 }
 
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 ::-webkit-scrollbar-thumb {
   background: var(--df-scroll-thumb, #30363d);
   border-radius: 10px;
