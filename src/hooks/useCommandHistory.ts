@@ -1,16 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
 import type { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@/lib/invoke";
 import {
   normalizeCommandSuggestionMaxChars,
   normalizeCommandSuggestionMinChars,
 } from "@/lib/interactionSettings";
-import {
-  canSuggestFromTracker,
-  getTrackedCommand,
-  type TerminalInputState,
-} from "@/lib/terminalInputTracker";
+import { invoke } from "@/lib/invoke";
+import { getTrackedCommand, type TerminalInputState } from "@/lib/terminalInputTracker";
 import type { FuzzyResult } from "@/types/global";
 
 interface XTermCoreWithRenderDimensions {
@@ -32,6 +28,7 @@ export function useCommandHistory(
   terminalRef: React.RefObject<Terminal | null>,
   inputStateRef: React.RefObject<TerminalInputState>,
   applySuggestion: (command: string, execute: boolean) => void,
+  canShowSuggestions: () => boolean,
   enabled: boolean,
   minCommandLength: number,
   maxCommandLength: number,
@@ -125,7 +122,7 @@ export function useCommandHistory(
       return;
     }
 
-    if (!canSuggestFromTracker(inputStateRef.current)) {
+    if (!canShowSuggestions()) {
       dismissSuggestions();
       return;
     }
@@ -141,7 +138,7 @@ export function useCommandHistory(
       }
 
       const pattern = getTrackedCommand(inputStateRef.current);
-      if (!pattern.trim() || !canSuggestFromTracker(inputStateRef.current)) {
+      if (!pattern.trim() || !canShowSuggestions()) {
         dismissSuggestions();
         return;
       }
@@ -185,7 +182,7 @@ export function useCommandHistory(
         // Ignore errors
       }
     }, 80);
-  }, [dismissSuggestions, getCursorViewportPosition, inputStateRef]);
+  }, [canShowSuggestions, dismissSuggestions, getCursorViewportPosition, inputStateRef]);
 
   useEffect(() => {
     minCommandLengthRef.current = normalizeCommandSuggestionMinChars(
@@ -198,18 +195,18 @@ export function useCommandHistory(
     );
 
     if (!enabledRef.current) return;
-    if (!canSuggestFromTracker(inputStateRef.current)) {
+    if (!canShowSuggestions()) {
       dismissSuggestions();
       return;
     }
 
     triggerSearch();
-  }, [dismissSuggestions, inputStateRef, maxCommandLength, minCommandLength, triggerSearch]);
+  }, [canShowSuggestions, dismissSuggestions, maxCommandLength, minCommandLength, triggerSearch]);
 
   useEffect(() => {
     const refreshSuggestions = () => {
       if (!enabledRef.current) return;
-      if (!canSuggestFromTracker(inputStateRef.current)) return;
+      if (!canShowSuggestions()) return;
       triggerSearch();
     };
 
@@ -220,7 +217,7 @@ export function useCommandHistory(
       historyListener.then((unlisten) => unlisten());
       quickCommandsListener.then((unlisten) => unlisten());
     };
-  }, [inputStateRef, triggerSearch]);
+  }, [canShowSuggestions, triggerSearch]);
 
   const handleSelectSuggestion = useCallback(
     (command: string) => {

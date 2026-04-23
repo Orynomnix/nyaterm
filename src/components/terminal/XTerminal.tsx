@@ -171,6 +171,19 @@ export default function XTerminal({
 
   // Shell integration state
   const { shellIntegrationRef } = useShellIntegration();
+  const canShowCommandSuggestions = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (terminal?.buffer.active.type === "alternate") {
+      return false;
+    }
+
+    const shellIntegration = shellIntegrationRef.current;
+    if (shellIntegration.enabled && shellIntegration.commandRunning) {
+      return false;
+    }
+
+    return canSuggestFromTracker(inputStateRef.current);
+  }, [shellIntegrationRef]);
 
   const applySuggestion = useCallback(
     (command: string, execute: boolean) => {
@@ -207,6 +220,7 @@ export default function XTerminal({
     terminalRef,
     inputStateRef,
     applySuggestion,
+    canShowCommandSuggestions,
     commandSuggestionsEnabled,
     commandSuggestionMinChars,
     commandSuggestionMaxChars,
@@ -375,9 +389,11 @@ export default function XTerminal({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     inputStateRef.current = createTerminalInputState();
+    shellIntegrationRef.current.enabled = false;
+    shellIntegrationRef.current.commandRunning = false;
     const isTerminalAlive = () => !disposed && terminalRef.current === terminal;
     const syncSuggestionsWithInputState = () => {
-      if (canSuggestFromTracker(inputStateRef.current)) {
+      if (canShowCommandSuggestions()) {
         triggerSearch();
       } else {
         dismissSuggestions();
@@ -485,6 +501,7 @@ export default function XTerminal({
 
       if (data.startsWith("C")) {
         si.enabled = true;
+        si.commandRunning = true;
         inputStateRef.current = createTerminalInputState();
         dismissSuggestions();
         return false;
@@ -492,6 +509,7 @@ export default function XTerminal({
 
       if (data.startsWith("D")) {
         si.enabled = true;
+        si.commandRunning = false;
         return false;
       }
 
@@ -499,6 +517,9 @@ export default function XTerminal({
     });
 
     const writeParsedDisposable = terminal.onWriteParsed(() => {
+      if (terminal.buffer.active.type === "alternate") {
+        dismissSuggestions();
+      }
       const terminalSettings = terminalAppSettingsRef.current?.terminal;
       if (
         performanceModeRef.current !== "overloaded" &&
@@ -803,7 +824,11 @@ export default function XTerminal({
         return;
       }
 
-      if (showSuggestionsRef.current && suggestionsRef.current.length > 0) {
+      if (
+        canShowCommandSuggestions() &&
+        showSuggestionsRef.current &&
+        suggestionsRef.current.length > 0
+      ) {
         if (data === "\t" && selectedIndexRef.current >= 0) {
           const selected = suggestionsRef.current[selectedIndexRef.current];
           if (selected) {
@@ -928,6 +953,8 @@ export default function XTerminal({
       containerEl.removeEventListener("mouseup", handleMiddleClick);
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       inputStateRef.current = createTerminalInputState();
+      shellIntegrationRef.current.enabled = false;
+      shellIntegrationRef.current.commandRunning = false;
       sendInputRef.current = null;
 
       oscDisposable.dispose();
@@ -1107,7 +1134,7 @@ export default function XTerminal({
 
         <CommandSuggestions
           suggestions={suggestions}
-          visible={commandSuggestionsEnabled && showSuggestions}
+          visible={commandSuggestionsEnabled && showSuggestions && canShowCommandSuggestions()}
           selectedIndex={selectedIndex}
           cursorPosition={cursorPosition}
           onSelect={handleSelectSuggestion}
