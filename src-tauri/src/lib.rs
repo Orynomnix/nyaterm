@@ -12,7 +12,7 @@ mod utils;
 
 use std::sync::Arc;
 
-use crate::core::ssh::{PendingAuthManager, TunnelManager};
+use crate::core::ssh::{HostKeyVerifyManager, PendingAuthManager, TunnelManager};
 use crate::core::{CloudSyncManager, QuickCommandsStore, RecordingManager, SessionManager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +21,7 @@ pub fn run() {
     let tunnel_manager = Arc::new(TunnelManager::new());
     let recording_manager = Arc::new(RecordingManager::new());
     let pending_auth_manager = Arc::new(PendingAuthManager::new());
+    let host_key_verify_manager = Arc::new(HostKeyVerifyManager::new());
     let quick_commands_store = Arc::new(QuickCommandsStore::new());
     let cloud_sync_manager = Arc::new(CloudSyncManager::new());
 
@@ -33,6 +34,7 @@ pub fn run() {
         .manage(tunnel_manager.clone())
         .manage(recording_manager.clone())
         .manage(pending_auth_manager.clone())
+        .manage(host_key_verify_manager.clone())
         .manage(quick_commands_store.clone())
         .manage(cloud_sync_manager.clone())
         .setup(move |a| app::setup(a, session_manager, quick_commands_store, cloud_sync_manager))
@@ -73,6 +75,7 @@ pub fn run() {
             cmd::session::is_recording,
             cmd::session::submit_otp_response,
             cmd::session::cancel_otp_request,
+            cmd::session::respond_host_key_verify,
             cmd::sftp::get_home_dir,
             cmd::sftp::list_remote_dir,
             cmd::sftp::delete_remote_file,

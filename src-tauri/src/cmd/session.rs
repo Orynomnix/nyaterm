@@ -1,5 +1,5 @@
 use crate::config;
-use crate::core::ssh::{self, PendingAuthManager};
+use crate::core::ssh::{self, HostKeyVerifyManager, PendingAuthManager};
 use crate::core::{
     self, QuickCommandsStore, RecordingManager, SessionCommand, SessionInfo, SessionManager,
 };
@@ -394,4 +394,43 @@ pub async fn cancel_otp_request(
         client_timestamp: None,
     });
     Ok(())
+}
+
+#[tauri::command]
+pub async fn respond_host_key_verify(
+    state: tauri::State<'_, Arc<HostKeyVerifyManager>>,
+    request_id: String,
+    accepted: bool,
+) -> AppResult<()> {
+    let resolved = state.respond(&request_id, accepted).await;
+    observability::log_event(StructuredLog {
+        level: if resolved {
+            StructuredLogLevel::Info
+        } else {
+            StructuredLogLevel::Warn
+        },
+        domain: "security.flow".to_string(),
+        event: if accepted {
+            "host_key.accepted".to_string()
+        } else {
+            "host_key.rejected".to_string()
+        },
+        message: if resolved {
+            format!("Host key verification response received (accepted={})", accepted)
+        } else {
+            "Host key verification response for missing request".to_string()
+        },
+        ids: Some(serde_json::json!({ "request_id": request_id })),
+        data: None,
+        error: None,
+        client_timestamp: None,
+    });
+    if resolved {
+        Ok(())
+    } else {
+        Err(AppError::Auth(format!(
+            "No pending host key verification with id '{}'",
+            request_id
+        )))
+    }
 }

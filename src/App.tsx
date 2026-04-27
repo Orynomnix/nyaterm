@@ -25,6 +25,10 @@ import AboutDialog from "./components/dialog/app/AboutDialog";
 import LockScreen from "./components/dialog/app/LockScreen";
 import QuitConfirmDialog from "./components/dialog/app/QuitConfirmDialog";
 import UpdateDialog from "./components/dialog/app/UpdateDialog";
+import {
+  HostKeyVerifyDialog,
+  type HostKeyVerifyRequest,
+} from "./components/dialog/connections/HostKeyVerifyDialog";
 import { OtpDialog, type OtpRequest } from "./components/dialog/connections/OtpDialog";
 import type { ActivityBarItem } from "./components/layout/ActivityBar";
 import ActivityBar from "./components/layout/ActivityBar";
@@ -224,6 +228,8 @@ function App() {
 
   // OTP / 2FA dialog state
   const [otpRequest, setOtpRequest] = useState<OtpRequest | null>(null);
+  const [hostKeyVerifyRequest, setHostKeyVerifyRequest] =
+    useState<HostKeyVerifyRequest | null>(null);
   const lastCloudConflictRevisionRef = useRef<string | null>(null);
 
   // Idle auto-lock
@@ -311,6 +317,12 @@ function App() {
     unsubs.push(
       listen<OtpRequest>("otp-request", (event) => {
         setOtpRequest(event.payload);
+      }),
+    );
+
+    unsubs.push(
+      listen<HostKeyVerifyRequest>("host-key-verify", (event) => {
+        setHostKeyVerifyRequest(event.payload);
       }),
     );
 
@@ -1997,6 +2009,10 @@ function App() {
         />
 
         <OtpDialog request={otpRequest} onDone={() => setOtpRequest(null)} />
+        <HostKeyVerifyDialog
+          request={hostKeyVerifyRequest}
+          onDone={() => setHostKeyVerifyRequest(null)}
+        />
 
         <Toaster position="bottom-right" />
 
