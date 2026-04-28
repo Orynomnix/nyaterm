@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
+import { useEffect } from "react";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,14 @@ function AlertDialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+  useEffect(() => {
+    return () => {
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = "";
+      }
+    };
+  }, []);
+
   return (
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
