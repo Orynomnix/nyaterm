@@ -1,59 +1,29 @@
 import { listen } from "@tauri-apps/api/event";
 import { downloadDir } from "@tauri-apps/api/path";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BiServer } from "react-icons/bi";
-import { FaRegFolder } from "react-icons/fa";
-import { LuKeyRound } from "react-icons/lu";
-import {
-  MdAutoAwesome,
-  MdBackup,
-  MdBolt,
-  MdClose,
-  MdHistory,
-  MdLan,
-  MdLink,
-  MdLock,
-  MdOutlineMonitorHeart,
-  MdSend,
-  MdSettings,
-  MdTerminal,
-} from "react-icons/md";
-import { PiRecordFill } from "react-icons/pi";
 import { toast } from "sonner";
-import { Toaster } from "@/components/ui/sonner";
-import AboutDialog from "./components/dialog/app/AboutDialog";
-import LockScreen from "./components/dialog/app/LockScreen";
-import QuitConfirmDialog from "./components/dialog/app/QuitConfirmDialog";
-import UpdateDialog from "./components/dialog/app/UpdateDialog";
-import {
-  HostKeyVerifyDialog,
-  type HostKeyVerifyRequest,
-} from "./components/dialog/connections/HostKeyVerifyDialog";
-import { OtpDialog, type OtpRequest } from "./components/dialog/connections/OtpDialog";
-import SyncGroupDialog from "./components/dialog/terminal/SyncGroupDialog";
-import type { ActivityBarItem } from "./components/layout/ActivityBar";
-import ActivityBar from "./components/layout/ActivityBar";
-import Header from "./components/layout/Header";
-import ResizeHandle from "./components/layout/ResizeHandle";
-import ActiveSessions from "./components/panel/ActiveSessions";
-import AIAssistantPanel from "./components/panel/AIAssistantPanel";
-import CommandHistory from "./components/panel/CommandHistory";
-import FileExplorer from "./components/panel/file-explorer";
-import FileTransfer from "./components/panel/file-explorer/FileTransfer";
-import NetworkPanel from "./components/panel/NetworkPanel";
-import QuickCommands from "./components/panel/QuickCommands";
-import ResourceMonitor from "./components/panel/ResourceMonitor";
-import SerialSendPanel from "./components/panel/SendCommandPanel";
-import SyncBackupHistoryPanel from "./components/panel/SyncBackupHistoryPanel";
-import SavedConnections from "./components/panel/saved-connections";
-import SecurityAuthPanel from "./components/panel/security-auth";
-import TabWindowsWorkspace from "./components/terminal/TabWindowsWorkspace";
+import AppLayout from "./components/app/AppLayout";
+import AppPanelContent from "./components/app/AppPanelContent";
+import type { HostKeyVerifyRequest } from "./components/dialog/connections/HostKeyVerifyDialog";
+import type { OtpRequest } from "./components/dialog/connections/OtpDialog";
 import { useApp } from "./context/AppContext";
 import { TransferProvider } from "./context/TransferContext";
+import { useActivityBarController } from "./hooks/useActivityBarController";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useIdleLock } from "./hooks/useIdleLock";
+import { useModalChildWindows } from "./hooks/useModalChildWindows";
+import { useTerminalZoom } from "./hooks/useTerminalZoom";
+import { useUnreadTabs } from "./hooks/useUnreadTabs";
 import { AI_OPEN_EVENT, type AIOpenIntent } from "./lib/aiEvents";
+import {
+  canCreateSessionFromPane,
+  collectActiveShellSessionIds,
+  getItemSide,
+  hasLiveSession,
+  NON_PANEL_IDS,
+  type TrayAction,
+} from "./lib/appWorkspace";
 import { getErrorMessage, shouldPromptConnectionEditOnFailure } from "./lib/errors";
 import { invoke } from "./lib/invoke";
 import { logger } from "./lib/logger";
@@ -72,20 +42,12 @@ import {
   type TerminalWindowNode,
   updateTerminalWindowSplitRatio,
 } from "./lib/tabWindows";
-import {
-  DEFAULT_TERMINAL_FONT_SIZE,
-  decreaseTerminalFontSize,
-  increaseTerminalFontSize,
-} from "./lib/terminalFontSize";
 import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import {
-  bounceTopModalWindow,
-  isModalChildLabel,
   type NewSessionTarget,
   openNewSession,
   openNewSessionWithTarget,
   openSettings,
-  syncMainWindowModalState,
 } from "./lib/windowManager";
 import {
   collectSessionPanes,
@@ -96,8 +58,6 @@ import {
   getTabDisplayName,
 } from "./lib/workspaceTabs";
 import type {
-  ActivityBarLayout,
-  ActivityBarZone,
   AppSettings,
   CloudConflictPreview,
   PaneSplitDirection,
@@ -105,70 +65,6 @@ import type {
   SessionPane,
   Tab,
 } from "./types/global";
-
-/** Item IDs that are not regular panels — they have special action on click. */
-const NON_PANEL_IDS = new Set(["settings", "lock", "quickCmdBar", "serialSend", "recording"]);
-
-type TrayAction =
-  | { type: "open_new_session" }
-  | { type: "focus_session"; sessionId: string }
-  | { type: "open_panel"; panelId: "activeSessions" | "syncBackupHistory" }
-  | { type: "open_settings" }
-  | { type: "lock_screen" }
-  | { type: "check_updates" }
-  | { type: "request_quit" };
-
-function canCreateSessionFromPane(
-  pane: Pick<SessionPane, "type" | "connectionId"> | null | undefined,
-): pane is Pick<SessionPane, "type" | "connectionId"> {
-  return !!pane && (pane.type === "Local" || !!pane.connectionId);
-}
-
-function hasLiveSession<T extends Pick<SessionPane, "connecting" | "connectError">>(
-  pane: T | null | undefined,
-): pane is T {
-  return !!pane && !pane.connecting && !pane.connectError;
-}
-
-/** Determine which visual side (left/right) a given item currently lives on. */
-function getItemSide(id: string, layout: ActivityBarLayout): "left" | "right" | null {
-  if (layout.left_top.includes(id) || layout.left_bottom.includes(id)) return "left";
-  if (layout.right_top.includes(id) || layout.right_bottom.includes(id)) return "right";
-  return null;
-}
-
-function collectActiveShellSessionIds(
-  layout: TerminalWindowNode | null,
-  tabsById: Map<string, Tab>,
-) {
-  if (!layout) return [];
-
-  const sessionIds = new Set<string>();
-
-  const visit = (node: TerminalWindowNode) => {
-    if (node.kind === "split") {
-      visit(node.first);
-      visit(node.second);
-      return;
-    }
-
-    for (const tabId of node.tabIds) {
-      const tab = tabsById.get(tabId);
-      if (!tab) continue;
-
-      for (const pane of collectSessionPanes(tab.root)) {
-        if (hasLiveSession(pane) && pane.type === "SSH") {
-          sessionIds.add(pane.sessionId);
-        }
-      }
-    }
-  };
-
-  visit(layout);
-  return [...sessionIds];
-}
-
-const CTRL_WHEEL_ZOOM_THROTTLE_MS = 50;
 
 /** Root layout: header, activity bars, sidebars, terminal area, dialogs. */
 function App() {
@@ -225,16 +121,9 @@ function App() {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [helpDotVisible, setHelpDotVisible] = useState(false);
-  const lastCtrlWheelZoomAtRef = useRef(0);
 
   // Recording state: tracks which sessions are currently being recorded
   const [recordingSessions, setRecordingSessions] = useState<Set<string>>(new Set());
-
-  // Unread output tracking: session IDs with unread terminal output
-  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(new Set());
-
-  // Track only modal child windows that should block the main window.
-  const [modalChildWindowCount, setModalChildWindowCount] = useState(0);
 
   // OTP / 2FA dialog state
   const [otpRequest, setOtpRequest] = useState<OtpRequest | null>(null);
@@ -242,6 +131,7 @@ function App() {
     null,
   );
   const lastCloudConflictRevisionRef = useRef<string | null>(null);
+  const modalChildWindowCount = useModalChildWindows();
 
   // Idle auto-lock
   useIdleLock(
@@ -475,48 +365,6 @@ function App() {
     };
   }, [handleOpenPanel]);
 
-  // Track modal child window open/close for overlay and focus enforcement.
-  useEffect(() => {
-    const unsubs = [
-      listen<{ label: string }>("child-window-opened", ({ payload }) => {
-        if (!isModalChildLabel(payload.label)) return;
-        setModalChildWindowCount((c) => c + 1);
-        void syncMainWindowModalState();
-      }),
-      listen<{ label: string }>("child-window-closed", ({ payload }) => {
-        if (!isModalChildLabel(payload.label)) return;
-        setModalChildWindowCount((c) => Math.max(0, c - 1));
-        void syncMainWindowModalState();
-      }),
-    ];
-    return () => {
-      unsubs.forEach((p) => {
-        p.then((unsub) => unsub());
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    let unlistenFocusChanged: (() => void) | undefined;
-
-    import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
-      getCurrentWindow()
-        .onFocusChanged(({ payload: focused }) => {
-          if (!focused || modalChildWindowCount === 0) return;
-          void syncMainWindowModalState();
-          void bounceTopModalWindow();
-        })
-        .then((unlisten) => {
-          unlistenFocusChanged = unlisten;
-        })
-        .catch(() => {});
-    });
-
-    return () => {
-      unlistenFocusChanged?.();
-    };
-  }, [modalChildWindowCount]);
-
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
   const activePane = activeTab ? getActivePane(activeTab) : null;
   const activeConnection = activePane?.connectionId
@@ -576,48 +424,7 @@ function App() {
     return () => window.removeEventListener(AI_OPEN_EVENT, handler);
   }, [updateUi]);
 
-  // Listen for background session output and mark as unread
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { sessionId } = (e as CustomEvent<{ sessionId: string }>).detail;
-      const tab = findTabBySessionId(tabs, sessionId);
-      if (tab && tab.id !== activeTabId) {
-        setUnreadSessionIds((prev) => {
-          if (prev.has(sessionId)) return prev;
-          const next = new Set(prev);
-          next.add(sessionId);
-          return next;
-        });
-      }
-    };
-    window.addEventListener("dragonfly:session-output", handler);
-    return () => window.removeEventListener("dragonfly:session-output", handler);
-  }, [tabs, activeTabId]);
-
-  // Clear unread state when switching to a tab
-  useEffect(() => {
-    if (!activeTabId) return;
-    const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab) return;
-    const panes = collectSessionPanes(tab.root);
-    const paneSessionIds = new Set(panes.map((p) => p.sessionId));
-    setUnreadSessionIds((prev) => {
-      const hasAny = [...prev].some((id) => paneSessionIds.has(id));
-      if (!hasAny) return prev;
-      const next = new Set(prev);
-      for (const id of paneSessionIds) next.delete(id);
-      return next;
-    });
-  }, [activeTabId, tabs]);
-
-  const unreadTabIds = useMemo(() => {
-    const result = new Set<string>();
-    for (const sessionId of unreadSessionIds) {
-      const tab = findTabBySessionId(tabs, sessionId);
-      if (tab) result.add(tab.id);
-    }
-    return result;
-  }, [unreadSessionIds, tabs]);
+  const unreadTabIds = useUnreadTabs(tabs, activeTabId);
 
   const handleSelectLeafTab = useCallback(
     (leafId: string, tabId: string) => {
@@ -716,7 +523,7 @@ function App() {
         return false;
       }
     },
-    [],
+    [setSyncGroups],
   );
 
   const closeWorkspaceTabSessions = useCallback(
@@ -887,52 +694,7 @@ function App() {
     });
   }, [updateUi]);
 
-  const handleZoomIn = useCallback(() => {
-    updateAppSettings((prev) => ({
-      appearance: {
-        ...prev.appearance,
-        font_size: increaseTerminalFontSize(prev.appearance.font_size),
-      },
-    }));
-  }, [updateAppSettings]);
-
-  const handleZoomOut = useCallback(() => {
-    updateAppSettings((prev) => ({
-      appearance: {
-        ...prev.appearance,
-        font_size: decreaseTerminalFontSize(prev.appearance.font_size),
-      },
-    }));
-  }, [updateAppSettings]);
-
-  const handleResetZoom = useCallback(() => {
-    updateAppSettings((prev) => ({
-      appearance: { ...prev.appearance, font_size: DEFAULT_TERMINAL_FONT_SIZE },
-    }));
-  }, [updateAppSettings]);
-
-  useEffect(() => {
-    const handleCtrlWheelZoom = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      if (event.deltaY === 0) return;
-
-      event.preventDefault();
-      const now = Date.now();
-      if (now - lastCtrlWheelZoomAtRef.current < CTRL_WHEEL_ZOOM_THROTTLE_MS) return;
-      lastCtrlWheelZoomAtRef.current = now;
-
-      if (event.deltaY < 0) {
-        handleZoomIn();
-      } else {
-        handleZoomOut();
-      }
-    };
-
-    window.addEventListener("wheel", handleCtrlWheelZoom, { passive: false, capture: true });
-    return () => {
-      window.removeEventListener("wheel", handleCtrlWheelZoom, true);
-    };
-  }, [handleZoomIn, handleZoomOut]);
+  const { handleZoomIn, handleZoomOut, handleResetZoom } = useTerminalZoom(updateAppSettings);
 
   const handleOpenSettings = useCallback(() => {
     openSettings();
@@ -1516,239 +1278,26 @@ function App() {
     [updateUi],
   );
 
-  // --- Activity bar item registry & dynamic zone arrays ---
-
-  const itemRegistry = useMemo<Record<string, { icon: ReactNode; tooltip: string }>>(
-    () => ({
-      fileExplorer: { icon: <FaRegFolder />, tooltip: t("panel.fileExplorer") },
-      network: { icon: <MdLan />, tooltip: t("panel.network") },
-      securityAuth: { icon: <LuKeyRound />, tooltip: t("securityAuth.title") },
-      syncBackupHistory: { icon: <MdBackup />, tooltip: t("panel.syncBackupHistory") },
-      settings: { icon: <MdSettings />, tooltip: t("settings.title") },
-      savedConnections: { icon: <BiServer />, tooltip: t("panel.savedConnections") },
-      aiAssistant: { icon: <MdAutoAwesome />, tooltip: t("ai.title") },
-      activeSessions: { icon: <MdLink />, tooltip: t("panel.activeSessions") },
-      commandHistory: { icon: <MdHistory />, tooltip: t("panel.commandHistory") },
-      resourceMonitor: { icon: <MdOutlineMonitorHeart />, tooltip: t("panel.resourceMonitor") },
-      quickCmdBar: { icon: <MdBolt />, tooltip: t("panel.quickCommands") },
-      serialSend: { icon: <MdSend />, tooltip: t("panel.serialSend", "Command Send") },
-      recording: {
-        icon: (
-          <PiRecordFill
-            className={
-              activePane && recordingSessions.has(activePane.sessionId)
-                ? "animate-pulse"
-                : undefined
-            }
-          />
-        ),
-        tooltip:
-          activePane && recordingSessions.has(activePane.sessionId)
-            ? t("recording.stop")
-            : t("recording.start"),
-      },
-      lock: { icon: <MdLock />, tooltip: t("statusBar.lock") },
-    }),
-    [activePane, recordingSessions, t],
-  );
-
-  const layout = uiConfig.activity_bar_layout;
-
-  useEffect(() => {
-    const allIds = [
-      ...layout.left_top,
-      ...layout.left_bottom,
-      ...layout.right_top,
-      ...layout.right_bottom,
-    ];
-    const needsSyncBackupHistory = !allIds.includes("syncBackupHistory");
-    const needsAiAssistant = !allIds.includes("aiAssistant");
-    const needsSerialSend = !allIds.includes("serialSend");
-    const needsRecording = !allIds.includes("recording");
-    if (!needsSyncBackupHistory && !needsAiAssistant && !needsSerialSend && !needsRecording) return;
-
-    updateUi((prev) => {
-      const nextLeftBottom = [...prev.activity_bar_layout.left_bottom];
-      const nextRightTop = [...prev.activity_bar_layout.right_top];
-      const nextRightBottom = [...prev.activity_bar_layout.right_bottom];
-
-      if (!nextLeftBottom.includes("syncBackupHistory")) {
-        const settingsIndex = nextLeftBottom.indexOf("settings");
-        if (settingsIndex !== -1) {
-          nextLeftBottom.splice(settingsIndex, 0, "syncBackupHistory");
-        } else {
-          nextLeftBottom.push("syncBackupHistory");
-        }
-      }
-
-      if (!nextRightTop.includes("aiAssistant")) {
-        const savedConnectionsIndex = nextRightTop.indexOf("savedConnections");
-        if (savedConnectionsIndex !== -1) {
-          nextRightTop.splice(savedConnectionsIndex + 1, 0, "aiAssistant");
-        } else {
-          nextRightTop.unshift("aiAssistant");
-        }
-      }
-
-      if (!nextRightBottom.includes("serialSend")) {
-        const quickCmdIndex = nextRightBottom.indexOf("quickCmdBar");
-        const recordingIndex = nextRightBottom.indexOf("recording");
-        const lockIndex = nextRightBottom.indexOf("lock");
-        if (quickCmdIndex !== -1) {
-          nextRightBottom.splice(quickCmdIndex + 1, 0, "serialSend");
-        } else if (recordingIndex !== -1) {
-          nextRightBottom.splice(recordingIndex, 0, "serialSend");
-        } else if (lockIndex !== -1) {
-          nextRightBottom.splice(lockIndex, 0, "serialSend");
-        } else {
-          nextRightBottom.push("serialSend");
-        }
-      }
-
-      if (!nextRightBottom.includes("recording")) {
-        const serialSendIndex = nextRightBottom.indexOf("serialSend");
-        const lockIndex = nextRightBottom.indexOf("lock");
-        if (serialSendIndex !== -1) {
-          nextRightBottom.splice(serialSendIndex + 1, 0, "recording");
-        } else if (lockIndex !== -1) {
-          nextRightBottom.splice(lockIndex, 0, "recording");
-        } else {
-          nextRightBottom.push("recording");
-        }
-      }
-
-      return {
-        activity_bar_layout: {
-          ...prev.activity_bar_layout,
-          left_bottom: nextLeftBottom,
-          right_top: nextRightTop,
-          right_bottom: nextRightBottom,
-        },
-      };
-    });
-  }, [layout.left_bottom, layout.left_top, layout.right_bottom, layout.right_top, updateUi]);
-
-  const buildItems = useCallback(
-    (ids: string[]): ActivityBarItem[] =>
-      ids.filter((id) => id in itemRegistry).map((id) => ({ id, ...itemRegistry[id] })),
-    [itemRegistry],
-  );
-
-  const leftTopItems = useMemo(() => buildItems(layout.left_top), [buildItems, layout.left_top]);
-  const leftBottomItems = useMemo(
-    () => buildItems(layout.left_bottom),
-    [buildItems, layout.left_bottom],
-  );
-  const rightTopItems = useMemo(() => buildItems(layout.right_top), [buildItems, layout.right_top]);
-  const rightBottomItems = useMemo(
-    () => buildItems(layout.right_bottom),
-    [buildItems, layout.right_bottom],
-  );
-
-  const showLabels = layout.show_labels;
-
-  const toggleActiveIds = useMemo(() => {
-    const s = new Set<string>();
-    if (uiConfig.show_quick_cmd_bar) s.add("quickCmdBar");
-    if (uiConfig.show_serial_send_panel) s.add("serialSend");
-    if (activePane && recordingSessions.has(activePane.sessionId)) s.add("recording");
-    return s;
-  }, [activePane, recordingSessions, uiConfig.show_quick_cmd_bar, uiConfig.show_serial_send_panel]);
-
-  useEffect(() => {
-    if (!uiConfig.show_quick_cmd_bar || !uiConfig.show_serial_send_panel) return;
-    updateUi({ show_quick_cmd_bar: false });
-  }, [uiConfig.show_quick_cmd_bar, uiConfig.show_serial_send_panel, updateUi]);
-
-  // Unified item select — routes to left or right panel based on current layout position
-  const handleItemSelect = useCallback(
-    (id: string) => {
-      if (id === "settings") {
-        openSettings();
-        return;
-      }
-      if (id === "lock") {
-        setIsLocked(true);
-        return;
-      }
-      if (id === "quickCmdBar") {
-        updateUi((prev) => ({
-          show_quick_cmd_bar: !prev.show_quick_cmd_bar,
-          ...(prev.show_serial_send_panel ? { show_serial_send_panel: false } : {}),
-        }));
-        return;
-      }
-      if (id === "serialSend") {
-        updateUi((prev) => ({
-          show_serial_send_panel: !prev.show_serial_send_panel,
-          ...(prev.show_quick_cmd_bar ? { show_quick_cmd_bar: false } : {}),
-        }));
-        return;
-      }
-      if (id === "recording") {
-        if (!activePane || activePane.connecting || activePane.connectError) {
-          toast.error(t("panel.noActiveSessions"));
-          return;
-        }
-        void handleToggleRecording();
-        return;
-      }
-      const side = getItemSide(id, layout);
-      if (side === "left") {
-        updateUi((prev) => ({ active_left_panel: prev.active_left_panel === id ? null : id }));
-      } else if (side === "right") {
-        updateUi((prev) => ({ active_right_panel: prev.active_right_panel === id ? null : id }));
-      }
-    },
-    [activePane, handleToggleRecording, layout, setIsLocked, t, updateUi],
-  );
-
-  // Reorder within a zone — uses prev to avoid stale closure
-  const handleReorder = useCallback(
-    (side: "left" | "right", zoneKey: "top" | "bottom", orderedIds: string[]) => {
-      const layoutKey = `${side}_${zoneKey}` as keyof ActivityBarLayout;
-      updateUi((prev) => ({
-        activity_bar_layout: { ...prev.activity_bar_layout, [layoutKey]: orderedIds },
-      }));
-    },
-    [updateUi],
-  );
-
-  // Move item between zones; clear its active-panel state if it crosses sides
-  const handleMoveItem = useCallback(
-    (itemId: string, targetZone: ActivityBarZone) => {
-      updateUi((prev) => {
-        const zones = ["left_top", "left_bottom", "right_top", "right_bottom"] as const;
-        const newLayout = { ...prev.activity_bar_layout };
-        for (const z of zones) {
-          newLayout[z] = newLayout[z].filter((id) => id !== itemId);
-        }
-        newLayout[targetZone] = [...newLayout[targetZone], itemId];
-        const isMovingToRight = targetZone === "right_top" || targetZone === "right_bottom";
-        const isMovingToLeft = targetZone === "left_top" || targetZone === "left_bottom";
-        return {
-          activity_bar_layout: newLayout,
-          ...(prev.active_left_panel === itemId && isMovingToRight
-            ? { active_left_panel: null }
-            : {}),
-          ...(prev.active_right_panel === itemId && isMovingToLeft
-            ? { active_right_panel: null }
-            : {}),
-        };
-      });
-    },
-    [updateUi],
-  );
-
-  // Toggle global "show labels" setting
-  const handleToggleLabel = useCallback(() => {
-    updateUi((prev) => ({
-      activity_bar_layout: {
-        ...prev.activity_bar_layout,
-        show_labels: !prev.activity_bar_layout.show_labels,
-      },
-    }));
-  }, [updateUi]);
+  const {
+    leftTopItems,
+    leftBottomItems,
+    rightTopItems,
+    rightBottomItems,
+    showLabels,
+    toggleActiveIds,
+    handleItemSelect,
+    handleReorder,
+    handleMoveItem,
+    handleToggleLabel,
+  } = useActivityBarController({
+    uiConfig,
+    activePane,
+    recordingSessions,
+    updateUi,
+    setIsLocked,
+    onToggleRecording: handleToggleRecording,
+    t,
+  });
 
   // --- Panel content rendering (side-independent) ---
 
@@ -1781,358 +1330,153 @@ function App() {
     [updateUi],
   );
 
-  function renderPanelContent(id: string | null) {
-    switch (id) {
-      case "fileExplorer":
-        return (
-          <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <FileExplorer
-                activeSessionId={activeSessionId}
-                activeSessionType={
-                  activePane && !activePane.connecting && !activePane.connectError
-                    ? activePane.type
-                    : null
-                }
-              />
-            </div>
-            <ResizeHandle direction="vertical" onResize={handleTransferResize} />
-            <div
-              style={{ height: uiConfig.transfer_height || 180 }}
-              className="shrink-0 overflow-hidden"
-            >
-              <FileTransfer activeSessionId={activeSessionId} />
-            </div>
-          </div>
-        );
-      case "network":
-        return <NetworkPanel />;
-      case "securityAuth":
-        return <SecurityAuthPanel />;
-      case "syncBackupHistory":
-        return <SyncBackupHistoryPanel />;
-      case "savedConnections":
-        return (
-          <SavedConnections
-            onNewConnection={handleNewSession}
-            onEditConnection={handleEditConnection}
-          />
-        );
-      case "aiAssistant":
-        return (
-          <AIAssistantPanel
-            activePane={
-              activePane && !activePane.connecting && !activePane.connectError ? activePane : null
-            }
-            activeConnection={activeConnection}
-            intent={aiIntent}
-          />
-        );
-      case "activeSessions":
-        return (
-          <ActiveSessions
-            onSessionClick={handleSessionClick}
-            onSessionReconnect={handleReconnectSessionById}
-            onSessionDisconnect={handleDisconnectSessionById}
-            canReconnect={canReconnectSessionById}
-          />
-        );
-      case "commandHistory":
-        return (
-          <CommandHistory activeSessionId={activeSessionId} onCommandSend={handleHistoryCommand} />
-        );
-      case "resourceMonitor":
-        return <ResourceMonitor activeSessionId={activeSshSessionId} />;
-      default:
-        return null;
-    }
-  }
+  const renderPanelContent = useCallback(
+    (panelId: string | null) => (
+      <AppPanelContent
+        panelId={panelId}
+        activePane={activePane}
+        activeConnection={activeConnection}
+        activeSessionId={activeSessionId}
+        activeSshSessionId={activeSshSessionId}
+        aiIntent={aiIntent}
+        transferHeight={uiConfig.transfer_height || 180}
+        onTransferResize={handleTransferResize}
+        onNewConnection={handleNewSession}
+        onEditConnection={handleEditConnection}
+        onSessionClick={handleSessionClick}
+        onSessionReconnect={handleReconnectSessionById}
+        onSessionDisconnect={handleDisconnectSessionById}
+        canReconnect={canReconnectSessionById}
+        onCommandSend={handleHistoryCommand}
+      />
+    ),
+    [
+      activeConnection,
+      activePane,
+      activeSessionId,
+      activeSshSessionId,
+      aiIntent,
+      canReconnectSessionById,
+      handleDisconnectSessionById,
+      handleEditConnection,
+      handleHistoryCommand,
+      handleNewSession,
+      handleReconnectSessionById,
+      handleSessionClick,
+      handleTransferResize,
+      uiConfig.transfer_height,
+    ],
+  );
 
   return (
     <TransferProvider>
-      <div
-        className="font-display h-full min-h-0 flex flex-col overflow-hidden"
-        style={{ backgroundColor: "var(--df-bg)", color: "var(--df-text)" }}
-      >
-        {/* Header */}
-        <Header
-          onNewSession={() => handleNewSession()}
-          onToggleLeft={() => setMobileLeftOpen(!mobileLeftOpen)}
-          onToggleRight={() => setMobileRightOpen(!mobileRightOpen)}
-          onAbout={() => setShowAbout(true)}
-          onCheckForUpdates={() => setShowUpdateDialog(true)}
-          hasUpdate={updateInfo !== null}
-          showUpdateDot={helpDotVisible}
-          onHelpMenuOpen={() => setHelpDotVisible(false)}
-          activeTab={activeTab}
-          savedConnections={savedConnections}
-          onSmartSplit={handleSmartSplit}
-          onManageSyncGroups={() => setShowSyncGroupDialog(true)}
-          onBroadcastToAll={() => setBroadcastToAll((prev) => !prev)}
-          broadcastToAll={broadcastToAll}
-          onClearTerminal={() => window.dispatchEvent(new CustomEvent("dragonfly:clear-terminal"))}
-          onResetTerminalSize={() =>
-            window.dispatchEvent(new CustomEvent("dragonfly:refresh-terminals"))
-          }
-        />
-
-        {/* Main Content */}
-        <main className="flex-1 flex overflow-hidden relative">
-          {/* Backdrop for mobile */}
-          {(mobileLeftOpen || mobileRightOpen) && (
-            <div
-              className="absolute inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => {
-                setMobileLeftOpen(false);
-                setMobileRightOpen(false);
-              }}
-            />
-          )}
-
-          {/* Left Activity Bar */}
-          <ActivityBar
-            items={leftTopItems}
-            bottomItems={leftBottomItems}
-            activeId={uiConfig.active_left_panel}
-            activeBottomIds={toggleActiveIds}
-            onSelect={handleItemSelect}
-            onReorder={(zk, ids) => handleReorder("left", zk, ids)}
-            onMoveItem={handleMoveItem}
-            onToggleLabel={handleToggleLabel}
-            showLabels={showLabels}
-            side="left"
-            zone={{ top: "left_top", bottom: "left_bottom" }}
-          />
-
-          {/* Left Panel */}
-          {uiConfig.active_left_panel && (
-            <>
-              <div
-                style={{ width: uiConfig.left_width, backgroundColor: "var(--df-bg-panel)" }}
-                className={`
-                  fixed inset-y-0 left-10 z-40 flex flex-col shadow-xl transition-transform duration-200
-                  lg:relative lg:left-0 lg:translate-x-0 lg:z-0 lg:shadow-none
-                  ${
-                    mobileLeftOpen
-                      ? "translate-x-0"
-                      : "-translate-x-[calc(100%+2.5rem)] lg:translate-x-0"
-                  }
-                `}
-              >
-                <div
-                  className="lg:hidden h-10 flex items-center justify-end px-2 border-b shrink-0"
-                  style={{ borderColor: "var(--df-border)" }}
-                >
-                  <button
-                    onClick={() => setMobileLeftOpen(false)}
-                    style={{ color: "var(--df-text-muted)" }}
-                  >
-                    <MdClose />
-                  </button>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {renderPanelContent(uiConfig.active_left_panel)}
-                </div>
-              </div>
-              <ResizeHandle
-                direction="horizontal"
-                onResize={handleLeftResize}
-                className="hidden lg:block"
-              />
-            </>
-          )}
-
-          {/* Center - Terminal Area */}
-          <section
-            className="flex-1 flex flex-col relative min-w-0 origin-top-left"
-            style={{
-              backgroundColor: "var(--df-bg-terminal)",
-            }}
-          >
-            <div className="flex-1 relative overflow-hidden">
-              {tabs.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-slate-500">
-                  <div className="text-center space-y-3">
-                    <MdTerminal className="text-4xl mx-auto" />
-                    <p className="text-sm">{t("app.noActiveSessions")}</p>
-                    <button
-                      className="px-4 py-2 text-xs bg-primary hover:bg-primary/80 text-white rounded transition-colors"
-                      onClick={() => handleNewSession()}
-                    >
-                      {t("app.newConnection")}
-                    </button>
-                  </div>
-                </div>
-              ) : terminalWindows ? (
-                <TabWindowsWorkspace
-                  layout={terminalWindows}
-                  tabsById={tabsById}
-                  focusedTabId={activeTabId}
-                  unreadTabIds={unreadTabIds}
-                  onSelectTab={handleSelectLeafTab}
-                  onAddTab={handleAddTabFromLeaf}
-                  onTabClose={handleCloseWorkspaceTab}
-                  onDuplicateSession={handleDuplicateSession}
-                  onReconnectSession={handleReconnectSession}
-                  onSplitSession={handleSplitSession}
-                  onCloseSession={handleCloseSession}
-                  onCloseAll={handleCloseAllTabs}
-                  onCloseInactive={handleCloseInactiveTabs}
-                  onCloseRight={handleCloseRightTabs}
-                  onSessionInfo={handleSessionInfo}
-                  onReorderTabs={handleReorderTabsInLeaf}
-                  onActivatePane={handleActivatePane}
-                  onUpdatePaneSplitRatio={handleUpdatePaneSplitRatio}
-                  onUpdateWindowSplitRatio={handleUpdateWindowSplitRatio}
-                  onReconnectPane={handleReconnectPane}
-                  onReconnected={handleReconnected}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-500">
-                  <div className="text-center space-y-3">
-                    <MdTerminal className="text-4xl mx-auto" />
-                    <p className="text-sm">{t("common.loading")}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom Panel: only one window can be visible at a time */}
-            {activeBottomPanel === "quickCmdBar" && (
-              <>
-                <ResizeHandle direction="vertical" onResize={handleQuickCmdResize} />
-                <div
-                  style={{ height: uiConfig.quick_cmd_height }}
-                  className="shrink-0 overflow-hidden"
-                >
-                  <QuickCommands
-                    onSend={handleHistoryCommand}
-                    onSendToAll={handleSendToAllSessions}
-                  />
-                </div>
-              </>
-            )}
-
-            {activeBottomPanel === "serialSend" && (
-              <>
-                <ResizeHandle direction="vertical" onResize={handleSerialSendResize} />
-                <div
-                  style={{ height: uiConfig.serial_send_height || 120 }}
-                  className="shrink-0 overflow-hidden"
-                >
-                  <SerialSendPanel
-                    serialSessionId={activeSerialSessionId}
-                    shellSessionIds={activeShellSessionIds}
-                  />
-                </div>
-              </>
-            )}
-          </section>
-
-          {/* Right Panel */}
-          {uiConfig.active_right_panel && (
-            <>
-              <ResizeHandle
-                direction="horizontal"
-                onResize={handleRightResize}
-                className="hidden md:block"
-              />
-              <aside
-                style={{
-                  width: uiConfig.right_width,
-                  backgroundColor: "var(--df-bg-panel)",
-                  borderColor: "var(--df-border)",
-                }}
-                className={`
-                  fixed inset-y-0 right-10 z-50 flex flex-col shadow-xl transition-transform duration-200 border-l
-                  md:relative md:right-0 md:translate-x-0 md:z-0 md:shadow-none
-                  ${
-                    mobileRightOpen
-                      ? "translate-x-0"
-                      : "translate-x-[calc(100%+2.5rem)] md:translate-x-0"
-                  }
-                `}
-              >
-                <div
-                  className="md:hidden h-10 flex items-center justify-end px-2 border-b shrink-0"
-                  style={{ borderColor: "var(--df-border)" }}
-                >
-                  <button
-                    onClick={() => setMobileRightOpen(false)}
-                    style={{ color: "var(--df-text-muted)" }}
-                  >
-                    <MdClose />
-                  </button>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {renderPanelContent(uiConfig.active_right_panel)}
-                </div>
-              </aside>
-            </>
-          )}
-
-          {/* Right Activity Bar */}
-          <ActivityBar
-            items={rightTopItems}
-            bottomItems={rightBottomItems}
-            activeId={uiConfig.active_right_panel}
-            activeBottomIds={toggleActiveIds}
-            onSelect={handleItemSelect}
-            onReorder={(zk, ids) => handleReorder("right", zk, ids)}
-            onMoveItem={handleMoveItem}
-            onToggleLabel={handleToggleLabel}
-            showLabels={showLabels}
-            side="right"
-            zone={{ top: "right_top", bottom: "right_bottom" }}
-          />
-        </main>
-
-        <AboutDialog open={showAbout} onClose={() => setShowAbout(false)} />
-
-        <SyncGroupDialog open={showSyncGroupDialog} onClose={() => setShowSyncGroupDialog(false)} />
-
-        <UpdateDialog
-          open={showUpdateDialog}
-          onClose={() => setShowUpdateDialog(false)}
-          onUpdateFound={(info) => setUpdateInfo(info)}
-        />
-
-        <QuitConfirmDialog
-          open={showQuitConfirm}
-          onOpenChange={setShowQuitConfirm}
-          onConfirm={handleQuitApplication}
-        />
-
-        <OtpDialog request={otpRequest} onDone={() => setOtpRequest(null)} />
-        <HostKeyVerifyDialog
-          request={hostKeyVerifyRequest}
-          onDone={() => setHostKeyVerifyRequest(null)}
-        />
-
-        <Toaster position="bottom-right" />
-
-        {/* Child Window Modal Overlay */}
-        {modalChildWindowCount > 0 && (
-          <div
-            className="fixed inset-0 z-[9998]"
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.3)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-          />
-        )}
-
-        {/* Lock Screen Overlay */}
-        {isLocked && (
-          <LockScreen
-            hasPassword={!!appSettings.security.master_password}
-            onUnlock={() => setIsLocked(false)}
-          />
-        )}
-      </div>
+      <AppLayout
+        t={t}
+        uiConfig={uiConfig}
+        header={{
+          onNewSession: () => handleNewSession(),
+          onAbout: () => setShowAbout(true),
+          onCheckForUpdates: () => setShowUpdateDialog(true),
+          hasUpdate: updateInfo !== null,
+          showUpdateDot: helpDotVisible,
+          onHelpMenuOpen: () => setHelpDotVisible(false),
+          activeTab,
+          savedConnections,
+          onSmartSplit: handleSmartSplit,
+          onManageSyncGroups: () => setShowSyncGroupDialog(true),
+          onBroadcastToAll: () => setBroadcastToAll((prev) => !prev),
+          broadcastToAll,
+          onClearTerminal: () => window.dispatchEvent(new CustomEvent("dragonfly:clear-terminal")),
+          onResetTerminalSize: () =>
+            window.dispatchEvent(new CustomEvent("dragonfly:refresh-terminals")),
+        }}
+        mobile={{
+          leftOpen: mobileLeftOpen,
+          rightOpen: mobileRightOpen,
+          setLeftOpen: setMobileLeftOpen,
+          setRightOpen: setMobileRightOpen,
+        }}
+        leftActivityBar={{
+          items: leftTopItems,
+          bottomItems: leftBottomItems,
+          activeId: uiConfig.active_left_panel,
+          activeBottomIds: toggleActiveIds,
+          onSelect: handleItemSelect,
+          onReorder: (zoneKey, ids) => handleReorder("left", zoneKey, ids),
+          onMoveItem: handleMoveItem,
+          onToggleLabel: handleToggleLabel,
+          showLabels,
+        }}
+        rightActivityBar={{
+          items: rightTopItems,
+          bottomItems: rightBottomItems,
+          activeId: uiConfig.active_right_panel,
+          activeBottomIds: toggleActiveIds,
+          onSelect: handleItemSelect,
+          onReorder: (zoneKey, ids) => handleReorder("right", zoneKey, ids),
+          onMoveItem: handleMoveItem,
+          onToggleLabel: handleToggleLabel,
+          showLabels,
+        }}
+        onLeftResize={handleLeftResize}
+        onRightResize={handleRightResize}
+        panelContent={renderPanelContent}
+        workspace={{
+          layout: terminalWindows,
+          tabsById,
+          focusedTabId: activeTabId,
+          unreadTabIds,
+          onSelectTab: handleSelectLeafTab,
+          onAddTab: handleAddTabFromLeaf,
+          onTabClose: handleCloseWorkspaceTab,
+          onDuplicateSession: handleDuplicateSession,
+          onReconnectSession: handleReconnectSession,
+          onSplitSession: handleSplitSession,
+          onCloseSession: handleCloseSession,
+          onCloseAll: handleCloseAllTabs,
+          onCloseInactive: handleCloseInactiveTabs,
+          onCloseRight: handleCloseRightTabs,
+          onSessionInfo: handleSessionInfo,
+          onReorderTabs: handleReorderTabsInLeaf,
+          onActivatePane: handleActivatePane,
+          onUpdatePaneSplitRatio: handleUpdatePaneSplitRatio,
+          onUpdateWindowSplitRatio: handleUpdateWindowSplitRatio,
+          onReconnectPane: handleReconnectPane,
+          onReconnected: handleReconnected,
+        }}
+        tabsCount={tabs.length}
+        bottomPanel={{
+          activePanel: activeBottomPanel,
+          quickCmdHeight: uiConfig.quick_cmd_height,
+          serialSendHeight: uiConfig.serial_send_height || 120,
+          activeSerialSessionId,
+          activeShellSessionIds,
+          onQuickCmdResize: handleQuickCmdResize,
+          onSerialSendResize: handleSerialSendResize,
+          onCommandSend: handleHistoryCommand,
+          onSendToAllSessions: handleSendToAllSessions,
+        }}
+        dialogs={{
+          aboutOpen: showAbout,
+          onAboutOpenChange: setShowAbout,
+          syncGroupOpen: showSyncGroupDialog,
+          onSyncGroupOpenChange: setShowSyncGroupDialog,
+          updateOpen: showUpdateDialog,
+          onUpdateOpenChange: setShowUpdateDialog,
+          onUpdateFound: setUpdateInfo,
+          quitConfirmOpen: showQuitConfirm,
+          onQuitConfirmOpenChange: setShowQuitConfirm,
+          onQuitConfirm: handleQuitApplication,
+          otpRequest,
+          onOtpDone: () => setOtpRequest(null),
+          hostKeyVerifyRequest,
+          onHostKeyVerifyDone: () => setHostKeyVerifyRequest(null),
+          modalChildWindowCount,
+          locked: isLocked,
+          hasMasterPassword: !!appSettings.security.master_password,
+          onUnlock: () => setIsLocked(false),
+        }}
+      />
     </TransferProvider>
   );
 }
