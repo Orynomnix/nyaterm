@@ -71,12 +71,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useApp } from "@/context/AppContext";
+import { openAIAssistant } from "@/lib/aiEvents";
+import { getErrorMessage } from "@/lib/errors";
 import { invoke } from "@/lib/invoke";
 import { logger } from "@/lib/logger";
 import { sendSessionInput } from "@/lib/sessionInput";
 import { formatSize } from "@/lib/utils";
 import { openAutoUpload } from "@/lib/windowManager";
-import type { FileEntry, FileExplorerProps, SessionInfo } from "@/types/global";
+import type {
+  AICustomActionConfig,
+  FileEntry,
+  FileExplorerProps,
+  SessionInfo,
+} from "@/types/global";
 import { FileListItem } from "./FileListItem";
 
 interface TransferEventPayload {
@@ -89,6 +96,12 @@ interface TransferEventPayload {
 interface ResolvedLocalDropPathEntry {
   path: string;
   isDir: boolean;
+}
+
+interface RemoteTextFile {
+  path: string;
+  content: string;
+  size: number;
 }
 
 interface ExternalFileDropEventPayload {
@@ -1317,6 +1330,13 @@ function FileExplorer({ activeSessionId, activeSessionType }: FileExplorerProps)
     () => files.filter((file) => selectedFiles.has(file.name)),
     [files, selectedFiles],
   );
+  const fileAiActions = useMemo(
+    () =>
+      appSettings.ai.enabled
+        ? appSettings.ai.file_ai_actions.filter((action) => action.enabled && action.name.trim())
+        : [],
+    [appSettings.ai.enabled, appSettings.ai.file_ai_actions],
+  );
 
   const handleDeleteSelected = () => {
     if (selectedRealFiles.length === 0) return;
@@ -1425,6 +1445,38 @@ function FileExplorer({ activeSessionId, activeSessionType }: FileExplorerProps)
 
   const getEntryFullPath = (entry: FileEntry) => {
     return currentPath === "/" ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+  };
+
+  const getEntryAiActions = (entry: FileEntry) => {
+    if (entry.is_dir || entry.size > appSettings.ai.max_ai_file_size_bytes) {
+      return [];
+    }
+    return fileAiActions;
+  };
+
+  const handleFileAIAction = async (entry: FileEntry, action: AICustomActionConfig) => {
+    if (!activeSessionId) return;
+    const filePath = getEntryFullPath(entry);
+    try {
+      const result = await invoke<RemoteTextFile>("read_remote_file_text", {
+        sessionId: activeSessionId,
+        path: filePath,
+        maxBytes: appSettings.ai.max_ai_file_size_bytes,
+      });
+      openAIAssistant({
+        action: "custom_file_action",
+        userInput: action.prompt,
+        selectedText: result.content,
+        metadata: {
+          actionId: action.id,
+          actionName: action.name,
+          filePath,
+          fileSize: result.size,
+        },
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error) || t("ai.fileUnsupported"));
+    }
   };
 
   const handleCopyPath = (entry: FileEntry, mode: "dir" | "name" | "full") => {
@@ -1946,6 +1998,8 @@ function FileExplorer({ activeSessionId, activeSessionType }: FileExplorerProps)
                         });
                       }
                     }}
+                    aiActions={getEntryAiActions(entry)}
+                    onAIAction={(entry, action) => void handleFileAIAction(entry, action)}
                   />
                 ))}
               </ul>

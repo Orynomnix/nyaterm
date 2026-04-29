@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import {
+  MdAutoAwesome,
   MdContentCopy,
   MdCopyAll,
   MdDelete,
@@ -19,7 +20,7 @@ import {
 } from "react-icons/md";
 import { getFileIcon } from "@/components/icons";
 import { formatSize } from "@/lib/utils";
-import type { FileEntry } from "@/types/global";
+import type { AICustomActionConfig, FileEntry } from "@/types/global";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -51,6 +52,8 @@ interface FileListItemProps {
   onCopyPath: (entry: FileEntry, mode: "dir" | "name" | "full") => void;
   onSendToTerminal: (entry: FileEntry, mode: "dir" | "name" | "full") => void;
   onProperties: (entry: FileEntry) => void;
+  aiActions: AICustomActionConfig[];
+  onAIAction: (entry: FileEntry, action: AICustomActionConfig) => void;
 }
 
 export function FileListItem({
@@ -73,6 +76,8 @@ export function FileListItem({
   onCopyPath,
   onSendToTerminal,
   onProperties,
+  aiActions,
+  onAIAction,
 }: FileListItemProps) {
   const { t } = useTranslation();
   const entryIcon = getFileIcon(entry);
@@ -210,6 +215,22 @@ export function FileListItem({
               <MdKeyboardDoubleArrowRight className="text-[0.875rem] text-muted-foreground mr-2" />
               {t("fileExplorer.cmTerminalDirPath")}
             </ContextMenuItem>
+            <ContextMenuSeparator />
+            {aiActions.length > 0 && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <MdAutoAwesome className="text-[0.875rem] text-muted-foreground mr-2" />
+                  AI
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent>
+                  {aiActions.map((action) => (
+                    <ContextMenuItem key={action.id} onClick={() => onAIAction(entry, action)}>
+                      {action.name}
+                    </ContextMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
             <ContextMenuSeparator />
             <ContextMenuItem onClick={() => activeSessionId && onProperties(entry)}>
               <MdInfo className="text-[0.875rem] text-muted-foreground mr-2" />
