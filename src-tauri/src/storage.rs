@@ -5,7 +5,7 @@
 
 use crate::error::{AppError, AppResult};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -100,6 +100,15 @@ pub fn save_json_doc<T: Serialize>(key: &str, data: &T) -> AppResult<()> {
     save_json_doc_raw(key, &content)
 }
 
+pub fn update_json_doc<T, R, F>(key: &str, updater: F) -> AppResult<R>
+where
+    T: DeserializeOwned + Default + Serialize,
+    F: FnOnce(&mut T) -> AppResult<R>,
+{
+    let db = database()?;
+    update_json_doc_in_db(&db, key, updater)
+}
+
 pub fn load_json_doc_raw(key: &str) -> AppResult<Option<String>> {
     let db = database()?;
     read_json_doc(&db, key)
@@ -163,15 +172,6 @@ fn migrate_legacy_files(db: &Database, config_dir: &Path) -> AppResult<()> {
         let mut meta = txn.open_table(META_TABLE).map_err(storage_error)?;
         meta.insert(META_SCHEMA_VERSION, SCHEMA_VERSION)
             .map_err(storage_error)?;
-        if meta
-            .get(META_LEGACY_MIGRATED)
-            .map_err(storage_error)?
-            .is_some()
-        {
-            drop(meta);
-            txn.commit().map_err(storage_error)?;
-            return Ok(());
-        }
     }
 
     {
@@ -185,7 +185,9 @@ fn migrate_legacy_files(db: &Database, config_dir: &Path) -> AppResult<()> {
                 continue;
             }
             let content = fs::read_to_string(&path)?;
-            json_docs.insert(*key, content.as_str()).map_err(storage_error)?;
+            json_docs
+                .insert(*key, content.as_str())
+                .map_err(storage_error)?;
         }
     }
 
@@ -200,7 +202,9 @@ fn migrate_legacy_files(db: &Database, config_dir: &Path) -> AppResult<()> {
                 continue;
             }
             let content = fs::read_to_string(&path)?;
-            text_docs.insert(*key, content.as_str()).map_err(storage_error)?;
+            text_docs
+                .insert(*key, content.as_str())
+                .map_err(storage_error)?;
         }
     }
 
@@ -212,6 +216,27 @@ fn migrate_legacy_files(db: &Database, config_dir: &Path) -> AppResult<()> {
 
     txn.commit().map_err(storage_error)?;
     Ok(())
+}
+
+fn update_json_doc_in_db<T, R, F>(db: &Database, key: &str, updater: F) -> AppResult<R>
+where
+    T: DeserializeOwned + Default + Serialize,
+    F: FnOnce(&mut T) -> AppResult<R>,
+{
+    let txn = db.begin_write().map_err(storage_error)?;
+    let result = {
+        let mut table = txn.open_table(JSON_DOCS_TABLE).map_err(storage_error)?;
+        let mut document = match table.get(key).map_err(storage_error)? {
+            Some(guard) => serde_json::from_str::<T>(guard.value())?,
+            None => T::default(),
+        };
+        let result = updater(&mut document)?;
+        let content = serde_json::to_string_pretty(&document)?;
+        table.insert(key, content.as_str()).map_err(storage_error)?;
+        result
+    };
+    txn.commit().map_err(storage_error)?;
+    Ok(result)
 }
 
 fn read_json_doc(db: &Database, key: &str) -> AppResult<Option<String>> {
@@ -287,7 +312,9 @@ mod tests {
         write_text_doc(&db, TEXT_KNOWN_HOSTS, "example ssh-ed25519 abc\n").expect("write text");
 
         assert_eq!(
-            read_json_doc(&db, JSON_SETTINGS).expect("read json").as_deref(),
+            read_json_doc(&db, JSON_SETTINGS)
+                .expect("read json")
+                .as_deref(),
             Some("{\"ok\":true}")
         );
         assert_eq!(
@@ -325,6 +352,73 @@ mod tests {
         );
         assert!(dir.join("settings.json").exists());
         assert!(dir.join("known_hosts").exists());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn migration_backfills_missing_docs_after_legacy_marker() {
+        let dir = unique_config_dir("migration-backfill");
+        fs::create_dir_all(&dir).expect("create temp dir");
+        fs::write(
+            dir.join("ai-history.json"),
+            "{\"sessions\":[],\"messages\":[]}",
+        )
+        .expect("write ai history");
+
+        let db = open_database(&database_path(&dir)).expect("open db");
+        let txn = db.begin_write().expect("begin write");
+        {
+            let mut meta = txn.open_table(META_TABLE).expect("open meta");
+            meta.insert(META_SCHEMA_VERSION, SCHEMA_VERSION)
+                .expect("schema version");
+            meta.insert(META_LEGACY_MIGRATED, "true")
+                .expect("legacy marker");
+        }
+        txn.commit().expect("commit marker");
+
+        migrate_legacy_files(&db, &dir).expect("migrate");
+
+        assert_eq!(
+            read_json_doc(&db, JSON_AI_HISTORY)
+                .expect("read ai history")
+                .as_deref(),
+            Some("{\"sessions\":[],\"messages\":[]}")
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+    struct AppendDoc {
+        #[serde(default)]
+        items: Vec<String>,
+    }
+
+    #[test]
+    fn atomic_json_update_preserves_sequential_appends() {
+        let dir = unique_config_dir("atomic-update");
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let db = open_database(&database_path(&dir)).expect("open db");
+
+        update_json_doc_in_db::<AppendDoc, _, _>(&db, JSON_AI_HISTORY, |doc| {
+            doc.items.push("one".to_string());
+            Ok(())
+        })
+        .expect("append one");
+        update_json_doc_in_db::<AppendDoc, _, _>(&db, JSON_AI_HISTORY, |doc| {
+            doc.items.push("two".to_string());
+            Ok(())
+        })
+        .expect("append two");
+
+        let doc: AppendDoc = serde_json::from_str(
+            &read_json_doc(&db, JSON_AI_HISTORY)
+                .expect("read append doc")
+                .expect("append doc exists"),
+        )
+        .expect("parse append doc");
+        assert_eq!(doc.items, ["one", "two"]);
 
         let _ = fs::remove_dir_all(dir);
     }
