@@ -1,6 +1,7 @@
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LuMessageSquarePlus } from "react-icons/lu";
 import {
   MdAutoAwesome,
   MdClose,
@@ -15,11 +16,20 @@ import {
   MdSend,
   MdStop,
 } from "react-icons/md";
-import { LuMessageSquarePlus } from "react-icons/lu";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import PanelHeader from "@/components/layout/PanelHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -326,6 +336,8 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
   const [showHistory, setShowHistory] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
@@ -393,11 +405,16 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
     );
   }, [historyQuery, sessions]);
 
+  const cleanupStreamListener = useCallback(() => {
+    streamUnlistenRef.current?.();
+    streamUnlistenRef.current = null;
+  }, []);
+
   useEffect(() => {
     return () => {
-      streamUnlistenRef.current?.();
+      cleanupStreamListener();
     };
-  }, []);
+  }, [cleanupStreamListener]);
 
   useEffect(() => {
     const watchedIds = new Set(effectivePanes.map((p) => p.sessionId));
@@ -549,11 +566,11 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
       setDetectedError(null);
       setLoading(true);
       cancelledRef.current = false;
-      streamUnlistenRef.current?.();
-      streamUnlistenRef.current = null;
+      cleanupStreamListener();
 
       const userMessage = createLocalMessage("user", userInput, currentSessionId ?? "local");
       const assistantId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const requestStreamId = `ai-stream-${crypto.randomUUID()}`;
       setMessages((prev) => [
         ...prev,
         userMessage,
@@ -570,32 +587,17 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
       setStreamingAssistantId(assistantId);
 
       try {
-        const context = await buildMergedContext(panes, selectedText);
-        const primaryConn = panes[0].connectionId
-          ? (savedConnections.find((c) => c.id === panes[0].connectionId) ?? null)
-          : activeConnection;
-
-        const result = await invoke<AIStreamStart>("start_ai_chat_stream", {
-          request: {
-            sessionId: currentSessionId,
-            connectionId: primaryConn?.id ?? null,
-            action,
-            userInput,
-            context,
-            options: {
-              maxOutputCommands: 5,
-              language: "zh-CN",
-              safetyMode: "strict",
-            },
-          },
-        });
-        setCurrentSessionId(result.sessionId);
-        setStreamId(result.streamId);
-
         const unlisten = await listen<AIStreamEventPayload>(
-          `ai-stream-${result.streamId}`,
+          `ai-stream-${requestStreamId}`,
           (event) => {
             const payload = event.payload;
+            if (payload.streamId !== requestStreamId) return;
+
+            if (payload.type === "start") {
+              if (payload.sessionId) setCurrentSessionId(payload.sessionId);
+              return;
+            }
+
             if (payload.type === "delta" && payload.textDelta) {
               setMessages((prev) =>
                 prev.map((message) =>
@@ -622,6 +624,7 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
             }
 
             if (payload.type === "done") {
+              cleanupStreamListener();
               setLoading(false);
               setStreamId(null);
               setStreamingAssistantId(null);
@@ -636,6 +639,7 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
 
             if (payload.type === "error") {
               const wasCancelled = cancelledRef.current;
+              cleanupStreamListener();
               setLoading(false);
               setStreamId(null);
               setStreamingAssistantId(null);
@@ -656,8 +660,33 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
           },
         );
         streamUnlistenRef.current = unlisten;
+        setStreamId(requestStreamId);
+
+        const context = await buildMergedContext(panes, selectedText);
+        const primaryConn = panes[0].connectionId
+          ? (savedConnections.find((c) => c.id === panes[0].connectionId) ?? null)
+          : activeConnection;
+
+        const result = await invoke<AIStreamStart>("start_ai_chat_stream", {
+          request: {
+            streamId: requestStreamId,
+            sessionId: currentSessionId,
+            connectionId: primaryConn?.id ?? null,
+            action,
+            userInput,
+            context,
+            options: {
+              maxOutputCommands: 5,
+              language: "zh-CN",
+              safetyMode: "strict",
+            },
+          },
+        });
+        setCurrentSessionId(result.sessionId);
+        setStreamId(result.streamId);
         appendAudit({ action: `ai.${action}`, userInput });
       } catch (error) {
+        cleanupStreamListener();
         setLoading(false);
         setStreamId(null);
         setStreamingAssistantId(null);
@@ -678,6 +707,7 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
       aiSettings.enabled,
       appendAudit,
       buildMergedContext,
+      cleanupStreamListener,
       currentSessionId,
       effectivePanes,
       loadSessions,
@@ -705,10 +735,11 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
     if (!streamId) return;
     cancelledRef.current = true;
     void invoke("cancel_ai_chat_stream", { streamId }).catch(() => {});
+    cleanupStreamListener();
     setLoading(false);
     setStreamId(null);
     setStreamingAssistantId(null);
-  }, [streamId]);
+  }, [cleanupStreamListener, streamId]);
 
   const insertCommand = useCallback(
     (card: AICommandCard) => {
@@ -778,12 +809,21 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
   );
 
   const clearHistory = useCallback(async () => {
-    await invoke("clear_ai_history");
-    setMessages([]);
-    setCurrentSessionId(null);
-    setHistoryQuery("");
-    await loadSessions();
-  }, [loadSessions]);
+    if (loading) return;
+    setClearingHistory(true);
+    try {
+      await invoke("clear_ai_history");
+      setMessages([]);
+      setCurrentSessionId(null);
+      setHistoryQuery("");
+      setClearHistoryOpen(false);
+      await loadSessions();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setClearingHistory(false);
+    }
+  }, [loadSessions, loading]);
 
   const newChat = useCallback(() => {
     if (loading) return;
@@ -925,8 +965,8 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
             <Button
               size="xs"
               variant="ghost"
-              disabled={sessions.length === 0}
-              onClick={() => void clearHistory()}
+              disabled={sessions.length === 0 || loading || clearingHistory}
+              onClick={() => setClearHistoryOpen(true)}
             >
               {t("common.delete")}
             </Button>
@@ -1148,6 +1188,28 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
           </div>
         </div>
       </div>
+
+      <AlertDialog open={clearHistoryOpen} onOpenChange={setClearHistoryOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("ai.clearHistoryTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("ai.clearHistoryDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingHistory}>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={clearingHistory}
+              onClick={(event) => {
+                event.preventDefault();
+                void clearHistory();
+              }}
+            >
+              {t("common.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
