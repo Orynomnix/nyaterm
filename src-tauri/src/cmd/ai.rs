@@ -36,10 +36,7 @@ pub fn get_ai_sessions(app: tauri::AppHandle) -> AppResult<Vec<AiSession>> {
 }
 
 #[tauri::command]
-pub fn get_ai_messages(
-    app: tauri::AppHandle,
-    session_id: String,
-) -> AppResult<Vec<AiMessage>> {
+pub fn get_ai_messages(app: tauri::AppHandle, session_id: String) -> AppResult<Vec<AiMessage>> {
     ai::get_ai_messages(&app, session_id)
 }
 

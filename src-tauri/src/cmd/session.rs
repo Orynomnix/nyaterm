@@ -416,7 +416,10 @@ pub async fn respond_host_key_verify(
             "host_key.rejected".to_string()
         },
         message: if resolved {
-            format!("Host key verification response received (accepted={})", accepted)
+            format!(
+                "Host key verification response received (accepted={})",
+                accepted
+            )
         } else {
             "Host key verification response for missing request".to_string()
         },

@@ -120,18 +120,17 @@ fn get_master_key() -> AppResult<Key<Aes256Gcm>> {
 /// `old_password` is the previous master password (`None` = home-path-based).
 /// `new_password` is the new master password (`None` = revert to home-path-based).
 pub fn rewrap_master_key(old_password: Option<&str>, new_password: Option<&str>) -> AppResult<()> {
-    let master_key = if let Some(encoded) =
-        crate::storage::load_text_doc(crate::storage::TEXT_MASTER_KEY)?
-    {
-        let raw = B64
-            .decode(encoded.trim())
-            .map_err(|e| AppError::Crypto(format!("decode master.key: {e}")))?;
+    let master_key =
+        if let Some(encoded) = crate::storage::load_text_doc(crate::storage::TEXT_MASTER_KEY)? {
+            let raw = B64
+                .decode(encoded.trim())
+                .map_err(|e| AppError::Crypto(format!("decode master.key: {e}")))?;
 
-        let old_wrapping = derive_wrapping_key(old_password)?;
-        unwrap_master_key_bytes(&raw, &old_wrapping)?
-    } else {
-        Aes256Gcm::generate_key(OsRng)
-    };
+            let old_wrapping = derive_wrapping_key(old_password)?;
+            unwrap_master_key_bytes(&raw, &old_wrapping)?
+        } else {
+            Aes256Gcm::generate_key(OsRng)
+        };
 
     let new_wrapping = derive_wrapping_key(new_password)?;
     write_wrapped_master_key(&master_key, &new_wrapping)?;

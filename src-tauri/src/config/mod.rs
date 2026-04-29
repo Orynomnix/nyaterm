@@ -44,14 +44,13 @@ pub use quick_command::{
 };
 #[allow(unused_imports)]
 pub use settings::{
-    ai_model_id_for_credential, ai_model_id_for_provider, decrypt_ai_settings,
-    encrypt_ai_settings, load_app_settings, mask_ai_settings, merge_masked_ai_settings,
-    normalize_ai_settings, save_app_settings, ActionLinksMatcherSettings, AiCustomActionConfig,
-    AiMode, AiModelConfigItem, AiModelSource, AiProviderCredential, AiProviderKind,
-    AiProviderProfile, AiRiskLevel, AiSettings, AppSettings, AppearanceSettings,
-    DiagnosticsLogLevel, DiagnosticsSettings, GeneralSettings, InteractionSettings,
-    KeywordHighlightRule, ProxySettings, SearchEngine, SearchSettings, SecuritySettings,
-    TerminalSettings, TransferSettings, TranslationSettings,
+    ai_model_id_for_credential, ai_model_id_for_provider, decrypt_ai_settings, encrypt_ai_settings,
+    load_app_settings, mask_ai_settings, merge_masked_ai_settings, normalize_ai_settings,
+    save_app_settings, ActionLinksMatcherSettings, AiCustomActionConfig, AiMode, AiModelConfigItem,
+    AiModelSource, AiProviderCredential, AiProviderKind, AiProviderProfile, AiRiskLevel,
+    AiSettings, AppSettings, AppearanceSettings, DiagnosticsLogLevel, DiagnosticsSettings,
+    GeneralSettings, InteractionSettings, KeywordHighlightRule, ProxySettings, SearchEngine,
+    SearchSettings, SecuritySettings, TerminalSettings, TransferSettings, TranslationSettings,
 };
 #[allow(unused_imports)]
 pub use tunnel::{load_tunnels, save_tunnels, TunnelConfig, TunnelsConfig};

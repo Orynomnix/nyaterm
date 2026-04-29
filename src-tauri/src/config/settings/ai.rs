@@ -376,7 +376,10 @@ fn default_file_ai_actions() -> Vec<AiCustomActionConfig> {
 impl Default for AiSettings {
     fn default() -> Self {
         let models = default_models();
-        let default_model_id = models.iter().find(|item| item.enabled).map(|item| item.id.clone());
+        let default_model_id = models
+            .iter()
+            .find(|item| item.enabled)
+            .map(|item| item.id.clone());
 
         Self {
             schema_version: 2,
@@ -499,11 +502,12 @@ pub fn normalize_ai_settings(settings: &mut AiSettings) -> bool {
         }
     }
 
-    if settings
-        .default_model_id
-        .as_deref()
-        .is_none_or(|id| !settings.models.iter().any(|model| model.enabled && model.id == id))
-    {
+    if settings.default_model_id.as_deref().is_none_or(|id| {
+        !settings
+            .models
+            .iter()
+            .any(|model| model.enabled && model.id == id)
+    }) {
         let active_model = settings
             .provider_profiles
             .iter()
@@ -619,7 +623,10 @@ mod tests {
         assert!(normalize_ai_settings(&mut settings));
         assert_eq!(settings.schema_version, 2);
         assert!(!settings.provider_credentials.is_empty());
-        assert!(settings.models.iter().any(|model| model.name == "deepseek-chat"));
+        assert!(settings
+            .models
+            .iter()
+            .any(|model| model.name == "deepseek-chat"));
         assert_eq!(
             settings.default_model_id.as_deref(),
             Some("deepseek:deepseek-chat")

@@ -172,8 +172,8 @@ fn check_known_host_entry(
 }
 
 fn replace_known_host_entry(host_identifier: &str, new_entry: &str) -> AppResult<()> {
-    let content = crate::storage::load_text_doc(crate::storage::TEXT_KNOWN_HOSTS)?
-        .unwrap_or_default();
+    let content =
+        crate::storage::load_text_doc(crate::storage::TEXT_KNOWN_HOSTS)?.unwrap_or_default();
     let mut lines: Vec<&str> = content
         .lines()
         .filter(|line| {
@@ -182,10 +182,7 @@ fn replace_known_host_entry(host_identifier: &str, new_entry: &str) -> AppResult
         })
         .collect();
     lines.push(new_entry);
-    crate::storage::save_text_doc(
-        crate::storage::TEXT_KNOWN_HOSTS,
-        &(lines.join("\n") + "\n"),
-    )
+    crate::storage::save_text_doc(crate::storage::TEXT_KNOWN_HOSTS, &(lines.join("\n") + "\n"))
 }
 
 fn preferred_algorithms() -> Preferred {
@@ -357,9 +354,7 @@ impl client::Handler for SshHandler {
                 let verify_mgr = self
                     .app
                     .try_state::<Arc<HostKeyVerifyManager>>()
-                    .ok_or_else(|| {
-                        russh::Error::Keys(russh::keys::Error::CouldNotReadKey)
-                    })?;
+                    .ok_or_else(|| russh::Error::Keys(russh::keys::Error::CouldNotReadKey))?;
 
                 let request_id = uuid::Uuid::new_v4().to_string();
                 let rx = verify_mgr.register(request_id.clone()).await;
@@ -384,23 +379,19 @@ impl client::Handler for SshHandler {
 
                 // 120s timeout prevents indefinite hang if the frontend
                 // isn't ready (e.g. startup reconnect before listeners register).
-                let accepted = match tokio::time::timeout(
-                    std::time::Duration::from_secs(120),
-                    rx,
-                )
-                .await
-                {
-                    Ok(Ok(v)) => v,
-                    _ => {
-                        // Clean up the dangling sender so it doesn't leak.
-                        let _ = verify_mgr.respond(&request_id, false).await;
-                        tracing::warn!(
-                            host = %self.host, port = self.port,
-                            "Host key verification timed out or channel dropped, rejecting"
-                        );
-                        false
-                    }
-                };
+                let accepted =
+                    match tokio::time::timeout(std::time::Duration::from_secs(120), rx).await {
+                        Ok(Ok(v)) => v,
+                        _ => {
+                            // Clean up the dangling sender so it doesn't leak.
+                            let _ = verify_mgr.respond(&request_id, false).await;
+                            tracing::warn!(
+                                host = %self.host, port = self.port,
+                                "Host key verification timed out or channel dropped, rejecting"
+                            );
+                            false
+                        }
+                    };
 
                 if accepted {
                     tracing::info!(
