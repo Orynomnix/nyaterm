@@ -1188,6 +1188,7 @@
     "actionLinkKind_hostPort": "Host:Port",
     "actionLinkKind_ip": "IPv4",
     "actionLinkKind_url": "URL",
+    "aiExecuting": "AI is executing a command...",
     "click": "Click",
     "connectionFailed": "Connection failed",
     "largeOutputProtectionActive": "Large-output protection is active",
