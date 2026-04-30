@@ -1,0 +1,18 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dragonfly",
+        "width": 1280,
+        "height": 800,
+        "transparent": false,
+        "visible": false,
+        "decorations": true,
+        "titleBarStyle": "overlay",
+        "hiddenTitle": true,
+        "create": false
+      }
+    ]
+  }
+}
