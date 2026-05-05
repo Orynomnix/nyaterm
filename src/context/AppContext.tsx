@@ -118,6 +118,7 @@ interface AppContextType {
   savedConnections: SavedConnection[];
   savedGroups: Group[];
   refreshConnections: () => Promise<void>;
+  recordRecentConnection: (connectionId: string) => void;
 
   // Dialogs
   showNewSession: boolean;
@@ -262,6 +263,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     show_remote_stats: false,
     remote_stats_interval: 3,
     saved_connections_sort_mode: "default",
+    recent_connection_ids: [],
     transfer_height: 180,
     activity_bar_layout: {
       left_top: ["fileExplorer", "network", "securityAuth"],
@@ -278,6 +280,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     },
   },
 };
+
+const RECENT_CONNECTION_LIMIT = 10;
 
 function areSettingsValuesEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -496,6 +500,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     },
     [updateAppSettings],
+  );
+
+  const recordRecentConnection = useCallback(
+    (connectionId: string) => {
+      if (!connectionId) return;
+      updateUi((prev) => ({
+        recent_connection_ids: [
+          connectionId,
+          ...(prev.recent_connection_ids ?? []).filter((id) => id !== connectionId),
+        ].slice(0, RECENT_CONNECTION_LIMIT),
+      }));
+    },
+    [updateUi],
   );
 
   // 3. Load Connections
@@ -1029,6 +1046,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedConnections,
       savedGroups,
       refreshConnections,
+      recordRecentConnection,
       showNewSession,
       setShowNewSession,
       editingConnection,
@@ -1070,6 +1088,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedConnections,
       savedGroups,
       refreshConnections,
+      recordRecentConnection,
       showNewSession,
       editingConnection,
       showSettingsDialog,

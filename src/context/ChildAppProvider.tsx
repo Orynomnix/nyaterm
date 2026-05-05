@@ -110,6 +110,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     show_remote_stats: false,
     remote_stats_interval: 3,
     saved_connections_sort_mode: "default",
+    recent_connection_ids: [],
     transfer_height: 180,
     activity_bar_layout: {
       left_top: ["fileExplorer", "network", "securityAuth"],
@@ -245,6 +246,7 @@ export function ChildAppProvider({ children }: { children: ReactNode }) {
       savedConnections: emptyConnections,
       savedGroups: emptyGroups,
       refreshConnections: noopAsync,
+      recordRecentConnection: noop,
       showNewSession: false,
       setShowNewSession: noop,
       editingConnection: undefined,

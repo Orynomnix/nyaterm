@@ -216,6 +216,8 @@ pub struct UiConfig {
     pub remote_stats_interval: u32,
     #[serde(default = "default_sort_mode")]
     pub saved_connections_sort_mode: String,
+    #[serde(default)]
+    pub recent_connection_ids: Vec<String>,
     #[serde(default = "default_transfer_height")]
     pub transfer_height: f64,
     #[serde(default)]
@@ -287,6 +289,7 @@ impl Default for UiConfig {
             show_remote_stats: false,
             remote_stats_interval: default_remote_stats_interval(),
             saved_connections_sort_mode: default_sort_mode(),
+            recent_connection_ids: vec![],
             transfer_height: default_transfer_height(),
             activity_bar_layout: ActivityBarLayout::default(),
         }

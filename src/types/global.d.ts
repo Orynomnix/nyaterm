@@ -257,6 +257,7 @@ export interface UiConfig {
   show_remote_stats: boolean;
   remote_stats_interval: number;
   saved_connections_sort_mode?: string;
+  recent_connection_ids: string[];
   transfer_height: number;
   activity_bar_layout: ActivityBarLayout;
 }

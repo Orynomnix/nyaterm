@@ -63,8 +63,35 @@ import type {
   PaneSplitDirection,
   SavedConnection,
   SessionPane,
+  SessionType,
   Tab,
 } from "./types/global";
+
+const CONNECTION_SESSION_TYPES: Record<SavedConnection["type"], SessionType> = {
+  ssh: "SSH",
+  local_terminal: "Local",
+  telnet: "Telnet",
+  serial: "Serial",
+};
+
+function getConnectionSessionType(
+  connection: Pick<SavedConnection, "type"> | null | undefined,
+): SessionType {
+  return connection ? CONNECTION_SESSION_TYPES[connection.type] : "SSH";
+}
+
+async function createSessionForConnection(connection: Pick<SavedConnection, "id" | "type">) {
+  switch (connection.type) {
+    case "local_terminal":
+      return invoke<string>("create_local_session", { connectionId: connection.id });
+    case "telnet":
+      return invoke<string>("create_telnet_session", { connectionId: connection.id });
+    case "serial":
+      return invoke<string>("create_serial_session", { connectionId: connection.id });
+    default:
+      return invoke<string>("create_ssh_session", { connectionId: connection.id });
+  }
+}
 
 /** Root layout: header, activity bars, sidebars, terminal area, dialogs. */
 function App() {
@@ -89,6 +116,7 @@ function App() {
     appSettings,
     closeTabs,
     savedConnections,
+    recordRecentConnection,
     setSyncGroups,
     broadcastToAll,
     setBroadcastToAll,
@@ -241,13 +269,7 @@ function App() {
           const conns = await invoke<SavedConnection[]>("get_saved_connections");
           const conn = conns.find((c) => c.id === connectionId);
           const connName = conn?.name ?? connectionId;
-          const typeMap: Record<string, "SSH" | "Local" | "Telnet" | "Serial"> = {
-            ssh: "SSH",
-            local_terminal: "Local",
-            telnet: "Telnet",
-            serial: "Serial",
-          };
-          const sessionType = typeMap[conn?.type ?? "ssh"] ?? "SSH";
+          const sessionType = getConnectionSessionType(conn);
           const sourceTab = sourceTabId
             ? (tabsRef.current.find((item) => item.id === sourceTabId) ?? null)
             : null;
@@ -309,6 +331,7 @@ function App() {
             } else {
               updateTabSession(tabId, sessionId);
             }
+            recordRecentConnection(connectionId);
           } catch (error) {
             const errorMessage = getErrorMessage(error);
             if (paneId) {
@@ -340,6 +363,7 @@ function App() {
     markPaneConnecting,
     markPaneConnectionFailed,
     markTabConnectionFailed,
+    recordRecentConnection,
     setActivePane,
     setActiveTabId,
     updatePaneSession,
@@ -451,6 +475,67 @@ function App() {
       });
     },
     [handleSelectLeafTab, terminalWindows],
+  );
+
+  const handleConnectConnectionFromLeaf = useCallback(
+    async (leafId: string, connection: SavedConnection) => {
+      const targetLeaf = terminalWindows
+        ? findTerminalWindowLeafById(terminalWindows, leafId)
+        : null;
+      const anchorTabId =
+        targetLeaf?.activeTabId ?? targetLeaf?.tabIds[targetLeaf.tabIds.length - 1] ?? null;
+
+      if (targetLeaf?.activeTabId) {
+        handleSelectLeafTab(leafId, targetLeaf.activeTabId);
+      }
+
+      const tabId = addPendingTab(
+        connection.name,
+        getConnectionSessionType(connection),
+        connection.id,
+        undefined,
+        anchorTabId ? { afterTabId: anchorTabId } : undefined,
+      );
+
+      if (targetLeaf) {
+        setTerminalWindows((current) =>
+          current
+            ? insertTabIntoLeaf(current, leafId, tabId, {
+                afterTabId: anchorTabId,
+                activeTabId: tabId,
+              })
+            : current,
+        );
+      }
+
+      try {
+        const sessionId = await createSessionForConnection(connection);
+        updateTabSession(tabId, sessionId);
+        recordRecentConnection(connection.id);
+      } catch (error) {
+        const errorMessage = getErrorMessage(error);
+        logger.error({
+          domain: "session.lifecycle",
+          event: "connection.open_failed",
+          message: "Connection failed from tab menu",
+          ids: { connection_id: connection.id },
+          error,
+        });
+        markTabConnectionFailed(tabId, errorMessage);
+        maybePromptConnectionEdit(connection.id, errorMessage, { sourceTabId: tabId });
+        toast.error(t("savedConnections.connectionFailed", { error: errorMessage }));
+      }
+    },
+    [
+      addPendingTab,
+      handleSelectLeafTab,
+      markTabConnectionFailed,
+      maybePromptConnectionEdit,
+      recordRecentConnection,
+      t,
+      terminalWindows,
+      updateTabSession,
+    ],
   );
 
   const handleReorderTabsInLeaf = useCallback((_: string, fromTabId: string, toIndex: number) => {
@@ -785,6 +870,9 @@ function App() {
         try {
           const sessionId = await createSessionForPane(pane);
           updateTabSession(tabId, sessionId);
+          if (pane.connectionId) {
+            recordRecentConnection(pane.connectionId);
+          }
         } catch (error) {
           const errorMessage = getErrorMessage(error);
           logger.error({
@@ -813,6 +901,7 @@ function App() {
       createSessionForPane,
       markTabConnectionFailed,
       maybePromptConnectionEdit,
+      recordRecentConnection,
       t,
       updateTabSession,
     ],
@@ -833,6 +922,9 @@ function App() {
 
         const newSessionId = await createSessionForPane(pane);
         updatePaneSession(tab.id, pane.id, newSessionId);
+        if (pane.connectionId) {
+          recordRecentConnection(pane.connectionId);
+        }
         toast.success(t("tabCtx.reconnectSuccess"));
       } catch (error) {
         const errorMessage = getErrorMessage(error);
@@ -854,6 +946,7 @@ function App() {
       closePaneBackendSession,
       createSessionForPane,
       maybePromptConnectionEdit,
+      recordRecentConnection,
       t,
       updatePaneSession,
     ],
@@ -875,6 +968,9 @@ function App() {
 
         const newSessionId = await createSessionForPane(pane);
         updatePaneSession(tab.id, pane.id, newSessionId);
+        if (pane.connectionId) {
+          recordRecentConnection(pane.connectionId);
+        }
         toast.success(t("tabCtx.reconnectSuccess"));
       } catch (error) {
         const errorMessage = getErrorMessage(error);
@@ -896,6 +992,7 @@ function App() {
       closePaneBackendSession,
       createSessionForPane,
       maybePromptConnectionEdit,
+      recordRecentConnection,
       t,
       tabs,
       updatePaneSession,
@@ -938,6 +1035,9 @@ function App() {
         if (newTabId) {
           updateTabSession(newTabId, sessionId);
         }
+        if (pane.connectionId) {
+          recordRecentConnection(pane.connectionId);
+        }
         window.dispatchEvent(new CustomEvent("nyaterm:refresh-terminals"));
       } catch (error) {
         const errorMessage = getErrorMessage(error);
@@ -964,6 +1064,7 @@ function App() {
       createSessionForPane,
       markTabConnectionFailed,
       maybePromptConnectionEdit,
+      recordRecentConnection,
       setActiveTabId,
       t,
       terminalWindows,
@@ -1001,6 +1102,9 @@ function App() {
 
         const newSessionId = await createSessionForPane(pane);
         updatePaneSession(tabId, paneId, newSessionId);
+        if (pane.connectionId) {
+          recordRecentConnection(pane.connectionId);
+        }
       } catch (error) {
         const errorMessage = getErrorMessage(error);
         logger.error({
@@ -1022,6 +1126,7 @@ function App() {
       createSessionForPane,
       markPaneConnectionFailed,
       maybePromptConnectionEdit,
+      recordRecentConnection,
       tabs,
       updatePaneSession,
     ],
@@ -1428,6 +1533,7 @@ function App() {
           unreadTabIds,
           onSelectTab: handleSelectLeafTab,
           onAddTab: handleAddTabFromLeaf,
+          onConnectConnection: handleConnectConnectionFromLeaf,
           onTabClose: handleCloseWorkspaceTab,
           onDuplicateSession: handleDuplicateSession,
           onReconnectSession: handleReconnectSession,

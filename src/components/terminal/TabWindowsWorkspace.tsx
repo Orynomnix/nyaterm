@@ -6,7 +6,7 @@ import {
   type TerminalWindowNode,
   type TerminalWindowSplit,
 } from "@/lib/tabWindows";
-import type { PaneSplitDirection, Tab } from "@/types/global";
+import type { PaneSplitDirection, SavedConnection, Tab } from "@/types/global";
 import PaneWorkspace from "./PaneWorkspace";
 import TabBar from "./TabBar";
 
@@ -17,6 +17,7 @@ interface TabWindowsWorkspaceProps {
   unreadTabIds?: Set<string>;
   onSelectTab: (leafId: string, tabId: string) => void;
   onAddTab: (leafId: string) => void;
+  onConnectConnection: (leafId: string, connection: SavedConnection) => void | Promise<void>;
   onTabClose: (tab: Tab) => void | Promise<void>;
   onDuplicateSession: (tab: Tab) => void | Promise<void>;
   onReconnectSession: (tab: Tab) => void | Promise<void>;
@@ -41,6 +42,7 @@ function SplitWindow({
   unreadTabIds,
   onSelectTab,
   onAddTab,
+  onConnectConnection,
   onTabClose,
   onDuplicateSession,
   onReconnectSession,
@@ -86,6 +88,7 @@ function SplitWindow({
           unreadTabIds={unreadTabIds}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
+          onConnectConnection={onConnectConnection}
           onTabClose={onTabClose}
           onDuplicateSession={onDuplicateSession}
           onReconnectSession={onReconnectSession}
@@ -112,6 +115,7 @@ function SplitWindow({
           unreadTabIds={unreadTabIds}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
+          onConnectConnection={onConnectConnection}
           onTabClose={onTabClose}
           onDuplicateSession={onDuplicateSession}
           onReconnectSession={onReconnectSession}
@@ -140,6 +144,7 @@ function LeafWindow({
   unreadTabIds,
   onSelectTab,
   onAddTab,
+  onConnectConnection,
   onTabClose,
   onDuplicateSession,
   onReconnectSession,
@@ -189,6 +194,7 @@ function LeafWindow({
         onTabChange={(tabId) => onSelectTab(leaf.id, tabId)}
         onTabClose={onTabClose}
         onAddTab={() => onAddTab(leaf.id)}
+        onConnectConnection={(connection) => onConnectConnection(leaf.id, connection)}
         onDuplicateSession={onDuplicateSession}
         onReconnectSession={onReconnectSession}
         onSplitSession={onSplitSession}
@@ -227,6 +233,7 @@ function WindowNodeView({
   unreadTabIds,
   onSelectTab,
   onAddTab,
+  onConnectConnection,
   onTabClose,
   onDuplicateSession,
   onReconnectSession,
@@ -254,6 +261,7 @@ function WindowNodeView({
         unreadTabIds={unreadTabIds}
         onSelectTab={onSelectTab}
         onAddTab={onAddTab}
+        onConnectConnection={onConnectConnection}
         onTabClose={onTabClose}
         onDuplicateSession={onDuplicateSession}
         onReconnectSession={onReconnectSession}
@@ -281,6 +289,7 @@ function WindowNodeView({
       unreadTabIds={unreadTabIds}
       onSelectTab={onSelectTab}
       onAddTab={onAddTab}
+      onConnectConnection={onConnectConnection}
       onTabClose={onTabClose}
       onDuplicateSession={onDuplicateSession}
       onReconnectSession={onReconnectSession}

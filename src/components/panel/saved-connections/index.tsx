@@ -97,6 +97,7 @@ export default function SavedConnections({
     markTabConnectionFailed,
     appSettings,
     updateUi,
+    recordRecentConnection,
   } = useApp();
   const { t } = useTranslation();
   const { handleExport, passwordAlert } = useConfigTransfer();
@@ -362,6 +363,7 @@ export default function SavedConnections({
           break;
       }
       updateTabSession(tabId, sessionId);
+      recordRecentConnection(conn.id);
     } catch (e) {
       const errorMessage = getErrorMessage(e);
       logger.error({
