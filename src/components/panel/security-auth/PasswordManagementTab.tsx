@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MdAdd, MdDelete, MdEdit } from "react-icons/md";
@@ -12,8 +13,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { invoke } from "@/lib/invoke";
 import type { SavedPassword } from "@/types/global";
+import { CopyButton } from "./CopyButton";
 import { SecretUnlockFooter } from "./SecretUnlockFooter";
 
 interface PasswordManagementTabProps {
@@ -51,6 +54,8 @@ function PasswordEditor({
   saveDisabled,
   t,
 }: PasswordEditorProps) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <div className="space-y-2.5 border-b bg-accent/30 p-3">
       <Input
@@ -60,20 +65,35 @@ function PasswordEditor({
         onChange={(event) => onNameChange(event.target.value)}
         autoFocus
       />
-      <Input
-        type="password"
-        placeholder={
-          passwordLoading
-            ? t("common.loading")
-            : isEditing && editHasPassword
-              ? t("passwordManager.passwordUnchanged")
-              : t("passwordManager.passwordPlaceholder")
-        }
-        className="h-8 text-xs"
-        value={editPassword}
-        onChange={(event) => onPasswordChange(event.target.value)}
-        disabled={passwordLoading}
-      />
+      <div className="relative">
+        <Input
+          type={showPassword ? "text" : "password"}
+          placeholder={
+            passwordLoading
+              ? t("common.loading")
+              : isEditing && editHasPassword
+                ? t("passwordManager.passwordUnchanged")
+                : t("passwordManager.passwordPlaceholder")
+          }
+          className="h-8 pr-8 text-xs"
+          value={editPassword}
+          onChange={(event) => onPasswordChange(event.target.value)}
+          disabled={passwordLoading}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute top-0.5 right-0.5 h-7 w-7 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowPassword((v) => !v)}
+          disabled={passwordLoading}
+          aria-label={
+            showPassword ? t("passwordManager.hidePassword") : t("passwordManager.showPassword")
+          }
+        >
+          {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
       <div className="flex justify-end gap-1.5 pt-0.5">
         <Button variant="outline" size="sm" className="h-7 px-3 text-xs" onClick={onCancel}>
           {t("common.cancel")}
@@ -95,7 +115,9 @@ export function PasswordManagementTab({
 }: PasswordManagementTabProps) {
   const { t } = useTranslation();
   const [passwords, setPasswords] = useState<SavedPassword[]>([]);
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, string>>({});
+  const [passwordCache, setPasswordCache] = useState<Record<string, string>>({});
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [revealLoadingIds, setRevealLoadingIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");
@@ -121,30 +143,46 @@ export function PasswordManagementTab({
 
   useEffect(() => {
     if (!secretsUnlocked) {
-      setVisiblePasswords({});
-      return;
+      setPasswordCache({});
+      setRevealedIds(new Set());
+      setRevealLoadingIds(new Set());
     }
+  }, [secretsUnlocked]);
 
-    let cancelled = false;
-    Promise.all(
-      passwords.map(async (entry) => {
-        if (!entry.has_password) return [entry.id, ""] as const;
-        try {
-          const value = await invoke<string | null>("get_saved_password_value", { id: entry.id });
-          return [entry.id, value ?? ""] as const;
-        } catch {
-          return [entry.id, ""] as const;
-        }
-      }),
-    ).then((values) => {
-      if (cancelled) return;
-      setVisiblePasswords(Object.fromEntries(values));
-    });
+  const handleToggleReveal = useCallback(
+    async (id: string) => {
+      if (revealedIds.has(id)) {
+        setRevealedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [passwords, secretsUnlocked]);
+      if (id in passwordCache) {
+        setRevealedIds((prev) => new Set(prev).add(id));
+        return;
+      }
+
+      setRevealLoadingIds((prev) => new Set(prev).add(id));
+      try {
+        const value = await invoke<string | null>("get_saved_password_value", { id });
+        setPasswordCache((prev) => ({ ...prev, [id]: value ?? "" }));
+        setRevealedIds((prev) => new Set(prev).add(id));
+      } catch {
+        setPasswordCache((prev) => ({ ...prev, [id]: "" }));
+        setRevealedIds((prev) => new Set(prev).add(id));
+      } finally {
+        setRevealLoadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [revealedIds, passwordCache],
+  );
 
   const resetEdit = () => {
     editRequestRef.current += 1;
@@ -214,6 +252,8 @@ export function PasswordManagementTab({
     setDeletingEntry(null);
   };
 
+  const lockedHint = !secretsUnlocked ? t("secretUnlock.lockedActionHint") : undefined;
+
   const rootClassName = showSecretUnlockFooter ? "flex min-h-0 flex-1 flex-col" : "space-y-6";
   const contentClassName = showSecretUnlockFooter
     ? "min-h-0 flex-1 overflow-y-auto px-3 pb-3 terminal-scroll"
@@ -270,34 +310,94 @@ export function PasswordManagementTab({
                     t={t}
                   />
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-2.5 border-b last:border-0 hover:bg-accent transition-colors">
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 border-b last:border-0 hover:bg-accent transition-colors">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs">{entry.name}</div>
-                      {secretsUnlocked ? (
-                        <div className="mt-1 truncate font-mono text-[0.6875rem] text-muted-foreground">
-                          {visiblePasswords[entry.id] || t("secretUnlock.emptySecret")}
+                      {revealedIds.has(entry.id) ? (
+                        <div className="mt-1 flex items-start gap-0.5">
+                          <span className="min-w-0 select-text break-all font-mono text-[0.6875rem] text-muted-foreground">
+                            {passwordCache[entry.id] || t("secretUnlock.emptySecret")}
+                          </span>
+                          {passwordCache[entry.id] ? (
+                            <CopyButton value={passwordCache[entry.id]} />
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => {
-                        void handleEdit(entry);
-                      }}
-                      disabled={editingId !== null}
-                    >
-                      <MdEdit className="text-base" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-destructive hover:bg-destructive/10"
-                      onClick={() => setDeletingEntry(entry)}
-                      disabled={editingId !== null}
-                    >
-                      <MdDelete className="text-base" />
-                    </Button>
+                    <div className="flex shrink-0 items-center">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => void handleToggleReveal(entry.id)}
+                              disabled={
+                                !secretsUnlocked ||
+                                editingId !== null ||
+                                revealLoadingIds.has(entry.id)
+                              }
+                              aria-label={
+                                revealedIds.has(entry.id)
+                                  ? t("passwordManager.hidePassword")
+                                  : t("passwordManager.showPassword")
+                              }
+                            >
+                              {revealedIds.has(entry.id) ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {lockedHint ??
+                            (revealedIds.has(entry.id)
+                              ? t("passwordManager.hidePassword")
+                              : t("passwordManager.showPassword"))}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => {
+                                void handleEdit(entry);
+                              }}
+                              disabled={!secretsUnlocked || editingId !== null}
+                              aria-label={t("common.edit")}
+                            >
+                              <MdEdit className="text-base" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {lockedHint ?? t("common.edit")}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-destructive hover:bg-destructive/10"
+                              onClick={() => setDeletingEntry(entry)}
+                              disabled={!secretsUnlocked || editingId !== null}
+                              aria-label={t("common.delete")}
+                            >
+                              <MdDelete className="text-base" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {lockedHint ?? t("common.delete")}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
                 )}
               </div>
