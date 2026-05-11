@@ -26,6 +26,11 @@ dist-ssr
 *.sln
 *.sw?
 
+# IDE
+.vscode
+.idea
+
+# AI
 .cursor
 .claude
 .codex
