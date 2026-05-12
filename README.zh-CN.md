@@ -15,17 +15,11 @@
 </p>
 
 <p align="center">
-  <a href="https://nyaterm.app">
-    <img alt="版本" src="https://img.shields.io/github/v/release/nyakang/nyaterm?style=flat-square&logo=github&color=0EA5E9&labelColor=334155&label=版本">
-  </a>
+  <a href="https://nyaterm.app"><img alt="Version" src="https://img.shields.io/github/v/release/nyakang/nyaterm?style=flat-square&logo=github&color=0EA5E9&labelColor=334155&label=版本"></a>
   &nbsp;
-  <a href="#">
-    <img alt="支持平台" src="https://img.shields.io/badge/支持平台-Windows%20%7C%20macOS%20%7C%20Linux-0EA5E9?style=flat-square&logo=linux&labelColor=334155">
-  </a>
+  <a href="#"><img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0EA5E9?style=flat-square&logo=linux&labelColor=334155&label=支持平台"></a>
   &nbsp;
-  <a href="LICENSE">
-    <img alt="协议" src="https://img.shields.io/badge/协议-MIT-0EA5E9?style=flat-square&logo=readthedocs&labelColor=334155">
-  </a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-0EA5E9?style=flat-square&logo=readthedocs&labelColor=334155&label=协议"></a>
 </p>
 
 <p align="center">
