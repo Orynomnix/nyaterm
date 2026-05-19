@@ -1,6 +1,9 @@
 /** Type of terminal session. */
 export type SessionType = "SSH" | "Local" | "Telnet" | "Serial";
 
+/** AI Agent command execution wrapper profile. */
+export type AIExecutionProfile = "auto" | "posix" | "powershell" | "cmd" | "send_only" | "disabled";
+
 /** A group of sessions whose terminal input is broadcast to all members. */
 export interface SyncGroup {
   id: string;
@@ -24,6 +27,7 @@ export interface SessionInfo {
   name: string;
   session_type: SessionType;
   connected: boolean;
+  ai_execution_profile: AIExecutionProfile;
   /** True when backend terminal-path tracking is available for this session. */
   injection_active: boolean;
 }
@@ -167,6 +171,8 @@ export interface SavedConnection {
   /** Local terminal fields (present when type === "local_terminal"). */
   shell_path?: string;
   working_dir?: string;
+  /** AI Agent execution profile for local/telnet/serial connections. */
+  ai_execution_profile?: AIExecutionProfile;
   /** Serial fields (present when type === "serial"). */
   port_name?: string;
   baud_rate?: number;

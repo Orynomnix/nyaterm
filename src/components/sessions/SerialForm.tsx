@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { AIExecutionProfile } from "@/types/global";
+import { AiExecutionProfileField } from "./AiExecutionProfileField";
 
 interface SerialPortOption {
   unavailable?: boolean;
@@ -28,6 +30,8 @@ interface SerialFormProps {
   setParity: (v: string) => void;
   stopBits: string;
   setStopBits: (v: string) => void;
+  aiExecutionProfile: AIExecutionProfile;
+  setAiExecutionProfile: (v: AIExecutionProfile) => void;
 }
 
 function RequiredMark() {
@@ -49,6 +53,8 @@ export function SerialForm({
   setParity,
   stopBits,
   setStopBits,
+  aiExecutionProfile,
+  setAiExecutionProfile,
 }: SerialFormProps) {
   const { t } = useTranslation();
 
@@ -172,6 +178,12 @@ export function SerialForm({
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <AiExecutionProfileField
+          value={aiExecutionProfile}
+          onChange={setAiExecutionProfile}
+        />
       </div>
     </div>
   );

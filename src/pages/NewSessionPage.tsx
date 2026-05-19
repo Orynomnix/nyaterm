@@ -22,7 +22,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { invoke } from "@/lib/invoke";
-import type { Group, OtpEntry, ProxyConfig, SavedConnection } from "@/types/global";
+import type {
+  AIExecutionProfile,
+  Group,
+  OtpEntry,
+  ProxyConfig,
+  SavedConnection,
+} from "@/types/global";
 
 const isValidPort = (value: number) => Number.isInteger(value) && value >= 1 && value <= 65535;
 
@@ -85,6 +91,12 @@ export default function NewSessionPage() {
   // Local Terminal States
   const [shellPath, setShellPath] = useState("powershell.exe");
   const [workingDir, setWorkingDir] = useState("");
+  const [localAiExecutionProfile, setLocalAiExecutionProfile] =
+    useState<AIExecutionProfile>("auto");
+  const [telnetAiExecutionProfile, setTelnetAiExecutionProfile] =
+    useState<AIExecutionProfile>("auto");
+  const [serialAiExecutionProfile, setSerialAiExecutionProfile] =
+    useState<AIExecutionProfile>("auto");
 
   useEffect(() => {
     invoke<Group[]>("get_groups")
@@ -137,15 +149,18 @@ export default function NewSessionPage() {
         } else if (found.type === "telnet") {
           setHost(found.host || "");
           setTelnetPort(found.port || 23);
+          setTelnetAiExecutionProfile(found.ai_execution_profile || "auto");
         } else if (found.type === "local_terminal") {
           setShellPath(found.shell_path || "powershell.exe");
           setWorkingDir(found.working_dir || "");
+          setLocalAiExecutionProfile(found.ai_execution_profile || "auto");
         } else if (found.type === "serial") {
           setSerialPortName(found.port_name || "");
           setBaudRate(String(found.baud_rate || 115200));
           setDataBits(String(found.data_bits || 8));
           setParity(found.parity || "none");
           setStopBits(found.stop_bits || "1");
+          setSerialAiExecutionProfile(found.ai_execution_profile || "auto");
         }
       })
       .catch(() => {});
@@ -202,6 +217,9 @@ export default function NewSessionPage() {
     setStopBits("1");
     setShellPath("powershell.exe");
     setWorkingDir("");
+    setLocalAiExecutionProfile("auto");
+    setTelnetAiExecutionProfile("auto");
+    setSerialAiExecutionProfile("auto");
     setShowIconPicker(false);
     setError("");
     setConnecting(false);
@@ -371,6 +389,14 @@ export default function NewSessionPage() {
             : currentTab === "telnet"
               ? "telnet"
               : "serial";
+      const aiExecutionProfile =
+        currentTab === "local"
+          ? localAiExecutionProfile
+          : currentTab === "telnet"
+            ? telnetAiExecutionProfile
+            : currentTab === "serial"
+              ? serialAiExecutionProfile
+              : undefined;
       const network =
         currentTab === "ssh"
           ? (() => {
@@ -423,9 +449,15 @@ export default function NewSessionPage() {
               network,
             }
           : {}),
-        ...(currentTab === "telnet" ? { host: normalizedHost, port: telnetPort } : {}),
+        ...(currentTab === "telnet"
+          ? { host: normalizedHost, port: telnetPort, ai_execution_profile: aiExecutionProfile }
+          : {}),
         ...(currentTab === "local"
-          ? { shell_path: normalizedShellPath, working_dir: normalizedWorkingDir || undefined }
+          ? {
+              shell_path: normalizedShellPath,
+              working_dir: normalizedWorkingDir || undefined,
+              ai_execution_profile: aiExecutionProfile,
+            }
           : {}),
         ...(currentTab === "serial"
           ? {
@@ -434,6 +466,7 @@ export default function NewSessionPage() {
               data_bits: Number(dataBits),
               parity,
               stop_bits: stopBits,
+              ai_execution_profile: aiExecutionProfile,
             }
           : {}),
       };
@@ -734,11 +767,20 @@ export default function NewSessionPage() {
               setShellPath={setShellPath}
               workingDir={workingDir}
               setWorkingDir={setWorkingDir}
+              aiExecutionProfile={localAiExecutionProfile}
+              setAiExecutionProfile={setLocalAiExecutionProfile}
             />
           </TabsContent>
 
           <TabsContent value="telnet" className="space-y-3 m-0 border-0 outline-none w-full">
-            <TelnetForm host={host} setHost={setHost} port={telnetPort} setPort={setTelnetPort} />
+            <TelnetForm
+              host={host}
+              setHost={setHost}
+              port={telnetPort}
+              setPort={setTelnetPort}
+              aiExecutionProfile={telnetAiExecutionProfile}
+              setAiExecutionProfile={setTelnetAiExecutionProfile}
+            />
           </TabsContent>
 
           <TabsContent value="serial" className="space-y-3 m-0 border-0 outline-none w-full">
@@ -759,6 +801,8 @@ export default function NewSessionPage() {
               setParity={setParity}
               stopBits={stopBits}
               setStopBits={setStopBits}
+              aiExecutionProfile={serialAiExecutionProfile}
+              setAiExecutionProfile={setSerialAiExecutionProfile}
             />
           </TabsContent>
 

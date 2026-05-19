@@ -4,6 +4,7 @@ use super::session::{
     SessionCommand, SessionHandle, SessionInfo, SessionManager, SessionType, SharedCwd,
 };
 use super::zmodem::{ZmodemAction, ZmodemDetector, ZmodemEvent, ZmodemTransfer};
+use crate::config::AiExecutionProfile;
 use crate::core::capture::OutputCaptureProcessor;
 use crate::core::SessionOutputCoalescer;
 use crate::error::{AppError, AppResult};
@@ -22,6 +23,7 @@ pub struct SerialConfig {
     pub parity: String,
     pub stop_bits: String,
     pub name: String,
+    pub ai_execution_profile: AiExecutionProfile,
 }
 
 pub fn list_serial_ports() -> AppResult<Vec<String>> {
@@ -89,6 +91,7 @@ pub async fn create_serial_session(
         name: config.name.clone(),
         session_type: SessionType::Serial,
         connected: true,
+        ai_execution_profile: config.ai_execution_profile,
         injection_active: false,
     };
 

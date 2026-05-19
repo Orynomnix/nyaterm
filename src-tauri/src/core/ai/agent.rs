@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
-use crate::config::AiSettings;
+use crate::config::{AiExecutionProfile, AiSettings};
 use crate::core::capture;
 use crate::core::session::{SessionCommand, SessionManager};
 use crate::error::{AppError, AppResult};
@@ -19,9 +19,9 @@ use super::prompt::{build_agent_prompt, build_observation_message, AGENT_SYSTEM_
 use super::redaction::{redact_context, redact_sensitive_text};
 use super::stream::{active_streams, emit_stream_event, is_cancelled};
 use super::types::{
-    uuid, now_rfc3339, AiCaptureEvent, AgentActionKind, AgentLlmResponse, AgentStepAction,
-    AgentStepPayload, AgentStepStatus, AiChatRequest, AiMessage, AiMessageRole,
-    AiStreamEventPayload, CommandObservation,
+    now_rfc3339, uuid, AgentActionKind, AgentLlmResponse, AgentStepAction, AgentStepPayload,
+    AgentStepStatus, AiCaptureEvent, AiChatRequest, AiMessage, AiMessageRole, AiStreamEventPayload,
+    CommandObservation,
 };
 
 // ---------------------------------------------------------------------------
@@ -131,8 +131,48 @@ async fn execute_command_on_session(
         "Preparing to execute agent command via PTY capture"
     );
 
+    let session_info = session_manager.session_info(terminal_session_id).await?;
+    let profile = session_info.ai_execution_profile;
+    tracing::debug!(
+        terminal_session_id = %terminal_session_id,
+        session_type = ?session_info.session_type,
+        ai_execution_profile = ?profile,
+        "Resolved AI agent execution profile"
+    );
+
+    if profile == AiExecutionProfile::SendOnly {
+        return send_command_without_capture(
+            app,
+            session_manager,
+            terminal_session_id,
+            command,
+            step_index,
+            terminal_output_lines,
+        )
+        .await;
+    }
+
+    if profile == AiExecutionProfile::Auto {
+        return Err(AppError::Config(
+            "当前会话未配置 AI 执行 Profile，无法判断命令包装方式。请在连接设置中选择 POSIX、PowerShell、CMD、Send only 或禁用 Agent 执行。"
+                .to_string(),
+        ));
+    }
+
+    if profile == AiExecutionProfile::Disabled {
+        return Err(AppError::Config(
+            "当前会话已禁用 AI Agent 命令执行。".to_string(),
+        ));
+    }
+
     let marker_id = uuid::Uuid::new_v4().to_string();
-    let wrapped = capture::build_capture_command(&marker_id, command);
+    let wrapped =
+        capture::build_capture_command(profile, &marker_id, command).ok_or_else(|| {
+            AppError::Config(format!(
+                "AI execution profile {:?} does not support captured execution",
+                profile
+            ))
+        })?;
     let (tx, rx) = oneshot::channel();
 
     let capture_event = format!("ai-capture-{terminal_session_id}");
@@ -214,6 +254,51 @@ async fn execute_command_on_session(
     );
 
     result
+}
+
+async fn send_command_without_capture(
+    app: &AppHandle,
+    session_manager: &SessionManager,
+    terminal_session_id: &str,
+    command: &str,
+    step_index: u16,
+    terminal_output_lines: u16,
+) -> AppResult<CommandObservation> {
+    let started = Instant::now();
+    let capture_event = format!("ai-capture-{terminal_session_id}");
+    let _ = app.emit(
+        &capture_event,
+        AiCaptureEvent::CommandStart {
+            command: command.to_string(),
+            step_index,
+        },
+    );
+
+    let mut bytes = command.as_bytes().to_vec();
+    bytes.push(b'\n');
+    session_manager
+        .send_command(terminal_session_id, SessionCommand::Write(bytes))
+        .await?;
+
+    let observation = CommandObservation {
+        output: "命令已发送到终端，但当前 AI 执行 Profile 为 send_only，未捕获输出。".to_string(),
+        exit_code: None,
+        duration_ms: started.elapsed().as_millis() as u64,
+    };
+    let (terminal_output, truncated) =
+        truncate_output_for_terminal(&observation.output, terminal_output_lines);
+
+    let _ = app.emit(
+        &capture_event,
+        AiCaptureEvent::CommandEnd {
+            output: terminal_output,
+            exit_code: None,
+            duration_ms: observation.duration_ms,
+            truncated,
+        },
+    );
+
+    Ok(observation)
 }
 
 fn truncate_output_for_terminal(output: &str, max_lines: u16) -> (String, bool) {

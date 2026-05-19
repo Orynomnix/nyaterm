@@ -4,6 +4,7 @@
 //! confirmation, and persists history for fuzzy search.
 
 use super::history::{sanitize_history_command, CommandHistoryStore};
+use crate::config::AiExecutionProfile;
 use crate::core::capture::CapturedOutput;
 use crate::error::{AppError, AppResult};
 use crate::utils::fuzzy::{fuzzy_search_items, FuzzyResult};
@@ -74,6 +75,9 @@ pub struct SessionInfo {
     pub name: String,
     pub session_type: SessionType,
     pub connected: bool,
+    /// Effective AI command execution profile for this session.
+    #[serde(default)]
+    pub ai_execution_profile: AiExecutionProfile,
     /// True when backend terminal-path tracking is available for this session.
     /// Currently this is enabled for sessions that can report directory changes to the backend.
     #[serde(default)]
@@ -236,6 +240,15 @@ impl SessionManager {
     pub async fn list_sessions(&self) -> Vec<SessionInfo> {
         let sessions = self.sessions.lock().await;
         sessions.values().map(|h| h.info.clone()).collect()
+    }
+
+    /// Returns metadata for a single active session.
+    pub async fn session_info(&self, id: &str) -> AppResult<SessionInfo> {
+        let sessions = self.sessions.lock().await;
+        sessions
+            .get(id)
+            .map(|handle| handle.info.clone())
+            .ok_or_else(|| AppError::SessionNotFound(format!("Session '{}' not found", id)))
     }
 
     /// Appends a command to persistent history and schedules a coalesced save.
@@ -513,6 +526,8 @@ async fn save_history_snapshot(history_store: &Arc<Mutex<CommandHistoryStore>>) 
 
 #[cfg(test)]
 mod tests {
+    use crate::config::AiExecutionProfile;
+
     use super::{
         normalize_cwd_path, SessionCommand, SessionHandle, SessionInfo, SessionManager, SessionType,
     };
@@ -529,6 +544,7 @@ mod tests {
                 name: id.to_string(),
                 session_type,
                 connected: true,
+                ai_execution_profile: AiExecutionProfile::Auto,
                 injection_active,
             },
             cmd_tx,

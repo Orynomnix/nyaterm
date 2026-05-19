@@ -25,8 +25,9 @@ pub use cloud_sync::{
 };
 #[allow(unused_imports)]
 pub use connection::{
-    load_config, load_connection_by_id, load_sessions, save_config, save_sessions, AppConfig,
-    ConnectionAuth, ConnectionNetwork, ConnectionType, Group, SavedConnection, SessionsConfig,
+    load_config, load_connection_by_id, load_sessions, save_config, save_sessions,
+    AiExecutionProfile, AppConfig, ConnectionAuth, ConnectionNetwork, ConnectionType, Group,
+    SavedConnection, SessionsConfig,
 };
 #[allow(unused_imports)]
 pub use credential::{
@@ -53,10 +54,10 @@ pub use settings::{
     ai_model_id_for_credential, ai_model_id_for_provider, decrypt_ai_settings, encrypt_ai_settings,
     load_app_settings, mask_ai_settings, merge_masked_ai_settings, normalize_ai_settings,
     save_app_settings, ActionLinksMatcherSettings, AiCustomActionConfig, AiMode, AiModelConfigItem,
-    AiModelSource, AiProviderCredential, AiProviderKind, AiProviderProfile,
-    AiSettings, AppSettings, AppearanceSettings, DiagnosticsLogLevel, DiagnosticsSettings,
-    GeneralSettings, InteractionSettings, KeywordHighlightRule, ProxySettings, SearchEngine,
-    SearchSettings, SecuritySettings, TerminalSettings, TransferSettings, TranslationSettings,
+    AiModelSource, AiProviderCredential, AiProviderKind, AiProviderProfile, AiSettings,
+    AppSettings, AppearanceSettings, DiagnosticsLogLevel, DiagnosticsSettings, GeneralSettings,
+    InteractionSettings, KeywordHighlightRule, ProxySettings, SearchEngine, SearchSettings,
+    SecuritySettings, TerminalSettings, TransferSettings, TranslationSettings,
 };
 #[allow(unused_imports)]
 pub use tunnel::{load_tunnels, save_tunnels, TunnelConfig, TunnelsConfig};

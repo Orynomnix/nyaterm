@@ -32,10 +32,12 @@ pub async fn create_local_session(
             config::ConnectionType::LocalTerminal {
                 shell_path,
                 working_dir,
+                ai_execution_profile,
             } => Some(core::LocalSessionConfig {
                 shell_path,
                 working_dir,
                 name: conn.name,
+                ai_execution_profile,
             }),
             _ => None,
         }
@@ -54,13 +56,14 @@ pub async fn create_telnet_session(
     port: Option<u16>,
     name: Option<String>,
 ) -> AppResult<String> {
-    let (h, p, n) = if let Some(ref cid) = connection_id {
+    let (h, p, n, ai_execution_profile) = if let Some(ref cid) = connection_id {
         let conn = config::load_connection_by_id(&app, cid)?;
         match conn.config {
             config::ConnectionType::Telnet {
                 host: ref ch,
                 port: cp,
-            } => (ch.clone(), cp, conn.name.clone()),
+                ai_execution_profile,
+            } => (ch.clone(), cp, conn.name.clone(), ai_execution_profile),
             _ => {
                 return Err(AppError::Config(
                     "Connection is not a Telnet connection".to_string(),
@@ -72,9 +75,19 @@ pub async fn create_telnet_session(
             host.ok_or_else(|| AppError::Config("host is required".to_string()))?,
             port.unwrap_or(23),
             name.unwrap_or_else(|| "Telnet".to_string()),
+            config::AiExecutionProfile::Auto,
         )
     };
-    core::create_telnet_session(app, state.inner().clone(), h, p, connection_id, n).await
+    core::create_telnet_session(
+        app,
+        state.inner().clone(),
+        h,
+        p,
+        connection_id,
+        n,
+        ai_execution_profile,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -98,6 +111,7 @@ pub async fn create_serial_session(
                 data_bits,
                 parity,
                 stop_bits,
+                ai_execution_profile,
             } => core::SerialConfig {
                 port_name,
                 baud_rate,
@@ -105,6 +119,7 @@ pub async fn create_serial_session(
                 parity,
                 stop_bits,
                 name: conn.name,
+                ai_execution_profile,
             },
             _ => {
                 return Err(AppError::Config(
@@ -121,6 +136,7 @@ pub async fn create_serial_session(
             parity: parity.unwrap_or_else(|| "none".to_string()),
             stop_bits: stop_bits.unwrap_or_else(|| "1".to_string()),
             name: name.unwrap_or_else(|| "Serial".to_string()),
+            ai_execution_profile: config::AiExecutionProfile::Auto,
         }
     };
     core::create_serial_session(app, state.inner().clone(), cfg, connection_id).await

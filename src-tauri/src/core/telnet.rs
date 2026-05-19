@@ -4,6 +4,7 @@ use super::session::{
     SessionCommand, SessionHandle, SessionInfo, SessionManager, SessionType, SharedCwd,
 };
 use super::zmodem::{ZmodemAction, ZmodemDetector, ZmodemEvent, ZmodemTransfer};
+use crate::config::AiExecutionProfile;
 use crate::core::capture::OutputCaptureProcessor;
 use crate::core::SessionOutputCoalescer;
 use crate::error::AppResult;
@@ -115,6 +116,7 @@ pub async fn create_telnet_session(
     port: u16,
     connection_id: Option<String>,
     name: String,
+    ai_execution_profile: AiExecutionProfile,
 ) -> AppResult<String> {
     log_event(StructuredLog {
         level: StructuredLogLevel::Info,
@@ -140,6 +142,7 @@ pub async fn create_telnet_session(
         name,
         session_type: SessionType::Telnet,
         connected: true,
+        ai_execution_profile,
         injection_active: false,
     };
 

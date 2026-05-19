@@ -4,6 +4,7 @@ use super::client::{
     SshHandle, SshHandler, SshRawHandle,
 };
 use super::io::{open_shell_channel, ssh_io_loop};
+use crate::config::AiExecutionProfile;
 use crate::core::{
     SessionCommand, SessionHandle, SessionInfo, SessionManager, SessionType, SharedCwd,
 };
@@ -152,6 +153,7 @@ pub async fn create_ssh_session(
         name: config.name.clone(),
         session_type: SessionType::SSH,
         connected: true,
+        ai_execution_profile: AiExecutionProfile::Posix,
         injection_active,
     };
 

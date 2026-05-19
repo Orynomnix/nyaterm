@@ -2,19 +2,30 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
+import type { AIExecutionProfile } from "@/types/global";
+import { AiExecutionProfileField } from "./AiExecutionProfileField";
 
 interface TelnetFormProps {
   host: string;
   setHost: (v: string) => void;
   port: number;
   setPort: (v: number) => void;
+  aiExecutionProfile: AIExecutionProfile;
+  setAiExecutionProfile: (v: AIExecutionProfile) => void;
 }
 
 function RequiredMark() {
   return <span className="ml-0.5 text-destructive">*</span>;
 }
 
-export function TelnetForm({ host, setHost, port, setPort }: TelnetFormProps) {
+export function TelnetForm({
+  host,
+  setHost,
+  port,
+  setPort,
+  aiExecutionProfile,
+  setAiExecutionProfile,
+}: TelnetFormProps) {
   const { t } = useTranslation();
   return (
     <div className="space-y-3 w-full">
@@ -44,6 +55,12 @@ export function TelnetForm({ host, setHost, port, setPort }: TelnetFormProps) {
             max={65535}
           />
         </div>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <AiExecutionProfileField
+          value={aiExecutionProfile}
+          onChange={setAiExecutionProfile}
+        />
       </div>
     </div>
   );

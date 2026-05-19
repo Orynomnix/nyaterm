@@ -8,12 +8,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { AIExecutionProfile } from "@/types/global";
+import { AiExecutionProfileField } from "./AiExecutionProfileField";
 
 interface LocalTerminalProps {
   shellPath: string;
   setShellPath: (v: string) => void;
   workingDir: string;
   setWorkingDir: (v: string) => void;
+  aiExecutionProfile: AIExecutionProfile;
+  setAiExecutionProfile: (v: AIExecutionProfile) => void;
 }
 
 export function LocalTerminal({
@@ -21,6 +25,8 @@ export function LocalTerminal({
   setShellPath,
   workingDir,
   setWorkingDir,
+  aiExecutionProfile,
+  setAiExecutionProfile,
 }: LocalTerminalProps) {
   const { t } = useTranslation();
 
@@ -64,6 +70,12 @@ export function LocalTerminal({
             />
           </div>
         </div>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <AiExecutionProfileField
+          value={aiExecutionProfile}
+          onChange={setAiExecutionProfile}
+        />
       </div>
       <div>
         <Label className="text-[0.6875rem] text-muted-foreground">

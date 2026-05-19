@@ -128,7 +128,7 @@ fn validate_proxy_jump_config(
 #[cfg(test)]
 mod tests {
     use super::validate_proxy_jump_config;
-    use crate::config::{ConnectionNetwork, ConnectionType, SavedConnection};
+    use crate::config::{AiExecutionProfile, ConnectionNetwork, ConnectionType, SavedConnection};
 
     fn ssh_connection(id: &str, proxy_jump_id: Option<&str>) -> SavedConnection {
         SavedConnection {
@@ -158,6 +158,7 @@ mod tests {
             config: ConnectionType::Telnet {
                 host: "example.com".to_string(),
                 port: 23,
+                ai_execution_profile: AiExecutionProfile::Auto,
             },
             group_id: None,
             description: None,

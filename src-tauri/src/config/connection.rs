@@ -8,6 +8,19 @@ use tauri::AppHandle;
 
 // ── Connection type discriminator ───────────────────────────────────────────
 
+/// Shell/CLI profile used when AI Agent mode injects executable commands.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AiExecutionProfile {
+    #[default]
+    Auto,
+    Posix,
+    Powershell,
+    Cmd,
+    SendOnly,
+    Disabled,
+}
+
 /// Type-specific configuration for each connection kind.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -24,11 +37,15 @@ pub enum ConnectionType {
         shell_path: String,
         #[serde(default)]
         working_dir: Option<String>,
+        #[serde(default)]
+        ai_execution_profile: AiExecutionProfile,
     },
     Telnet {
         host: String,
         #[serde(default = "default_telnet_port")]
         port: u16,
+        #[serde(default)]
+        ai_execution_profile: AiExecutionProfile,
     },
     Serial {
         port_name: String,
@@ -40,6 +57,8 @@ pub enum ConnectionType {
         parity: String,
         #[serde(default = "default_stop_bits")]
         stop_bits: String,
+        #[serde(default)]
+        ai_execution_profile: AiExecutionProfile,
     },
 }
 
