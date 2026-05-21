@@ -5,6 +5,56 @@ description = "A Tauri App"
 authors = ["Kang"]
 edition = "2021"
 
+[profile.dev]
+opt-level = 0
+debug = true
+strip = "none"
+debug-assertions = true
+overflow-checks = true
+incremental = true
+codegen-units = 256
+lto = false
+panic = "unwind"
+rpath = false
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+panic = "abort"
+rpath = false
+
+[profile.release-size]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+debug = false
+panic = "abort"
+
+[profile.release-debug]
+inherits = "release"
+debug = "line-tables-only"
+strip = "none"
+split-debuginfo = "unpacked"
+panic = "unwind"
+
+[profile.fast-release]
+inherits = "release"
+opt-level = 1
+lto = false
+codegen-units = 256
+incremental = true
+debug = true
+strip = "none"
+panic = "unwind"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 # Allow common patterns that are noisy under pedantic
@@ -91,12 +141,6 @@ opendal = { version = "0.55", features = [
 ] }
 redb = "4.1.0"
 zmodem2 = "0.5"
-
-[profile.release]
-lto = true
-codegen-units = 1
-strip = true
-opt-level = "s"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
