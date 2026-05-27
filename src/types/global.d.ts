@@ -376,6 +376,16 @@ export interface QuickCommandsConfig {
   categories: QuickCommandCategory[];
 }
 
+export type QuickCommandImportSource = "windterm_quickbar" | "nyaterm_json";
+
+export interface QuickCommandImportResult {
+  imported_commands: number;
+  imported_categories: number;
+  updated_commands: number;
+  total_commands: number;
+  total_categories: number;
+}
+
 /** Fuzzy search result with matched command and highlight indices. */
 export interface FuzzyResult {
   command: string;
