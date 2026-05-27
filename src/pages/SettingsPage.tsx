@@ -41,6 +41,7 @@ import { TerminalTab } from "@/components/settings/TerminalTab";
 import { TransferTab } from "@/components/settings/TransferTab";
 import { TranslationTab } from "@/components/settings/TranslationTab";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AppContext, useApp } from "@/context/AppContext";
 import { SettingsDraftContext } from "@/context/SettingsDraftContext";
@@ -572,6 +573,7 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+          <Toaster position="top-center" offset={{ top: 48 }} />
         </AppContext.Provider>
       </SettingsDraftContext.Provider>
     </div>

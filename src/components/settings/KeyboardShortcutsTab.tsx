@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MdEdit, MdRefresh, MdSearch } from "react-icons/md";
+import { toast } from "sonner";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { useApp } from "@/context/AppContext";
 import {
+  formatIndexedKeysForDisplay,
   formatKeysForDisplay,
+  isValidIndexedShortcutTemplate,
   keyEventToHotkeyString,
   resolveKeys,
   SHORTCUT_CATEGORIES,
@@ -29,7 +32,10 @@ export function KeyboardShortcutsTab() {
       return {
         ...def,
         keys,
-        displayKeys: formatKeysForDisplay(keys),
+        displayKeys:
+          def.id === "tab.switchTo"
+            ? formatIndexedKeysForDisplay(keys)
+            : formatKeysForDisplay(keys),
         isCustom: def.id in overrides,
       };
     });
@@ -130,6 +136,23 @@ export function KeyboardShortcutsTab() {
     updateAppSettings({ keybindings: {} });
   };
 
+  const handleIndexedShortcutCapture = useCallback(
+    (combo: string) => {
+      if (isValidIndexedShortcutTemplate(combo)) {
+        const next = { ...overrides, "tab.switchTo": combo };
+        updateAppSettings({ keybindings: next });
+      } else {
+        const next = { ...overrides };
+        delete next["tab.switchTo"];
+        updateAppSettings({ keybindings: next });
+        toast.error(t("settings.keybindingsIndexedInvalid"));
+      }
+      setRecordingId(null);
+      setPendingKeys(null);
+    },
+    [overrides, updateAppSettings, t],
+  );
+
   useEffect(() => {
     if (!recordingId) return;
 
@@ -148,13 +171,23 @@ export function KeyboardShortcutsTab() {
 
       const combo = keyEventToHotkeyString(e);
       if (combo) {
-        setPendingKeys(combo);
+        if (recordingId === "tab.switchTo") {
+          handleIndexedShortcutCapture(combo);
+        } else {
+          setPendingKeys(combo);
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [recordingId, pendingKeys, handleCancelRecording, handleConfirmRecording]);
+  }, [
+    recordingId,
+    pendingKeys,
+    handleCancelRecording,
+    handleConfirmRecording,
+    handleIndexedShortcutCapture,
+  ]);
 
   useEffect(() => {
     if (!recordingId) return;
@@ -257,15 +290,19 @@ function ShortcutRow({
   recorderRef,
   t,
 }: ShortcutRowProps) {
-  const keysToDisplay = pendingKeys ? formatKeysForDisplay(pendingKeys) : shortcut.displayKeys;
+  const keysToDisplay = pendingKeys
+    ? shortcut.id === "tab.switchTo"
+      ? formatIndexedKeysForDisplay(pendingKeys)
+      : formatKeysForDisplay(pendingKeys)
+    : shortcut.displayKeys;
   const keyParts = keysToDisplay.split("+").filter(Boolean);
 
   return (
     <div
       ref={recorderRef}
       className={`flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between transition-colors ${
-        isRecording ? "bg-primary/5 ring-1 ring-inset ring-primary/20 rounded-lg" : ""
-      }`}
+        isRecording && shortcut.id === "tab.switchTo" ? "sm:flex-wrap" : ""
+      } ${isRecording ? "bg-primary/5 ring-1 ring-inset ring-primary/20 rounded-lg" : ""}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-sm text-foreground truncate">{t(shortcut.labelKey)}</span>
@@ -354,6 +391,11 @@ function ShortcutRow({
           </>
         )}
       </div>
+      {isRecording && shortcut.id === "tab.switchTo" && (
+        <p className="w-full text-xs text-muted-foreground">
+          {t("settings.keybindingsIndexedHint")}
+        </p>
+      )}
     </div>
   );
 }

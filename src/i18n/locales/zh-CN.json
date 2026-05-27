@@ -973,6 +973,8 @@
     "keybindings": "快捷键",
     "keybindingsConflict": "已被占用: {{name}}",
     "keybindingsCustom": "自定义",
+    "keybindingsIndexedHint": "按下快捷键和数字1键",
+    "keybindingsIndexedInvalid": "设置失败，已恢复默认值。",
     "keybindingsRecording": "请按下快捷键组合...",
     "keybindingsReset": "恢复默认",
     "keybindingsResetAll": "全部重置",

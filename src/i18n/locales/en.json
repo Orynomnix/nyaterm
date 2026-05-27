@@ -973,6 +973,8 @@
     "keybindings": "Keyboard Shortcuts",
     "keybindingsConflict": "Already used by: {{name}}",
     "keybindingsCustom": "Custom",
+    "keybindingsIndexedHint": "Press the shortcut key and the number 1 key.",
+    "keybindingsIndexedInvalid": "The setting failed and has been reset to the default.",
     "keybindingsRecording": "Press key combination...",
     "keybindingsReset": "Reset to default",
     "keybindingsResetAll": "Reset All",
