@@ -16,7 +16,6 @@ import ResizeHandle from "@/components/layout/ResizeHandle";
 import QuickCommands from "@/components/panel/QuickCommands";
 import SerialSendPanel from "@/components/panel/SendCommandPanel";
 import TabWindowsWorkspace from "@/components/terminal/TabWindowsWorkspace";
-import { Toaster } from "@/components/ui/sonner";
 import { useTheme } from "@/context/ThemeContext";
 import {
   buildBackgroundImageLayerStyle,
@@ -378,18 +377,11 @@ export default function AppLayout({
           onDone={dialogs.onHostKeyVerifyDone}
         />
 
-        <Toaster position="bottom-right" />
-
         {dialogs.modalChildWindowCount > 0 && (
           <div
-            className="fixed inset-0 z-[9998]"
+            className="fixed inset-0 z-[9998] bg-black/50"
             onMouseDown={() => {
               void bounceTopModalWindow();
-            }}
-            style={{
-              backgroundColor: "rgba(0, 0, 0, 0.3)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
             }}
           />
         )}

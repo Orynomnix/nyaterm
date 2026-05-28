@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   type ComponentType,
@@ -40,8 +41,8 @@ import { SyncBackupTab } from "@/components/settings/SyncBackupTab";
 import { TerminalTab } from "@/components/settings/TerminalTab";
 import { TransferTab } from "@/components/settings/TransferTab";
 import { TranslationTab } from "@/components/settings/TranslationTab";
+import { ActionButton, ActionFooter } from "@/components/ui/action-footer";
 import { Button } from "@/components/ui/button";
-import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AppContext, useApp } from "@/context/AppContext";
 import { SettingsDraftContext } from "@/context/SettingsDraftContext";
@@ -93,6 +94,16 @@ export default function SettingsPage() {
       scrollContainerRef.current.scrollTop = scrollStates.current[activeTab] || 0;
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const unlisten = listen<{ tab: string }>("settings-open-tab", ({ payload }) => {
+      setActiveTab(payload.tab === "ai" ? "ai-general" : payload.tab);
+    });
+
+    return () => {
+      unlisten.then((dispose) => dispose());
+    };
+  }, []);
 
   type SettingsCategory = {
     id: string;
@@ -510,9 +521,10 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/70 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-                <div className="min-w-0 flex-1">
-                  {saveBlockState ? (
+              <ActionFooter
+                className="border-border/70 px-4 sm:px-6"
+                leading={
+                  saveBlockState ? (
                     <div className="flex flex-wrap items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
                       <span className="min-w-0 flex-1">{saveBlockedMessage}</span>
                       {activeTab !== saveBlockState.targetTab ? (
@@ -528,19 +540,24 @@ export default function SettingsPage() {
                         </Button>
                       ) : null}
                     </div>
-                  ) : null}
-                </div>
-                <Button variant="outline" onClick={() => void handleCancel()} disabled={isSaving}>
+                  ) : null
+                }
+              >
+                <ActionButton
+                  variant="outline"
+                  onClick={() => void handleCancel()}
+                  disabled={isSaving}
+                >
                   {t("common.cancel")}
-                </Button>
+                </ActionButton>
                 {saveBlockedMessage ? (
                   <>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="inline-flex">
-                          <Button variant="outline" disabled>
+                          <ActionButton variant="outline" disabled>
                             {t("common.apply")}
-                          </Button>
+                          </ActionButton>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="top">{saveBlockedMessage}</TooltipContent>
@@ -548,9 +565,9 @@ export default function SettingsPage() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="inline-flex">
-                          <Button disabled>
+                          <ActionButton disabled>
                             {isSaving ? t("common.saving") : t("common.confirm")}
-                          </Button>
+                          </ActionButton>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="top">{saveBlockedMessage}</TooltipContent>
@@ -558,22 +575,21 @@ export default function SettingsPage() {
                   </>
                 ) : (
                   <>
-                    <Button
+                    <ActionButton
                       variant="outline"
                       onClick={() => void handleApply()}
                       disabled={!isDirty || isSaving}
                     >
                       {t("common.apply")}
-                    </Button>
-                    <Button onClick={() => void handleConfirm()} disabled={isSaving}>
+                    </ActionButton>
+                    <ActionButton onClick={() => void handleConfirm()} disabled={isSaving}>
                       {isSaving ? t("common.saving") : t("common.confirm")}
-                    </Button>
+                    </ActionButton>
                   </>
                 )}
-              </div>
+              </ActionFooter>
             </div>
           </div>
-          <Toaster position="top-center" offset={{ top: 48 }} />
         </AppContext.Provider>
       </SettingsDraftContext.Provider>
     </div>
