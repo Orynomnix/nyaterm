@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { useApp } from "@/context/AppContext";
 import { invoke } from "@/lib/invoke";
 
 export type TransferDirection = "upload" | "download";
@@ -109,8 +110,14 @@ function createTransferId() {
   return `transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function clampTransferConcurrency(value: number) {
+  const normalized = Number.isFinite(value) ? Math.floor(value) : 1;
+  return Math.min(10, Math.max(1, normalized));
+}
+
 export function TransferProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
+  const { appSettings } = useApp();
   const [transferMap, setTransferMap] = useState<Map<string, TransferItem>>(() => new Map());
   const transferMapRef = useRef(transferMap);
   const queuedTransfersRef = useRef<Map<string, QueuedTransferRequest>>(new Map());
@@ -256,27 +263,81 @@ export function TransferProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void queueRevision;
-    const hasRunningQueueTransfer = Array.from(transferMap.values()).some(
-      (transfer) => transfer.queueState === "running" && transfer.status === "transferring",
-    );
-    if (hasRunningQueueTransfer) {
-      return;
+    const maxRunningByDirection: Record<TransferDirection, number> = {
+      download: clampTransferConcurrency(appSettings.transfer.download_threads),
+      upload: clampTransferConcurrency(appSettings.transfer.upload_threads),
+    };
+    const runningByDirection: Record<TransferDirection, number> = {
+      download: 0,
+      upload: 0,
+    };
+
+    for (const transfer of transferMap.values()) {
+      if (transfer.queueState === "running" && transfer.status === "transferring") {
+        runningByDirection[transfer.direction] += 1;
+      }
     }
 
-    const nextQueued = Array.from(transferMap.values())
+    const queuedCandidates = Array.from(transferMap.values())
       .filter(
         (transfer) =>
           queuedTransfersRef.current.has(transfer.id) ||
           parkedTransferIdsRef.current.has(transfer.id),
       )
-      .find((transfer) => transfer.status === "queued");
+      .filter((transfer) => transfer.status === "queued");
 
-    if (!nextQueued) {
-      return;
-    }
+    for (const nextQueued of queuedCandidates) {
+      const direction = nextQueued.direction;
+      if (runningByDirection[direction] >= maxRunningByDirection[direction]) {
+        continue;
+      }
 
-    if (parkedTransferIdsRef.current.has(nextQueued.id)) {
-      parkedTransferIdsRef.current.delete(nextQueued.id);
+      if (parkedTransferIdsRef.current.has(nextQueued.id)) {
+        parkedTransferIdsRef.current.delete(nextQueued.id);
+        runningByDirection[direction] += 1;
+        setTransferMap((prev) => {
+          const existing = prev.get(nextQueued.id);
+          if (!existing || existing.status !== "queued") {
+            return prev;
+          }
+          const next = new Map(prev);
+          next.set(nextQueued.id, {
+            ...existing,
+            status: "transferring",
+            queueState: "running",
+            error: undefined,
+          });
+          return next;
+        });
+
+        void invoke("resume_transfer", { transferId: nextQueued.id }).catch((error) => {
+          toast.error(String(error));
+          setTransferMap((prev) => {
+            const existing = prev.get(nextQueued.id);
+            if (!existing || existing.status === "completed" || existing.status === "cancelled") {
+              return prev;
+            }
+            const next = new Map(prev);
+            next.set(nextQueued.id, {
+              ...existing,
+              status: "error",
+              queueState: undefined,
+              error: String(error),
+            });
+            return next;
+          });
+          setQueueRevision((revision) => revision + 1);
+        });
+        continue;
+      }
+
+      const request = queuedTransfersRef.current.get(nextQueued.id);
+      if (!request) {
+        continue;
+      }
+
+      queuedTransfersRef.current.delete(nextQueued.id);
+      runningByDirection[direction] += 1;
       setTransferMap((prev) => {
         const existing = prev.get(nextQueued.id);
         if (!existing || existing.status !== "queued") {
@@ -292,104 +353,68 @@ export function TransferProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
-      void invoke("resume_transfer", { transferId: nextQueued.id }).catch((error) => {
-        toast.error(String(error));
-        setTransferMap((prev) => {
-          const existing = prev.get(nextQueued.id);
-          if (!existing || existing.status === "completed" || existing.status === "cancelled") {
-            return prev;
+      void (async () => {
+        try {
+          if (request.direction === "upload" && request.kind === "directory") {
+            await invoke("upload_local_directory", {
+              sessionId: request.sessionId,
+              localPath: request.localPath,
+              remotePath: request.remotePath,
+              transferId: nextQueued.id,
+            });
+          } else if (request.direction === "upload") {
+            await invoke("upload_local_file", {
+              sessionId: request.sessionId,
+              localPath: request.localPath,
+              remotePath: request.remotePath,
+              transferId: nextQueued.id,
+            });
+          } else if (request.kind === "directory") {
+            await invoke("download_remote_directory", {
+              sessionId: request.sessionId,
+              remotePath: request.remotePath,
+              localPath: request.localPath,
+              transferId: nextQueued.id,
+            });
+          } else {
+            await invoke("download_remote_file", {
+              sessionId: request.sessionId,
+              remotePath: request.remotePath,
+              localPath: request.localPath,
+              transferId: nextQueued.id,
+            });
           }
-          const next = new Map(prev);
-          next.set(nextQueued.id, {
-            ...existing,
-            status: "error",
-            queueState: undefined,
-            error: String(error),
+        } catch (error) {
+          setTransferMap((prev) => {
+            const existing = prev.get(nextQueued.id);
+            if (
+              !existing ||
+              existing.status === "completed" ||
+              existing.status === "cancelled" ||
+              existing.status === "error"
+            ) {
+              return prev;
+            }
+            const next = new Map(prev);
+            next.set(nextQueued.id, {
+              ...existing,
+              status: "error",
+              queueState: undefined,
+              error: String(error),
+            });
+            return next;
           });
-          return next;
-        });
-        setQueueRevision((revision) => revision + 1);
-      });
-      return;
-    }
-
-    const request = queuedTransfersRef.current.get(nextQueued.id);
-    if (!request) {
-      return;
-    }
-
-    queuedTransfersRef.current.delete(nextQueued.id);
-    setTransferMap((prev) => {
-      const existing = prev.get(nextQueued.id);
-      if (!existing || existing.status !== "queued") {
-        return prev;
-      }
-      const next = new Map(prev);
-      next.set(nextQueued.id, {
-        ...existing,
-        status: "transferring",
-        queueState: "running",
-        error: undefined,
-      });
-      return next;
-    });
-
-    void (async () => {
-      try {
-        if (request.direction === "upload" && request.kind === "directory") {
-          await invoke("upload_local_directory", {
-            sessionId: request.sessionId,
-            localPath: request.localPath,
-            remotePath: request.remotePath,
-            transferId: nextQueued.id,
-          });
-        } else if (request.direction === "upload") {
-          await invoke("upload_local_file", {
-            sessionId: request.sessionId,
-            localPath: request.localPath,
-            remotePath: request.remotePath,
-            transferId: nextQueued.id,
-          });
-        } else if (request.kind === "directory") {
-          await invoke("download_remote_directory", {
-            sessionId: request.sessionId,
-            remotePath: request.remotePath,
-            localPath: request.localPath,
-            transferId: nextQueued.id,
-          });
-        } else {
-          await invoke("download_remote_file", {
-            sessionId: request.sessionId,
-            remotePath: request.remotePath,
-            localPath: request.localPath,
-            transferId: nextQueued.id,
-          });
+        } finally {
+          setQueueRevision((revision) => revision + 1);
         }
-      } catch (error) {
-        setTransferMap((prev) => {
-          const existing = prev.get(nextQueued.id);
-          if (
-            !existing ||
-            existing.status === "completed" ||
-            existing.status === "cancelled" ||
-            existing.status === "error"
-          ) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(nextQueued.id, {
-            ...existing,
-            status: "error",
-            queueState: undefined,
-            error: String(error),
-          });
-          return next;
-        });
-      } finally {
-        setQueueRevision((revision) => revision + 1);
-      }
-    })();
-  }, [queueRevision, transferMap]);
+      })();
+    }
+  }, [
+    appSettings.transfer.download_threads,
+    appSettings.transfer.upload_threads,
+    queueRevision,
+    transferMap,
+  ]);
 
   const clearCompleted = useCallback(() => {
     setTransferMap((prev) => {
@@ -557,41 +582,31 @@ export function TransferProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const retryTransfer = useCallback(async (item: TransferItem) => {
-    try {
-      if (item.direction === "upload") {
-        if (item.kind === "directory") {
-          await invoke("upload_local_directory", {
-            sessionId: item.sessionId,
-            localPath: item.localPath,
-            remotePath: item.remotePath,
-            transferId: item.id,
-          });
-        } else {
-          await invoke("upload_local_file", {
-            sessionId: item.sessionId,
-            localPath: item.localPath,
-            remotePath: item.remotePath,
-            transferId: item.id,
-          });
-        }
-      } else if (item.kind === "directory") {
-        await invoke("download_remote_directory", {
-          sessionId: item.sessionId,
-          remotePath: item.remotePath,
-          localPath: item.localPath,
-          transferId: item.id,
-        });
-      } else {
-        await invoke("download_remote_file", {
-          sessionId: item.sessionId,
-          remotePath: item.remotePath,
-          localPath: item.localPath,
-          transferId: item.id,
-        });
-      }
-    } catch (error) {
-      toast.error(String(error));
-    }
+    parkedTransferIdsRef.current.delete(item.id);
+    queuedTransfersRef.current.set(item.id, {
+      sessionId: item.sessionId,
+      fileName: item.fileName,
+      localPath: item.localPath,
+      remotePath: item.remotePath,
+      kind: item.kind,
+      direction: item.direction,
+    });
+    setTransferMap((prev) => {
+      const next = new Map(prev);
+      next.set(item.id, {
+        ...item,
+        status: "queued",
+        bytesTransferred: 0,
+        totalSize: 0,
+        itemCountCompleted: undefined,
+        itemCountTotal: undefined,
+        queueState: "pending",
+        error: undefined,
+        timestamp: Date.now(),
+      });
+      return next;
+    });
+    setQueueRevision((revision) => revision + 1);
   }, []);
 
   const enqueueTransfers = useCallback((transfers: QueuedTransferRequest[]) => {

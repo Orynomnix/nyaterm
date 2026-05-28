@@ -131,8 +131,8 @@ export function TransferTab() {
       <SettingSection contentClassName="space-y-5">
         <SettingFieldGrid>
           <SettingNumberInput
-            label={t("settings.downloadThreads")}
-            desc={t("settings.downloadThreadsDesc")}
+            label={t("settings.downloadConcurrentTasks")}
+            desc={t("settings.downloadConcurrentTasksDesc")}
             min={1}
             max={10}
             value={transfer.download_threads}
@@ -141,8 +141,8 @@ export function TransferTab() {
           />
 
           <SettingNumberInput
-            label={t("settings.uploadThreads")}
-            desc={t("settings.uploadThreadsDesc")}
+            label={t("settings.uploadConcurrentTasks")}
+            desc={t("settings.uploadConcurrentTasksDesc")}
             min={1}
             max={10}
             value={transfer.upload_threads}
