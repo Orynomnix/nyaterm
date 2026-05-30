@@ -466,6 +466,7 @@
     "maximize": "Maximize",
     "minimize": "Minimize",
     "newLocalTerminal": "New Local Terminal",
+    "newSession": "New Session",
     "newSshConnection": "New SSH Connection",
     "paste": "Paste",
     "resetLayout": "Reset Panel Layout",
