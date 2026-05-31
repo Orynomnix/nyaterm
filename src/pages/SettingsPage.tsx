@@ -332,7 +332,9 @@ export default function SettingsPage() {
         setDraftSettings(nextSettings);
 
         if (closeAfterSave) {
-          await getCurrentWindow().close();
+          setIsSaving(false);
+          void getCurrentWindow().close();
+          return;
         } else {
           toast.success(t("settings.saveSuccess"));
         }
