@@ -345,6 +345,7 @@
     "delete": "Delete",
     "deleteFailedCount": "Failed to delete {{count}} items",
     "deleteFailedItem": "Failed to delete one item",
+    "directoryHistory": "Directory History",
     "downloadSelected": "Download Selected",
     "editPath": "Click to edit path",
     "emptyDirectory": "Empty directory",
