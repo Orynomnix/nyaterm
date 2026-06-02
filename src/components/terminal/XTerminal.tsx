@@ -1949,13 +1949,15 @@ export default function XTerminal({
     openSendCommandPanel({
       text: multiLinePasteText,
       sourceSessionId: sessionId,
+      sourceSessionType: sessionType,
+      dataType: "text",
       sendMode: "line",
       count: 1,
       intervalSeconds: 1,
       target: "current",
     });
     setMultiLinePasteText(null);
-  }, [multiLinePasteText, sessionId]);
+  }, [multiLinePasteText, sessionId, sessionType]);
 
   useEffect(() => {
     doFindRef.current = doFind;

@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { MdAdd, MdRemove, MdSend, MdStop } from "react-icons/md";
 import { toast } from "sonner";
@@ -13,18 +22,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { invoke } from "@/lib/invoke";
 import type {
   SendCommandCount,
+  SendCommandDataType,
   SendCommandMode,
   SendCommandPanelDraft,
   SendCommandTarget,
 } from "@/lib/sendCommandPanelEvents";
 import { buildTerminalCommandInput, sendSessionInput } from "@/lib/sessionInput";
 
-interface SerialSendPanelProps {
+interface SendCommandPanelProps {
   serialSessionId: string | null;
   currentShellSessionId: string | null;
   shellSessionIds: string[];
@@ -32,202 +41,361 @@ interface SerialSendPanelProps {
   onDraftConsumed?: () => void;
 }
 
-interface ShellSendProgress {
+interface SendProgress {
   completedUnits: number;
   totalUnits: number | null;
   unitsPerRound: number;
   totalRounds: number | null;
 }
 
-function isValidHex(str: string): boolean {
-  return /^[0-9a-fA-F\s]*$/.test(str);
+type TargetKind = "serial" | "shell";
+type LineEnding = "none" | "cr" | "lf" | "crlf";
+
+interface SendUnit {
+  data: string;
+  registerSubmission?: string | null;
+  resetPreview?: boolean;
 }
 
-function hexStringToBytes(hex: string): number[] {
-  const cleaned = hex.replace(/\s+/g, "");
-  const bytes: number[] = [];
-  for (let i = 0; i < cleaned.length; i += 2) {
-    const byte = Number.parseInt(cleaned.substring(i, i + 2), 16);
-    if (!Number.isNaN(byte)) bytes.push(byte);
-  }
-  return bytes;
+interface HexGuideRow {
+  lineIndex: number;
+  guidePositions: number[];
 }
 
 const LINE_INTERVAL_SECONDS = 1;
 const CHARACTER_INTERVAL_SECONDS = 0.02;
+const BYTE_INTERVAL_SECONDS = 0.02;
+const HEX_INPUT_INVALID_PATTERN = /[^0-9A-F\s]/u;
+const HEX_CHAR_PATTERN = /[0-9A-F]/u;
 
 function formatIntervalSeconds(value: number): string {
   if (!Number.isFinite(value) || value < 0) return "0";
-  return value === LINE_INTERVAL_SECONDS ? "1.00" : String(value);
+  if (value === LINE_INTERVAL_SECONDS) return "1.00";
+  if (value === CHARACTER_INTERVAL_SECONDS) return "0.02";
+  return String(value);
 }
 
 function normalizeTextNewlines(value: string): string {
   return value.replace(/\r\n|\r/gu, "\n");
 }
 
-function buildShellSendUnits(command: string, mode: SendCommandMode): string[] {
+function buildTextSendUnits(command: string, mode: SendCommandMode): string[] {
   const normalized = normalizeTextNewlines(command);
   return mode === "line" ? normalized.split("\n") : Array.from(normalized);
 }
 
-function getShellUnitInput(unit: string, mode: SendCommandMode): string {
+function getShellTextInput(unit: string, mode: SendCommandMode): string {
   if (mode === "line") {
     return buildTerminalCommandInput(unit);
   }
   return unit === "\n" ? "\r" : unit;
 }
 
-export default function SerialSendPanel({
+function getLineEndingValue(lineEnding: LineEnding): string {
+  switch (lineEnding) {
+    case "cr":
+      return "\r";
+    case "lf":
+      return "\n";
+    case "crlf":
+      return "\r\n";
+    default:
+      return "";
+  }
+}
+
+interface HexParseResult {
+  bytes: number[];
+  error: boolean;
+}
+
+function parseHexText(text: string): HexParseResult {
+  const cleaned = text.replace(/\s+/gu, "");
+  if (!cleaned) return { bytes: [], error: false };
+  if (/[^0-9a-fA-F]/u.test(cleaned) || cleaned.length % 2 !== 0) {
+    return { bytes: [], error: true };
+  }
+
+  const bytes: number[] = [];
+  for (let i = 0; i < cleaned.length; i += 2) {
+    bytes.push(Number.parseInt(cleaned.slice(i, i + 2), 16));
+  }
+  return { bytes, error: false };
+}
+
+function formatHexText(text: string): string {
+  const normalized = normalizeTextNewlines(text).toUpperCase();
+  if (HEX_INPUT_INVALID_PATTERN.test(normalized)) return normalized;
+
+  return normalized
+    .split("\n")
+    .map((line) => {
+      const cleaned = line.replace(/\s+/gu, "");
+      let formatted = "";
+      for (let i = 0; i < cleaned.length; i += 2) {
+        const byte = cleaned.slice(i, i + 2);
+        formatted += byte;
+        if (byte.length === 2) {
+          const byteIndex = i / 2 + 1;
+          formatted += byteIndex % 4 === 0 ? "  " : " ";
+        }
+      }
+      return formatted;
+    })
+    .join("\n");
+}
+
+function countHexCharsBefore(text: string, index: number): number {
+  let count = 0;
+  for (let i = 0; i < Math.min(index, text.length); i += 1) {
+    if (/[0-9a-fA-F]/u.test(text[i])) count += 1;
+  }
+  return count;
+}
+
+function getHexCaretPosition(
+  text: string,
+  hexCharCount: number,
+  skipFollowingWhitespace: boolean,
+): number {
+  if (hexCharCount <= 0 && skipFollowingWhitespace) {
+    let index = 0;
+    while (index < text.length && /\s/u.test(text[index])) index += 1;
+    return index;
+  }
+  if (hexCharCount <= 0) return 0;
+
+  let count = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (!HEX_CHAR_PATTERN.test(text[i])) continue;
+    count += 1;
+    if (count === hexCharCount) {
+      let nextIndex = i + 1;
+      if (skipFollowingWhitespace) {
+        while (nextIndex < text.length && /\s/u.test(text[nextIndex])) nextIndex += 1;
+      }
+      return nextIndex;
+    }
+  }
+
+  return text.length;
+}
+
+function buildHexGuideRows(text: string): HexGuideRow[] {
+  return normalizeTextNewlines(text)
+    .split("\n")
+    .map((line, lineIndex) => {
+      const hexCharCount = line.replace(/[^0-9A-F]/gu, "").length;
+      const guideCount = Math.floor(Math.floor(hexCharCount / 2) / 4);
+      return {
+        lineIndex,
+        guidePositions: Array.from({ length: guideCount }, (_, index) => index + 1),
+      };
+    });
+}
+
+function bytesToRawString(bytes: number[]): string {
+  return String.fromCharCode(...bytes);
+}
+
+function buildHexPreview(bytes: number[]): string {
+  return bytes
+    .map((byte) => (byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : "."))
+    .join("");
+}
+
+export default function SendCommandPanel({
   serialSessionId,
   currentShellSessionId,
   shellSessionIds,
   draft,
   onDraftConsumed,
-}: SerialSendPanelProps) {
+}: SendCommandPanelProps) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"serial" | "shell">(serialSessionId ? "serial" : "shell");
-  const [serialMode, setSerialMode] = useState<"text" | "hex">("text");
-  const [textData, setTextData] = useState("");
-  const [hexData, setHexData] = useState("");
-  const [shellCommand, setShellCommand] = useState("");
-  const [shellSendMode, setShellSendMode] = useState<SendCommandMode>("line");
-  const [shellCount, setShellCount] = useState<SendCommandCount>(1);
-  const [shellIntervalInput, setShellIntervalInput] = useState("1.00");
-  const [shellTarget, setShellTarget] = useState<SendCommandTarget>("current");
+  const [dataType, setDataType] = useState<SendCommandDataType>("text");
+  const [commandText, setCommandText] = useState("");
+  const [hexText, setHexText] = useState("");
+  const [sendMode, setSendMode] = useState<SendCommandMode>("line");
+  const [count, setCount] = useState<SendCommandCount>(1);
+  const [intervalInput, setIntervalInput] = useState("1.00");
+  const [target, setTarget] = useState<SendCommandTarget>("current");
   const [draftCurrentSessionId, setDraftCurrentSessionId] = useState<string | null>(null);
-  const [isShellSending, setIsShellSending] = useState(false);
-  const [shellProgress, setShellProgress] = useState<ShellSendProgress | null>(null);
-  const [lineEnding, setLineEnding] = useState<"none" | "cr" | "lf" | "crlf">("crlf");
-  const [hexError, setHexError] = useState(false);
+  const [draftTargetKind, setDraftTargetKind] = useState<TargetKind | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [progress, setProgress] = useState<SendProgress | null>(null);
+  const [lineEnding, setLineEnding] = useState<LineEnding>("crlf");
+  const [hexScroll, setHexScroll] = useState({ left: 0, top: 0 });
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const hexInputRef = useRef<HTMLTextAreaElement>(null);
-  const shellInputRef = useRef<HTMLTextAreaElement>(null);
-  const shellCancelRef = useRef(false);
-  const shellSendingRef = useRef(false);
-  const shellTimerRef = useRef<number | null>(null);
-  const shellTimerResolveRef = useRef<(() => void) | null>(null);
+  const cancelRef = useRef(false);
+  const sendingRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+  const timerResolveRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    if (!serialSessionId && mode === "serial") {
-      setMode("shell");
-    }
-  }, [mode, serialSessionId]);
+  const activeTargetKind: TargetKind = serialSessionId ? "serial" : "shell";
+  const targetKind =
+    draftTargetKind === "serial" && draftCurrentSessionId === serialSessionId
+      ? "serial"
+      : draftTargetKind === "shell" &&
+          draftCurrentSessionId !== null &&
+          shellSessionIds.includes(draftCurrentSessionId)
+        ? "shell"
+        : activeTargetKind;
 
   const currentTargetSessionId =
-    draftCurrentSessionId && shellSessionIds.includes(draftCurrentSessionId)
-      ? draftCurrentSessionId
-      : currentShellSessionId;
+    targetKind === "serial"
+      ? serialSessionId
+      : draftCurrentSessionId && shellSessionIds.includes(draftCurrentSessionId)
+        ? draftCurrentSessionId
+        : currentShellSessionId;
 
   const targetSessionIds =
-    shellTarget === "current"
-      ? currentTargetSessionId
-        ? [currentTargetSessionId]
+    targetKind === "serial"
+      ? serialSessionId
+        ? [serialSessionId]
         : []
-      : shellSessionIds;
+      : target === "current"
+        ? currentTargetSessionId
+          ? [currentTargetSessionId]
+          : []
+        : shellSessionIds;
 
-  const cancelShellSend = useCallback(() => {
-    shellCancelRef.current = true;
-    if (shellTimerRef.current !== null) {
-      window.clearTimeout(shellTimerRef.current);
-      shellTimerRef.current = null;
+  const parsedHex = useMemo(() => parseHexText(hexText), [hexText]);
+  const parsedHexBytes = parsedHex.error ? null : parsedHex.bytes;
+  const hasInvalidHex = parsedHex.error;
+  const hasPayload =
+    dataType === "hex"
+      ? parsedHexBytes !== null && parsedHexBytes.length > 0
+      : commandText.length > 0;
+  const targetAvailable = targetKind === "serial" ? !!serialSessionId : shellSessionIds.length > 0;
+
+  const cancelSend = useCallback(() => {
+    cancelRef.current = true;
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-    shellTimerResolveRef.current?.();
-    shellTimerResolveRef.current = null;
+    timerResolveRef.current?.();
+    timerResolveRef.current = null;
   }, []);
 
   useEffect(() => {
-    return () => cancelShellSend();
-  }, [cancelShellSend]);
+    return () => cancelSend();
+  }, [cancelSend]);
 
   useEffect(() => {
-    if (draftCurrentSessionId && !shellSessionIds.includes(draftCurrentSessionId)) {
-      setDraftCurrentSessionId(null);
+    if (targetKind === "serial" && target !== "current") {
+      setTarget("current");
+      return;
     }
-  }, [draftCurrentSessionId, shellSessionIds]);
 
-  useEffect(() => {
-    if (currentTargetSessionId || shellTarget !== "current") return;
+    if (targetKind !== "shell") return;
+    if (currentTargetSessionId || target !== "current") return;
     if (shellSessionIds.length > 0) {
-      setShellTarget("all");
+      setTarget("all");
     }
-  }, [currentTargetSessionId, shellSessionIds.length, shellTarget]);
+  }, [currentTargetSessionId, shellSessionIds.length, target, targetKind]);
+
+  useEffect(() => {
+    if (
+      draftCurrentSessionId &&
+      targetKind === "shell" &&
+      !shellSessionIds.includes(draftCurrentSessionId)
+    ) {
+      setDraftCurrentSessionId(null);
+      setDraftTargetKind(null);
+    }
+  }, [draftCurrentSessionId, shellSessionIds, targetKind]);
 
   useEffect(() => {
     if (!draft) return;
 
-    setMode("shell");
-    setShellCommand(draft.text);
-    setShellSendMode(draft.sendMode);
-    setShellCount(draft.count);
-    setShellIntervalInput(formatIntervalSeconds(draft.intervalSeconds));
-    setShellTarget(draft.target);
+    const nextDataType = draft.dataType ?? "text";
+    setDataType(nextDataType);
+    setCommandText(draft.text);
+    if (nextDataType === "hex") {
+      setHexText(formatHexText(draft.text));
+      setSendMode(draft.sendMode === "packet" ? "packet" : "byte");
+    } else {
+      setSendMode(draft.sendMode === "character" ? "character" : "line");
+    }
+    setCount(draft.count);
+    setIntervalInput(formatIntervalSeconds(draft.intervalSeconds));
+    setTarget(draft.target);
     setDraftCurrentSessionId(draft.sourceSessionId);
+    setDraftTargetKind(draft.sourceSessionType === "Serial" ? "serial" : "shell");
     onDraftConsumed?.();
-    requestAnimationFrame(() => shellInputRef.current?.focus());
+    requestAnimationFrame(() => {
+      if (nextDataType === "hex") {
+        hexInputRef.current?.focus();
+      } else {
+        textInputRef.current?.focus();
+      }
+    });
   }, [draft, onDraftConsumed]);
 
-  const sendText = useCallback(() => {
-    if (!textData || !serialSessionId) return;
-    let data = textData;
-    if (lineEnding === "cr") data += "\r";
-    else if (lineEnding === "lf") data += "\n";
-    else if (lineEnding === "crlf") data += "\r\n";
-    invoke("write_to_session", { sessionId: serialSessionId, data }).catch(() => {});
-    setTextData("");
-    textInputRef.current?.focus();
-  }, [lineEnding, serialSessionId, textData]);
-
-  const sendHex = useCallback(() => {
-    if (!hexData || !serialSessionId) return;
-    if (!isValidHex(hexData)) {
-      setHexError(true);
-      return;
-    }
-    const bytes = hexStringToBytes(hexData);
-    if (bytes.length === 0) return;
-    const str = String.fromCharCode(...bytes);
-    invoke("write_to_session", { sessionId: serialSessionId, data: str }).catch(() => {});
-    setHexData("");
-    setHexError(false);
-    hexInputRef.current?.focus();
-  }, [hexData, serialSessionId]);
-
-  const waitShellInterval = useCallback(async (seconds: number) => {
-    if (seconds <= 0 || shellCancelRef.current) return;
+  const waitInterval = useCallback(async (seconds: number) => {
+    if (seconds <= 0 || cancelRef.current) return;
 
     await new Promise<void>((resolve) => {
-      shellTimerResolveRef.current = resolve;
-      shellTimerRef.current = window.setTimeout(() => {
-        shellTimerRef.current = null;
-        shellTimerResolveRef.current = null;
+      timerResolveRef.current = resolve;
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        timerResolveRef.current = null;
         resolve();
       }, seconds * 1000);
     });
   }, []);
 
-  const sendShellCommand = useCallback(async () => {
-    if (shellSendingRef.current) return;
+  const buildSendUnits = useCallback((): SendUnit[] => {
+    if (dataType === "hex") {
+      if (!parsedHexBytes || parsedHexBytes.length === 0) return [];
+      if (sendMode === "packet") {
+        return [{ data: bytesToRawString(parsedHexBytes) }];
+      }
+      return parsedHexBytes.map((byte) => ({ data: String.fromCharCode(byte) }));
+    }
 
-    const units = buildShellSendUnits(shellCommand, shellSendMode);
-    const intervalSeconds = Number.parseFloat(shellIntervalInput);
+    if (targetKind === "serial") {
+      const lineEndingValue = getLineEndingValue(lineEnding);
+      return buildTextSendUnits(commandText, sendMode).map((unit) => ({
+        data: sendMode === "line" ? `${unit}${lineEndingValue}` : unit,
+      }));
+    }
+
+    return buildTextSendUnits(commandText, sendMode).map((unit) => ({
+      data: getShellTextInput(unit, sendMode),
+      registerSubmission: sendMode === "line" && unit.trim() ? unit : null,
+      resetPreview: sendMode === "line",
+    }));
+  }, [commandText, dataType, lineEnding, parsedHexBytes, sendMode, targetKind]);
+
+  const getDefaultInterval = useCallback(() => {
+    if (dataType === "hex") return sendMode === "byte" ? BYTE_INTERVAL_SECONDS : 0;
+    return sendMode === "line" ? LINE_INTERVAL_SECONDS : CHARACTER_INTERVAL_SECONDS;
+  }, [dataType, sendMode]);
+
+  const sendCommand = useCallback(async () => {
+    if (sendingRef.current) return;
+
+    const units = buildSendUnits();
+    const intervalSeconds = Number.parseFloat(intervalInput);
     const effectiveInterval = Number.isFinite(intervalSeconds)
       ? Math.max(0, intervalSeconds)
-      : shellSendMode === "line"
-        ? LINE_INTERVAL_SECONDS
-        : CHARACTER_INTERVAL_SECONDS;
+      : getDefaultInterval();
     const targets = [...targetSessionIds];
     if (units.length === 0 || targets.length === 0) return;
 
-    shellCancelRef.current = false;
-    shellSendingRef.current = true;
-    setIsShellSending(true);
-    setShellProgress(
-      shellCount === null || shellCount > 1
+    cancelRef.current = false;
+    sendingRef.current = true;
+    setIsSending(true);
+    setProgress(
+      count === null || count > 1
         ? {
             completedUnits: 0,
-            totalUnits: shellCount === null ? null : units.length * shellCount,
+            totalUnits: count === null ? null : units.length * count,
             unitsPerRound: units.length,
-            totalRounds: shellCount,
+            totalRounds: count,
           }
         : null,
     );
@@ -240,87 +408,189 @@ export default function SerialSendPanel({
 
     try {
       let round = 0;
-      while ((shellCount === null || round < shellCount) && !shellCancelRef.current) {
+      while ((count === null || round < count) && !cancelRef.current) {
         for (const unit of units) {
-          if (shellCancelRef.current) break;
+          if (cancelRef.current) break;
           if (!firstUnit) {
-            await waitShellInterval(effectiveInterval);
+            await waitInterval(effectiveInterval);
           }
-          if (shellCancelRef.current) break;
+          if (cancelRef.current) break;
 
-          const input = getShellUnitInput(unit, shellSendMode);
-          const registerSubmission = shellSendMode === "line" && unit.trim() ? unit : null;
           const results = await Promise.allSettled(
             targets.map((sessionId) =>
-              sendSessionInput(sessionId, input, {
-                preview: shellSendMode === "line" ? { kind: "reset" } : undefined,
-                registerSubmission,
-              }),
+              targetKind === "shell" && dataType === "text"
+                ? sendSessionInput(sessionId, unit.data, {
+                    preview: unit.resetPreview ? { kind: "reset" } : undefined,
+                    registerSubmission: unit.registerSubmission,
+                  })
+                : invoke("write_to_session", { sessionId, data: unit.data }),
             ),
           );
 
           failedCount += results.filter((result) => result.status === "rejected").length;
           sendCount += results.length;
           completedUnits += 1;
-          setShellProgress((current) => (current ? { ...current, completedUnits } : current));
+          setProgress((current) => (current ? { ...current, completedUnits } : current));
           firstUnit = false;
         }
         round += 1;
       }
 
-      cancelled = shellCancelRef.current;
+      cancelled = cancelRef.current;
       if (!cancelled) {
         if (sendCount > 0 && failedCount === sendCount) {
-          toast.error(t("serialSend.shellSendFailed", "Send failed"));
+          toast.error(t("serialSend.sendFailed", "Send failed"));
           return;
         }
         if (failedCount > 0) {
-          toast.error(t("serialSend.shellSendPartial", "Some windows did not receive the command"));
+          toast.error(t("serialSend.sendPartial", "Some sessions did not receive the data"));
         }
-        setShellCommand("");
+        if (dataType === "hex") {
+          setHexText("");
+        } else {
+          setCommandText("");
+        }
       }
     } finally {
-      if (shellTimerRef.current !== null) {
-        window.clearTimeout(shellTimerRef.current);
-        shellTimerRef.current = null;
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
-      shellTimerResolveRef.current = null;
-      shellCancelRef.current = false;
-      shellSendingRef.current = false;
-      setIsShellSending(false);
-      setShellProgress(null);
-      shellInputRef.current?.focus();
+      timerResolveRef.current = null;
+      cancelRef.current = false;
+      sendingRef.current = false;
+      setIsSending(false);
+      setProgress(null);
+      if (dataType === "hex") {
+        hexInputRef.current?.focus();
+      } else {
+        textInputRef.current?.focus();
+      }
     }
   }, [
-    shellCommand,
-    shellCount,
-    shellIntervalInput,
-    shellSendMode,
+    buildSendUnits,
+    count,
+    dataType,
+    getDefaultInterval,
+    intervalInput,
     t,
+    targetKind,
     targetSessionIds,
-    waitShellInterval,
+    waitInterval,
   ]);
 
-  const handleShellModeChange = useCallback((value: SendCommandMode) => {
-    setShellSendMode(value);
-    setShellIntervalInput(value === "line" ? "1.00" : "0.02");
+  const handleDataTypeChange = useCallback((value: SendCommandDataType) => {
+    setDataType(value);
+    if (value === "hex") {
+      setSendMode("byte");
+      setIntervalInput(formatIntervalSeconds(BYTE_INTERVAL_SECONDS));
+    } else {
+      setSendMode("line");
+      setIntervalInput(formatIntervalSeconds(LINE_INTERVAL_SECONDS));
+    }
   }, []);
+
+  const handleSendModeChange = useCallback(
+    (value: SendCommandMode) => {
+      setSendMode(value);
+      if (dataType === "hex") {
+        setIntervalInput(value === "byte" ? "0.02" : "0");
+      } else {
+        setIntervalInput(value === "line" ? "1.00" : "0.02");
+      }
+    },
+    [dataType],
+  );
+
+  const handleHexTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const rawValue = event.target.value;
+    const rawCaret = event.target.selectionStart ?? rawValue.length;
+    const formattedValue = formatHexText(rawValue);
+    const normalizedRawValue = normalizeTextNewlines(rawValue).toUpperCase();
+    const hasInvalidInput = HEX_INPUT_INVALID_PATTERN.test(normalizedRawValue);
+    const hexCharsBeforeCaret = countHexCharsBefore(rawValue, rawCaret);
+    const nextCaret = hasInvalidInput
+      ? rawCaret
+      : getHexCaretPosition(
+          formattedValue,
+          hexCharsBeforeCaret,
+          (hexCharsBeforeCaret > 0 && hexCharsBeforeCaret % 2 === 0) ||
+            (rawCaret > 0 && /\s/u.test(rawValue[rawCaret - 1])),
+        );
+
+    setHexText(formattedValue);
+    requestAnimationFrame(() => {
+      hexInputRef.current?.setSelectionRange(nextCaret, nextCaret);
+    });
+  }, []);
+
+  const handleHexScroll = useCallback((event: UIEvent<HTMLTextAreaElement>) => {
+    setHexScroll({
+      left: event.currentTarget.scrollLeft,
+      top: event.currentTarget.scrollTop,
+    });
+  }, []);
+
+  const handleHexKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        if (isSending) {
+          cancelSend();
+        } else {
+          void sendCommand();
+        }
+        return;
+      }
+
+      if (event.key !== "Backspace" || event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const input = event.currentTarget;
+      const selectionStart = input.selectionStart ?? 0;
+      const selectionEnd = input.selectionEnd ?? selectionStart;
+      if (selectionStart !== selectionEnd || selectionStart <= 0) return;
+      if (!/\s/u.test(hexText[selectionStart - 1])) return;
+
+      let byteEnd = selectionStart - 1;
+      while (byteEnd >= 0 && /\s/u.test(hexText[byteEnd])) byteEnd -= 1;
+      if (byteEnd < 0 || !HEX_CHAR_PATTERN.test(hexText[byteEnd])) return;
+
+      let byteStart = byteEnd - 1;
+      while (byteStart >= 0 && /\s/u.test(hexText[byteStart])) byteStart -= 1;
+      if (byteStart < 0 || !HEX_CHAR_PATTERN.test(hexText[byteStart])) return;
+
+      event.preventDefault();
+      const nextRawValue = `${hexText.slice(0, byteStart)}${hexText.slice(selectionStart)}`;
+      const nextValue = formatHexText(nextRawValue);
+      const nextCaret = getHexCaretPosition(
+        nextValue,
+        countHexCharsBefore(hexText, byteStart),
+        true,
+      );
+
+      setHexText(nextValue);
+      requestAnimationFrame(() => {
+        hexInputRef.current?.setSelectionRange(nextCaret, nextCaret);
+      });
+    },
+    [cancelSend, hexText, isSending, sendCommand],
+  );
 
   const handleCountInputChange = useCallback((value: string) => {
     const trimmed = value.trim();
     if (trimmed === "∞" || trimmed.toLowerCase() === "inf") {
-      setShellCount(null);
+      setCount(null);
       return;
     }
 
     const parsed = Number.parseInt(trimmed, 10);
     if (Number.isFinite(parsed)) {
-      setShellCount(Math.max(1, parsed));
+      setCount(Math.max(1, parsed));
     }
   }, []);
 
   const decrementCount = useCallback(() => {
-    setShellCount((current) => {
+    setCount((current) => {
       if (current === null) return null;
       if (current <= 1) return null;
       return current - 1;
@@ -328,7 +598,7 @@ export default function SerialSendPanel({
   }, []);
 
   const incrementCount = useCallback(() => {
-    setShellCount((current) => {
+    setCount((current) => {
       if (current === null) return 1;
       return current + 1;
     });
@@ -344,386 +614,384 @@ export default function SerialSendPanel({
     [],
   );
 
-  const shellProgressPercent =
-    shellProgress?.totalUnits && shellProgress.totalUnits > 0
-      ? Math.min(100, Math.round((shellProgress.completedUnits / shellProgress.totalUnits) * 100))
+  const progressPercent =
+    progress?.totalUnits && progress.totalUnits > 0
+      ? Math.min(100, Math.round((progress.completedUnits / progress.totalUnits) * 100))
       : null;
-  const shellCompletedRounds = shellProgress
-    ? Math.floor(shellProgress.completedUnits / shellProgress.unitsPerRound)
+  const completedRounds = progress
+    ? Math.floor(progress.completedUnits / progress.unitsPerRound)
     : 0;
-  const shellCurrentRound = shellProgress
-    ? shellProgress.totalRounds === null
-      ? shellCompletedRounds + 1
-      : Math.min(shellProgress.totalRounds, shellCompletedRounds + 1)
+  const currentRound = progress
+    ? progress.totalRounds === null
+      ? completedRounds + 1
+      : Math.min(progress.totalRounds, completedRounds + 1)
     : 0;
+
+  const previewBytes = parsedHexBytes ?? [];
+  const hexPreview = buildHexPreview(previewBytes);
+  const hexGuideRows = useMemo(() => buildHexGuideRows(hexText), [hexText]);
+  const hasHexGuides = hexGuideRows.some((row) => row.guidePositions.length > 0);
+
+  if (!targetAvailable) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden px-2 py-1.5 gap-1">
+        {renderUnavailable(
+          t("serialSend.unavailable", "No active session available"),
+          t(
+            "serialSend.unavailableDesc",
+            "Switch to a connected serial, SSH, local terminal, or Telnet tab to send data.",
+          ),
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden px-2 py-1.5 gap-1">
-      <Tabs
-        value={mode}
-        onValueChange={(value) => setMode(value as typeof mode)}
-        className="flex-1 flex flex-col min-h-0"
-      >
-        <div className="flex items-center gap-2 shrink-0">
-          <TabsList className="h-7">
-            <TabsTrigger
-              value="serial"
-              disabled={!serialSessionId}
-              className="text-[0.6875rem] px-2.5 h-6"
-            >
-              {t("serialSend.serialData", "Serial Data")}
-            </TabsTrigger>
-            <TabsTrigger value="shell" className="text-[0.6875rem] px-2.5 h-6">
-              {t("serialSend.shellCommand", "Shell Command")}
-            </TabsTrigger>
-          </TabsList>
-          <span className="text-[0.625rem] text-muted-foreground ml-auto select-none">
-            {t("serialSend.title", "Command Send")}
-          </span>
+    <div className="h-full flex flex-col overflow-hidden px-2 py-1.5 gap-2">
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[0.6875rem] font-medium text-foreground">
+          {t("serialSend.title", "Command Send")}
+        </span>
+        <span className="ml-auto text-[0.625rem] text-muted-foreground select-none">
+          {targetKind === "serial"
+            ? t("serialSend.serialData", "Serial Data")
+            : t("serialSend.shellCommand", "Shell Command")}
+        </span>
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <div className="flex h-8 min-w-[8.5rem] flex-[1_1_10rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+          <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+            {t("serialSend.dataType", "Data Type")}
+          </Label>
+          <Select
+            value={dataType}
+            onValueChange={(value) => handleDataTypeChange(value as SendCommandDataType)}
+            disabled={isSending}
+          >
+            <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text" className="text-xs">
+                {t("serialSend.text", "Text")}
+              </SelectItem>
+              <SelectItem value="hex" className="text-xs">
+                {t("serialSend.hex", "Hex")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <TabsContent value="serial" className="flex-1 m-0 mt-1 min-h-0">
-          {serialSessionId ? (
-            <Tabs
-              orientation="vertical"
-              value={serialMode}
-              onValueChange={(value) => setSerialMode(value as typeof serialMode)}
-              className="flex h-full min-h-0 gap-1.5"
+        <div className="flex h-8 min-w-[10rem] flex-[1.2_1_12rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+          <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+            {t("serialSend.sendMode", "Send Mode")}
+          </Label>
+          <Select
+            value={sendMode}
+            onValueChange={(value) => handleSendModeChange(value as SendCommandMode)}
+            disabled={isSending}
+          >
+            <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {dataType === "hex" ? (
+                <>
+                  <SelectItem value="byte" className="text-xs">
+                    {t("serialSend.byteByByte", "Byte by byte")}
+                  </SelectItem>
+                  <SelectItem value="packet" className="text-xs">
+                    {t("serialSend.packet", "Packet")}
+                  </SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="line" className="text-xs">
+                    {t("serialSend.lineByLine", "Line by line")}
+                  </SelectItem>
+                  <SelectItem value="character" className="text-xs">
+                    {t("serialSend.characterByCharacter", "Character by character")}
+                  </SelectItem>
+                </>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex h-8 min-w-[10rem] flex-[1.2_1_12rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+          <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+            {t("serialSend.target", "Target")}
+          </Label>
+          <Select
+            value={targetKind === "serial" ? "current" : target}
+            onValueChange={(value) => setTarget(value as SendCommandTarget)}
+            disabled={isSending || targetKind === "serial"}
+          >
+            <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current" disabled={!currentTargetSessionId} className="text-xs">
+                {t("serialSend.currentSession", "Current session")}
+              </SelectItem>
+              {targetKind === "shell" && (
+                <SelectItem value="all" className="text-xs">
+                  {t("serialSend.allSessions", "All sessions")}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex h-8 min-w-[8.5rem] flex-[1_1_9.5rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+          <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+            {t("serialSend.count", "Count")}
+          </Label>
+          <div className="flex min-w-0 flex-1 items-center border-l border-border/60">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-8 w-8 rounded-none text-muted-foreground"
+              onClick={decrementCount}
+              disabled={isSending}
             >
-              <TabsList className="h-auto w-20 shrink-0 flex-col">
-                <TabsTrigger value="text" className="text-[0.6875rem] px-2.5 h-7">
-                  {t("serialSend.text", "Text")}
-                </TabsTrigger>
-                <TabsTrigger value="hex" className="text-[0.6875rem] px-2.5 h-7">
-                  {t("serialSend.hex", "Hex")}
-                </TabsTrigger>
-              </TabsList>
+              <MdRemove className="text-sm" />
+            </Button>
+            <Input
+              className="h-8 min-w-10 rounded-none border-0 bg-transparent px-1 text-center text-[0.75rem] font-medium shadow-none focus-visible:ring-0"
+              value={count === null ? "∞" : String(count)}
+              inputMode="numeric"
+              disabled={isSending}
+              aria-label={t("serialSend.count", "Count")}
+              onChange={(e) => handleCountInputChange(e.target.value)}
+              onBlur={() => {
+                if (count !== null && count < 1) setCount(1);
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-8 w-8 rounded-none text-muted-foreground"
+              onClick={incrementCount}
+              disabled={isSending}
+            >
+              <MdAdd className="text-sm" />
+            </Button>
+          </div>
+        </div>
 
-              <TabsContent value="text" className="flex-1 m-0 min-h-0">
-                <div className="h-full flex flex-col gap-1.5 min-h-0">
-                  <Textarea
-                    ref={textInputRef}
-                    className="min-h-0 flex-1 resize-none text-xs md:text-xs"
-                    placeholder={t("serialSend.textPlaceholder", "Enter text to send...")}
-                    value={textData}
-                    onChange={(e) => setTextData(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                        e.preventDefault();
-                        sendText();
-                      }
-                    }}
-                  />
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Select
-                      value={lineEnding}
-                      onValueChange={(value) => setLineEnding(value as typeof lineEnding)}
-                    >
-                      <SelectTrigger className="h-7 w-20 text-[0.625rem]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none" className="text-xs">
-                          {t("serialSend.noLineEnding", "None")}
-                        </SelectItem>
-                        <SelectItem value="cr" className="text-xs">
-                          CR
-                        </SelectItem>
-                        <SelectItem value="lf" className="text-xs">
-                          LF
-                        </SelectItem>
-                        <SelectItem value="crlf" className="text-xs">
-                          CR+LF
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="ml-auto text-[0.625rem] text-muted-foreground select-none">
-                      {t("serialSend.sendShortcut", "Ctrl/Cmd + Enter to send")}
-                    </span>
-                    <Button
-                      size="icon-xs"
-                      variant="default"
-                      className="h-7 w-7 shrink-0"
-                      onClick={sendText}
-                      disabled={!textData}
-                    >
-                      <MdSend className="text-sm" />
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
+        <div className="flex h-8 min-w-[9rem] flex-[1_1_10rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+          <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+            {t("serialSend.interval", "Interval")}
+          </Label>
+          <div className="flex min-w-0 flex-1 items-center border-l border-border/60">
+            <Input
+              className="h-8 min-w-14 rounded-none border-0 bg-transparent px-2 text-right text-[0.75rem] font-medium shadow-none focus-visible:ring-0"
+              value={intervalInput}
+              inputMode="decimal"
+              disabled={isSending}
+              aria-label={t("serialSend.interval", "Interval")}
+              onChange={(e) => setIntervalInput(e.target.value)}
+              onBlur={() => {
+                const parsed = Number.parseFloat(intervalInput);
+                if (!Number.isFinite(parsed) || parsed < 0) {
+                  setIntervalInput(formatIntervalSeconds(getDefaultInterval()));
+                }
+              }}
+            />
+            <span className="shrink-0 pr-2 text-[0.625rem] text-muted-foreground">
+              {t("serialSend.seconds", "s")}
+            </span>
+          </div>
+        </div>
+        {targetKind === "serial" && dataType === "text" && sendMode === "line" && (
+          <div className="flex h-8 min-w-[7.5rem] flex-[0.8_1_8.5rem] items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
+            <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
+              {t("serialSend.lineEnding", "Line Ending")}
+            </Label>
+            <Select
+              value={lineEnding}
+              onValueChange={(value) => setLineEnding(value as LineEnding)}
+              disabled={isSending}
+            >
+              <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">
+                  {t("serialSend.noLineEnding", "None")}
+                </SelectItem>
+                <SelectItem value="cr" className="text-xs">
+                  CR
+                </SelectItem>
+                <SelectItem value="lf" className="text-xs">
+                  LF
+                </SelectItem>
+                <SelectItem value="crlf" className="text-xs">
+                  CR+LF
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
 
-              <TabsContent value="hex" className="flex-1 m-0 min-h-0">
-                <div className="h-full flex flex-col gap-1.5 min-h-0">
-                  <Textarea
-                    ref={hexInputRef}
-                    className={`min-h-0 flex-1 resize-none font-mono text-xs md:text-xs ${hexError ? "border-destructive" : ""}`}
-                    placeholder={t("serialSend.hexPlaceholder", "e.g. 48 65 6C 6C 6F")}
-                    value={hexData}
-                    onChange={(e) => {
-                      setHexData(e.target.value);
-                      setHexError(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                        e.preventDefault();
-                        sendHex();
-                      }
-                    }}
-                  />
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {hexError && (
-                      <span className="text-[0.625rem] text-destructive truncate">
-                        {t(
-                          "serialSend.hexError",
-                          "Invalid hex input. Use hex characters (0-9, A-F) separated by spaces.",
-                        )}
-                      </span>
+      <div className="relative min-h-0 flex-1">
+        {dataType === "text" ? (
+          <Textarea
+            ref={textInputRef}
+            className="min-h-0 h-full resize-none pr-12 pb-10 font-mono text-xs leading-5 md:text-xs"
+            placeholder={t(
+              "serialSend.shellPlaceholder",
+              "Enter text to send...\nCtrl/Cmd + Enter to send",
+            )}
+            value={commandText}
+            disabled={isSending}
+            onChange={(e) => setCommandText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                e.preventDefault();
+                if (isSending) {
+                  cancelSend();
+                } else {
+                  void sendCommand();
+                }
+              }
+            }}
+          />
+        ) : (
+          <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] gap-1.5 pr-10 pb-10">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background">
+              <div className="flex h-8 shrink-0 items-center border-b border-border/70 px-2">
+                <span className="text-[0.625rem] font-medium text-muted-foreground">
+                  {t("serialSend.hexEditor", "HEX Editor")}
+                </span>
+                {hasInvalidHex && (
+                  <span className="ml-auto truncate text-[0.625rem] text-destructive">
+                    {t(
+                      "serialSend.hexError",
+                      "Invalid hex input. Use hex characters (0-9, A-F) separated by spaces.",
                     )}
-                    <span className="ml-auto text-[0.625rem] text-muted-foreground select-none shrink-0">
-                      {t("serialSend.sendShortcut", "Ctrl/Cmd + Enter to send")}
-                    </span>
-                    <Button
-                      size="icon-xs"
-                      variant="default"
-                      className="h-7 w-7 shrink-0"
-                      onClick={sendHex}
-                      disabled={!hexData}
-                    >
-                      <MdSend className="text-sm" />
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          ) : (
-            renderUnavailable(
-              t(
-                "serialSend.serialUnavailable",
-                "Serial data send is only available for the active serial session",
-              ),
-              t(
-                "serialSend.serialUnavailableDesc",
-                "Switch to a serial tab to send text or hex data here.",
-              ),
-            )
-          )}
-        </TabsContent>
-
-        <TabsContent value="shell" className="flex-1 m-0 mt-1 min-h-0">
-          {shellSessionIds.length > 0 ? (
-            <div className="h-full flex flex-col gap-2 min-h-0">
-              <div className="grid shrink-0 grid-cols-2 gap-1.5 lg:grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)]">
-                <div className="flex h-8 min-w-0 items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
-                  <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
-                    {t("serialSend.sendMode", "Send Mode")}
-                  </Label>
-                  <Select
-                    value={shellSendMode}
-                    onValueChange={(value) => handleShellModeChange(value as SendCommandMode)}
-                    disabled={isShellSending}
-                  >
-                    <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="line" className="text-xs">
-                        {t("serialSend.lineByLine", "Line by line")}
-                      </SelectItem>
-                      <SelectItem value="character" className="text-xs">
-                        {t("serialSend.characterByCharacter", "Character by character")}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex h-8 min-w-0 items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
-                  <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
-                    {t("serialSend.target", "Target")}
-                  </Label>
-                  <Select
-                    value={shellTarget}
-                    onValueChange={(value) => setShellTarget(value as SendCommandTarget)}
-                    disabled={isShellSending}
-                  >
-                    <SelectTrigger className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-[0.6875rem] shadow-none focus-visible:ring-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem
-                        value="current"
-                        disabled={!currentTargetSessionId}
-                        className="text-xs"
-                      >
-                        {t("serialSend.currentSession", "Current session")}
-                      </SelectItem>
-                      <SelectItem value="all" className="text-xs">
-                        {t("serialSend.allSessions", "All sessions")}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex h-8 min-w-0 items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
-                  <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
-                    {t("serialSend.count", "Count")}
-                  </Label>
-                  <div className="flex min-w-0 flex-1 items-center border-l border-border/60">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="h-8 w-8 rounded-none text-muted-foreground"
-                      onClick={decrementCount}
-                      disabled={isShellSending}
-                    >
-                      <MdRemove className="text-sm" />
-                    </Button>
-                    <Input
-                      className="h-8 min-w-0 rounded-none border-0 bg-transparent px-1 text-center text-[0.75rem] font-medium shadow-none focus-visible:ring-0"
-                      value={shellCount === null ? "∞" : String(shellCount)}
-                      inputMode="numeric"
-                      disabled={isShellSending}
-                      aria-label={t("serialSend.count", "Count")}
-                      onChange={(e) => handleCountInputChange(e.target.value)}
-                      onBlur={() => {
-                        if (shellCount !== null && shellCount < 1) setShellCount(1);
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="h-8 w-8 rounded-none text-muted-foreground"
-                      onClick={incrementCount}
-                      disabled={isShellSending}
-                    >
-                      <MdAdd className="text-sm" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex h-8 min-w-0 items-center overflow-hidden rounded-md border border-border/70 bg-background/60">
-                  <Label className="shrink-0 px-2 text-[0.625rem] text-muted-foreground">
-                    {t("serialSend.interval", "Interval")}
-                  </Label>
-                  <div className="flex min-w-0 flex-1 items-center border-l border-border/60">
-                    <Input
-                      className="h-8 min-w-0 rounded-none border-0 bg-transparent px-2 text-right text-[0.75rem] font-medium shadow-none focus-visible:ring-0"
-                      value={shellIntervalInput}
-                      inputMode="decimal"
-                      disabled={isShellSending}
-                      aria-label={t("serialSend.interval", "Interval")}
-                      onChange={(e) => setShellIntervalInput(e.target.value)}
-                      onBlur={() => {
-                        const parsed = Number.parseFloat(shellIntervalInput);
-                        if (!Number.isFinite(parsed) || parsed < 0) {
-                          setShellIntervalInput(shellSendMode === "line" ? "1.00" : "0.02");
-                        }
-                      }}
-                    />
-                    <span className="shrink-0 pr-2 text-[0.625rem] text-muted-foreground">
-                      {t("serialSend.seconds", "s")}
-                    </span>
-                  </div>
-                </div>
+                  </span>
+                )}
               </div>
-              <div className="relative min-h-0 flex-1">
-                <Textarea
-                  ref={shellInputRef}
-                  className="min-h-0 h-full resize-none pr-12 pb-10 font-mono text-xs leading-5 md:text-xs"
-                  placeholder={t(
-                    "serialSend.shellPlaceholder",
-                    "Enter text to send...\nCtrl/Cmd + Enter to send",
-                  )}
-                  value={shellCommand}
-                  disabled={isShellSending}
-                  onChange={(e) => setShellCommand(e.target.value)}
-                  onKeyDown={(e) => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                      e.preventDefault();
-                      if (isShellSending) {
-                        cancelShellSend();
-                      } else {
-                        void sendShellCommand();
-                      }
-                    }
-                  }}
-                />
-                {shellProgress && (
-                  <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
-                    <div className="rounded-md border border-primary/25 bg-background/95 px-2.5 py-2 shadow-sm backdrop-blur">
-                      <div className="mb-1.5 flex min-w-0 items-center gap-2">
-                        <span className="truncate text-[0.6875rem] font-medium text-foreground">
-                          {shellProgress.totalRounds === null
-                            ? t("serialSend.shellProgressInfinite", "Sending round {{current}}", {
-                                current: shellCurrentRound,
-                              })
-                            : t(
-                                "serialSend.shellProgressRound",
-                                "Sending {{current}} / {{total}}",
-                                {
-                                  current: shellCurrentRound,
-                                  total: shellProgress.totalRounds,
-                                },
-                              )}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
-                          {shellProgress.totalUnits === null
-                            ? t("serialSend.shellProgressCompleted", "{{count}} sent", {
-                                count: shellProgress.completedUnits,
-                              })
-                            : t(
-                                "serialSend.shellProgressUnits",
-                                "{{completed}} / {{total}} units",
-                                {
-                                  completed: shellProgress.completedUnits,
-                                  total: shellProgress.totalUnits,
-                                },
-                              )}
-                        </span>
-                      </div>
-                      {shellProgressPercent !== null ? (
-                        <Progress value={shellProgressPercent} className="h-1.5" />
-                      ) : (
-                        <div className="h-1.5 overflow-hidden rounded-full bg-primary/20">
-                          <div className="h-full w-1/3 rounded-full bg-primary/70" />
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                {hasHexGuides && (
+                  <div
+                    className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 font-mono text-xs leading-5 md:text-xs"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="min-w-max"
+                      style={{
+                        transform: `translate(${-hexScroll.left}px, ${-hexScroll.top}px)`,
+                      }}
+                    >
+                      {hexGuideRows.map((row) => (
+                        <div key={row.lineIndex} className="relative h-5 min-w-max">
+                          {row.guidePositions.map((groupNumber) => (
+                            <span
+                              key={groupNumber}
+                              className="absolute -top-0.5 h-6 border-l-2 border-dashed border-primary/80"
+                              style={{ left: `calc(${groupNumber * 13 - 1}ch)` }}
+                            />
+                          ))}
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
-                <Button
-                  size="icon-xs"
-                  variant={isShellSending ? "destructive" : "default"}
-                  className="absolute bottom-2 right-2 h-7 w-7 shadow-sm"
-                  title={
-                    isShellSending ? t("serialSend.stop", "Stop") : t("serialSend.send", "Send")
-                  }
-                  onClick={() => {
-                    if (isShellSending) {
-                      cancelShellSend();
-                    } else {
-                      void sendShellCommand();
-                    }
-                  }}
-                  disabled={!isShellSending && (!shellCommand || targetSessionIds.length === 0)}
-                >
-                  {isShellSending ? <MdStop className="text-sm" /> : <MdSend className="text-sm" />}
-                </Button>
+                <Textarea
+                  ref={hexInputRef}
+                  className={`relative z-10 min-h-0 h-full resize-none overflow-auto rounded-none border-0 bg-transparent font-mono text-xs leading-5 shadow-none focus-visible:ring-0 md:text-xs ${
+                    hasInvalidHex ? "text-destructive" : ""
+                  }`}
+                  placeholder={t("serialSend.hexPlaceholder", "e.g. 48 65 6C 6C 6F")}
+                  value={hexText}
+                  wrap="off"
+                  disabled={isSending}
+                  onChange={handleHexTextChange}
+                  onKeyDown={handleHexKeyDown}
+                  onScroll={handleHexScroll}
+                />
               </div>
             </div>
-          ) : (
-            renderUnavailable(
-              t("serialSend.shellUnavailable", "No active shell windows available"),
-              t(
-                "serialSend.shellUnavailableDesc",
-                "None of the active windows currently contain SSH, local terminal, or Telnet sessions.",
-              ),
-            )
-          )}
-        </TabsContent>
-      </Tabs>
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border/70 bg-muted/30">
+              <div className="flex h-8 shrink-0 items-center border-b border-border/70 px-2">
+                <span className="text-[0.625rem] font-medium text-muted-foreground">
+                  {t("serialSend.hexPreview", "Preview")}
+                </span>
+                <span className="ml-auto text-[0.625rem] tabular-nums text-muted-foreground">
+                  {t("serialSend.hexByteCount", "{{count}} bytes", {
+                    count: previewBytes.length,
+                  })}
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-2">
+                <pre className="whitespace-pre-wrap break-all font-mono text-xs leading-5">
+                  {hasInvalidHex ? "" : hexPreview}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {progress && (
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
+            <div className="rounded-md border border-primary/25 bg-background/95 px-2.5 py-2 shadow-sm backdrop-blur">
+              <div className="mb-1.5 flex min-w-0 items-center gap-2">
+                <span className="truncate text-[0.6875rem] font-medium text-foreground">
+                  {progress.totalRounds === null
+                    ? t("serialSend.shellProgressInfinite", "Sending round {{current}}", {
+                        current: currentRound,
+                      })
+                    : t("serialSend.shellProgressRound", "Sending {{current}} / {{total}}", {
+                        current: currentRound,
+                        total: progress.totalRounds,
+                      })}
+                </span>
+                <span className="ml-auto shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
+                  {progress.totalUnits === null
+                    ? t("serialSend.shellProgressCompleted", "{{count}} sent", {
+                        count: progress.completedUnits,
+                      })
+                    : t("serialSend.shellProgressUnits", "{{completed}} / {{total}} units", {
+                        completed: progress.completedUnits,
+                        total: progress.totalUnits,
+                      })}
+                </span>
+              </div>
+              {progressPercent !== null ? (
+                <Progress value={progressPercent} className="h-1.5" />
+              ) : (
+                <div className="h-1.5 overflow-hidden rounded-full bg-primary/20">
+                  <div className="h-full w-1/3 rounded-full bg-primary/70" />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Button
+          size="icon-xs"
+          variant={isSending ? "destructive" : "default"}
+          className="absolute bottom-2 right-2 h-7 w-7 shadow-sm"
+          title={isSending ? t("serialSend.stop", "Stop") : t("serialSend.send", "Send")}
+          onClick={() => {
+            if (isSending) {
+              cancelSend();
+            } else {
+              void sendCommand();
+            }
+          }}
+          disabled={!isSending && (!hasPayload || targetSessionIds.length === 0)}
+        >
+          {isSending ? <MdStop className="text-sm" /> : <MdSend className="text-sm" />}
+        </Button>
+      </div>
     </div>
   );
 }

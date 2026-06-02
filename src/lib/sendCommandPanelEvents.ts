@@ -1,12 +1,17 @@
+import type { SessionType } from "@/types/global";
+
 export const OPEN_SEND_COMMAND_PANEL_EVENT = "nyaterm:open-send-command-panel";
 
-export type SendCommandMode = "line" | "character";
+export type SendCommandDataType = "text" | "hex";
+export type SendCommandMode = "line" | "character" | "byte" | "packet";
 export type SendCommandTarget = "current" | "all";
 export type SendCommandCount = number | null;
 
 export interface SendCommandPanelDraft {
   text: string;
   sourceSessionId: string | null;
+  sourceSessionType?: SessionType;
+  dataType?: SendCommandDataType;
   sendMode: SendCommandMode;
   count: SendCommandCount;
   intervalSeconds: number;
