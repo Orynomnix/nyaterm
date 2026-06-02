@@ -2,13 +2,17 @@ import { memo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MdFlashOn, MdHistory, MdTipsAndUpdates } from "react-icons/md";
 import { Kbd } from "@/components/ui/kbd";
+import {
+  getSuggestionPopupStyle,
+  type SuggestionCursorPosition,
+} from "@/lib/terminalSuggestionPosition";
 import type { FuzzyResult } from "@/types/global";
 
 interface CommandSuggestionsProps {
   suggestions: FuzzyResult[];
   visible: boolean;
   selectedIndex: number;
-  cursorPosition: { top: number; left: number };
+  cursorPosition: SuggestionCursorPosition;
   onSelect: (command: string) => void;
   onDismiss: () => void;
 }
@@ -76,20 +80,15 @@ function CommandSuggestions({
     return null;
   }
 
-  // Clamp left so the popup doesn't overflow the right edge of the viewport
   const popupWidth = 380;
-  const clampedLeft = Math.max(
-    4,
-    Math.min(cursorPosition.left, window.innerWidth - popupWidth - 8),
-  );
+  const popupStyle = getSuggestionPopupStyle(cursorPosition, popupWidth);
 
   return (
     <div
-      className="fixed z-[9999] w-[380px] max-h-[240px] overflow-y-auto rounded-lg border backdrop-blur-sm shadow-2xl terminal-scroll"
+      className="fixed z-[9999] w-[380px] overflow-y-auto rounded-lg border backdrop-blur-sm shadow-2xl terminal-scroll"
       ref={listRef}
       style={{
-        top: cursorPosition.top,
-        left: clampedLeft,
+        ...popupStyle,
         backgroundColor: "color-mix(in srgb, var(--df-bg-panel) 95%, transparent)",
         borderColor: "var(--df-border)",
       }}

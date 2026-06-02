@@ -7,6 +7,7 @@ import {
 } from "@/lib/interactionSettings";
 import { invoke } from "@/lib/invoke";
 import { getTrackedCommand, type TerminalInputState } from "@/lib/terminalInputTracker";
+import type { SuggestionCursorPosition } from "@/lib/terminalSuggestionPosition";
 import type { FuzzyResult } from "@/types/global";
 
 interface XTermCoreWithRenderDimensions {
@@ -36,7 +37,10 @@ export function useCommandHistory(
   const [suggestions, setSuggestions] = useState<FuzzyResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [cursorPosition, setCursorPosition] = useState({ top: 0, left: 0 });
+  const [cursorPosition, setCursorPosition] = useState<SuggestionCursorPosition>({
+    top: 0,
+    left: 0,
+  });
 
   const suggestionsRef = useRef<FuzzyResult[]>([]);
   const selectedIndexRef = useRef(-1);
@@ -51,7 +55,7 @@ export function useCommandHistory(
     enabledRef.current = enabled;
   }, [enabled]);
 
-  const getCursorViewportPosition = useCallback((): { top: number; left: number } => {
+  const getCursorViewportPosition = useCallback((): SuggestionCursorPosition => {
     try {
       const terminal = terminalRef.current;
       if (!terminal) return { top: 0, left: 0 };
@@ -72,6 +76,7 @@ export function useCommandHistory(
       return {
         top: screenRect.top + (cursorY + 1) * cellHeight,
         left: screenRect.left + cursorX * cellWidth,
+        lineTop: screenRect.top + cursorY * cellHeight,
       };
     } catch {
       return { top: 0, left: 0 };

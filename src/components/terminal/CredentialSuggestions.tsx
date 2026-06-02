@@ -3,12 +3,16 @@ import { memo, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Kbd } from "@/components/ui/kbd";
 import type { CredentialPanelState } from "@/hooks/useCredentialAutofill";
+import {
+  getSuggestionPopupStyle,
+  type SuggestionCursorPosition,
+} from "@/lib/terminalSuggestionPosition";
 import type { SavedCredential } from "@/types/global";
 
 interface CredentialSuggestionsProps {
   panelState: CredentialPanelState | null;
   selectedIndex: number;
-  cursorPosition: { top: number; left: number };
+  cursorPosition: SuggestionCursorPosition;
   onSelect: (credential: SavedCredential) => void;
   onDismiss: () => void;
 }
@@ -36,18 +40,14 @@ function CredentialSuggestions({
   const Icon = kind === "password" ? KeyRound : UserRound;
 
   const popupWidth = 340;
-  const clampedLeft = Math.max(
-    4,
-    Math.min(cursorPosition.left, window.innerWidth - popupWidth - 8),
-  );
+  const popupStyle = getSuggestionPopupStyle(cursorPosition, popupWidth);
 
   return (
     <div
-      className="fixed z-[9999] w-[340px] max-h-[240px] overflow-y-auto rounded-lg border backdrop-blur-sm shadow-2xl terminal-scroll"
+      className="fixed z-[9999] w-[340px] overflow-y-auto rounded-lg border backdrop-blur-sm shadow-2xl terminal-scroll"
       ref={listRef}
       style={{
-        top: cursorPosition.top,
-        left: clampedLeft,
+        ...popupStyle,
         backgroundColor: "color-mix(in srgb, var(--df-bg-panel) 95%, transparent)",
         borderColor: "var(--df-border)",
       }}

@@ -10,6 +10,7 @@ import {
 } from "@/lib/credentialAutofill";
 import { invoke } from "@/lib/invoke";
 import { sendSessionInput } from "@/lib/sessionInput";
+import type { SuggestionCursorPosition } from "@/lib/terminalSuggestionPosition";
 import type { SavedCredential } from "@/types/global";
 
 interface XTermCoreWithRenderDimensions {
@@ -71,7 +72,10 @@ export function useCredentialAutofill(
 ) {
   const [panelState, setPanelState] = useState<CredentialPanelState | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [cursorPosition, setCursorPosition] = useState({ top: 0, left: 0 });
+  const [cursorPosition, setCursorPosition] = useState<SuggestionCursorPosition>({
+    top: 0,
+    left: 0,
+  });
 
   const panelStateRef = useRef<CredentialPanelState | null>(null);
   const selectedIndexRef = useRef(-1);
@@ -132,10 +136,7 @@ export function useCredentialAutofill(
     };
   }, [loadCredentials]);
 
-  const getCursorViewportPosition = useCallback((): {
-    top: number;
-    left: number;
-  } => {
+  const getCursorViewportPosition = useCallback((): SuggestionCursorPosition => {
     try {
       const terminal = terminalRef.current;
       if (!terminal) return { top: 0, left: 0 };
@@ -155,6 +156,7 @@ export function useCredentialAutofill(
       return {
         top: rect.top + (cursorY + 1) * cellHeight,
         left: rect.left + cursorX * cellWidth,
+        lineTop: rect.top + cursorY * cellHeight,
       };
     } catch {
       return { top: 0, left: 0 };
