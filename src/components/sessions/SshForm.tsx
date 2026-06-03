@@ -419,6 +419,7 @@ export function SshForm({
               <TabsContent value="direct" className="mt-3 border-0 outline-none">
                 <Label className="text-xs font-medium text-foreground/80">
                   {t("dialog.password")}
+                  <RequiredMark />
                 </Label>
                 <div className="relative mt-1">
                   <Input
