@@ -190,6 +190,10 @@ function FileExplorer({
   }, []);
   const autoSyncConnectionIds = appSettings.ui.file_explorer_auto_sync_cwd_connection_ids ?? [];
   const autoSyncCwd = !!activeConnectionId && autoSyncConnectionIds.includes(activeConnectionId);
+  const favoriteDirectoriesByConnection =
+    appSettings.ui.file_explorer_favorite_dirs_by_connection_id ?? {};
+  const favoriteDirectories =
+    activeConnectionId ? (favoriteDirectoriesByConnection[activeConnectionId] ?? []) : [];
   const listScrollResetKey = `${activeSessionId ?? ""}:${currentPath}`;
   const listFilterResetKey = `${fileSearchQuery}:${fileSortMode.column}:${fileSortMode.direction}`;
 
@@ -1154,6 +1158,86 @@ function FileExplorer({
     });
   }, [activeConnectionId, updateUi]);
 
+  const addFavoriteDirectory = useCallback(
+    (path: string) => {
+      if (!activeConnectionId) return;
+      const normalizedPath = normalizeDirectoryPath(path);
+      if (!normalizedPath) return;
+      const alreadyExists = favoriteDirectories.includes(normalizedPath);
+
+      if (alreadyExists) {
+        toast.success(t("fileExplorer.favoriteExists", { path: normalizedPath }));
+        return;
+      }
+
+      updateUi((prev) => {
+        const currentMap = prev.file_explorer_favorite_dirs_by_connection_id ?? {};
+        const currentList = currentMap[activeConnectionId] ?? [];
+        if (currentList.includes(normalizedPath)) {
+          return {
+            file_explorer_favorite_dirs_by_connection_id: currentMap,
+          };
+        }
+
+        return {
+          file_explorer_favorite_dirs_by_connection_id: {
+            ...currentMap,
+            [activeConnectionId]: [...currentList, normalizedPath],
+          },
+        };
+      });
+
+      toast.success(t("fileExplorer.favoriteAdded", { path: normalizedPath }));
+    },
+    [activeConnectionId, favoriteDirectories, t, updateUi],
+  );
+
+  const handleAddCurrentDirectoryToFavorites = useCallback(() => {
+    addFavoriteDirectory(currentPathRef.current || homeDirRef.current);
+  }, [addFavoriteDirectory]);
+
+  const handleSelectFavoritePath = useCallback(
+    (path: string) => {
+      const normalizedPath = normalizeDirectoryPath(path);
+      if (!normalizedPath || normalizedPath === normalizeDirectoryPath(currentPathRef.current)) {
+        return;
+      }
+      setFileSearchQuery("");
+      void loadDirectory(normalizedPath);
+    },
+    [loadDirectory],
+  );
+
+  const handleRemoveFavoritePath = useCallback(
+    (path: string) => {
+      if (!activeConnectionId) return;
+      const normalizedPath = normalizeDirectoryPath(path);
+      if (!normalizedPath) return;
+
+      updateUi((prev) => {
+        const currentMap = prev.file_explorer_favorite_dirs_by_connection_id ?? {};
+        const currentList = currentMap[activeConnectionId] ?? [];
+        return {
+          file_explorer_favorite_dirs_by_connection_id: {
+            ...currentMap,
+            [activeConnectionId]: currentList.filter((item) => item !== normalizedPath),
+          },
+        };
+      });
+      toast.success(t("fileExplorer.favoriteRemoved", { path: normalizedPath }));
+    },
+    [activeConnectionId, t, updateUi],
+  );
+
+  const handleAddEntryToFavorites = useCallback(
+    (entry: FileEntry) => {
+      if (!entry.is_dir || isParentDirectoryEntry(entry)) return;
+      const basePath = currentPathRef.current;
+      addFavoriteDirectory(basePath === "/" ? `/${entry.name}` : `${basePath}/${entry.name}`);
+    },
+    [addFavoriteDirectory],
+  );
+
   useEffect(() => {
     if (!autoSyncCwd || !activeSessionId) return;
     const unlisten = listen<string>(`cwd-changed-${activeSessionId}`, (event) => {
@@ -1601,10 +1685,14 @@ function FileExplorer({
           currentPath={currentPath}
           homeDir={homeDir}
           directoryHistory={visitedHistory}
+          favoriteDirectories={favoriteDirectories}
           onPathInputTextChange={setPathInputText}
           onEditingPathChange={setIsEditingPath}
           onLoadDirectory={(path) => void loadDirectory(path)}
           onSelectHistoryPath={handleSelectHistoryPath}
+          onAddCurrentDirectoryToFavorites={handleAddCurrentDirectoryToFavorites}
+          onSelectFavoritePath={handleSelectFavoritePath}
+          onRemoveFavoritePath={handleRemoveFavoritePath}
         />
       )}
 
@@ -1767,6 +1855,7 @@ function FileExplorer({
                               });
                           }}
                           onDelete={handleDeleteFromContextMenu}
+                          onAddToFavorites={handleAddEntryToFavorites}
                           onCopyPath={handleCopyPath}
                           onSendToTerminal={handleSendToTerminal}
                           onProperties={(entry) => {

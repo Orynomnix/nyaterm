@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   MdAutoAwesome,
+  MdBookmarkAdd,
   MdContentCopy,
   MdCopyAll,
   MdDelete,
@@ -52,6 +53,7 @@ interface FileListItemProps {
   onRename: (entry: FileEntry) => void;
   onMove: (entry: FileEntry) => void;
   onDelete: (entry: FileEntry) => void;
+  onAddToFavorites: (entry: FileEntry) => void;
   onCopyPath: (entry: FileEntry, mode: "dir" | "name" | "full") => void;
   onSendToTerminal: (entry: FileEntry, mode: "dir" | "name" | "full") => void;
   onProperties: (entry: FileEntry) => void;
@@ -97,6 +99,7 @@ export function FileListItem({
   onRename,
   onMove,
   onDelete,
+  onAddToFavorites,
   onCopyPath,
   onSendToTerminal,
   onProperties,
@@ -356,6 +359,15 @@ export function FileListItem({
               {t("fileExplorer.cmDelete")}
             </ContextMenuItem>
             <ContextMenuSeparator />
+            {entry.is_dir && (
+              <>
+                <ContextMenuItem onClick={() => onAddToFavorites(entry)}>
+                  <MdBookmarkAdd className="text-[0.875rem] text-muted-foreground mr-2" />
+                  {t("fileExplorer.addToFavorites")}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </>
+            )}
             <ContextMenuItem onClick={() => onCopyPath(entry, "full")}>
               <MdContentCopy className="text-[0.875rem] text-muted-foreground mr-2" />
               {t("fileExplorer.cmCopyPath")}

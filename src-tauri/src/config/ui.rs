@@ -1,5 +1,6 @@
 use super::{default_false, uuid_v4};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 fn default_leaf_id() -> String {
     format!("pane-{}", uuid_v4())
@@ -223,6 +224,8 @@ pub struct UiConfig {
     #[serde(default)]
     pub file_explorer_auto_sync_cwd_connection_ids: Vec<String>,
     #[serde(default)]
+    pub file_explorer_favorite_dirs_by_connection_id: HashMap<String, Vec<String>>,
+    #[serde(default)]
     pub activity_bar_layout: ActivityBarLayout,
 }
 
@@ -294,6 +297,7 @@ impl Default for UiConfig {
             recent_connection_ids: vec![],
             transfer_height: default_transfer_height(),
             file_explorer_auto_sync_cwd_connection_ids: vec![],
+            file_explorer_favorite_dirs_by_connection_id: HashMap::new(),
             activity_bar_layout: ActivityBarLayout::default(),
         }
     }

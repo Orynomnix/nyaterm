@@ -1,5 +1,18 @@
 import { type RefObject, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  MdBookmarkAdd,
+  MdBookmarkAdded,
+  MdBookmarkBorder,
+  MdBookmarkRemove,
+} from "react-icons/md";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface FileExplorerPathBarProps {
   isEditingPath: boolean;
@@ -9,10 +22,14 @@ interface FileExplorerPathBarProps {
   currentPath: string;
   homeDir: string;
   directoryHistory: string[];
+  favoriteDirectories: string[];
   onPathInputTextChange: (value: string) => void;
   onEditingPathChange: (editing: boolean) => void;
   onLoadDirectory: (path: string) => void;
   onSelectHistoryPath: (path: string) => void;
+  onAddCurrentDirectoryToFavorites: () => void;
+  onSelectFavoritePath: (path: string) => void;
+  onRemoveFavoritePath: (path: string) => void;
 }
 
 // Roughly five rows are visible before the list starts scrolling.
@@ -27,10 +44,14 @@ export function FileExplorerPathBar({
   currentPath,
   homeDir,
   directoryHistory,
+  favoriteDirectories,
   onPathInputTextChange,
   onEditingPathChange,
   onLoadDirectory,
   onSelectHistoryPath,
+  onAddCurrentDirectoryToFavorites,
+  onSelectFavoritePath,
+  onRemoveFavoritePath,
 }: FileExplorerPathBarProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +81,9 @@ export function FileExplorerPathBar({
 
   const showHistory = isEditingPath && directoryHistory.length > 0;
   const normalizedCurrentPath = currentPath || homeDir;
+  const hasFavoriteDirectories = favoriteDirectories.length > 0;
+  const isCurrentFavorite = favoriteDirectories.includes(normalizedCurrentPath);
+  const FavoriteIcon = isCurrentFavorite ? MdBookmarkAdded : MdBookmarkBorder;
 
   return (
     <div
@@ -70,7 +94,7 @@ export function FileExplorerPathBar({
       {isEditingPath ? (
         <input
           ref={pathInputRef}
-          className="w-full text-[0.625rem] font-mono bg-transparent outline-none m-0 p-0"
+          className="min-w-0 flex-1 text-[0.625rem] font-mono bg-transparent outline-none m-0 p-0"
           style={{ color: "var(--df-text)" }}
           value={pathInputText}
           onChange={(event) => onPathInputTextChange(event.target.value)}
@@ -106,6 +130,63 @@ export function FileExplorerPathBar({
           {displayPath}
         </div>
       )}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="ml-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            title={t("fileExplorer.favorites")}
+            aria-label={t("fileExplorer.favorites")}
+          >
+            <FavoriteIcon className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem onClick={onAddCurrentDirectoryToFavorites}>
+            <MdBookmarkAdd className="h-4 w-4" />
+            <span className="min-w-0 truncate">{t("fileExplorer.addCurrentDirToFavorites")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {hasFavoriteDirectories ? (
+            favoriteDirectories.map((path) => {
+              const isCurrent = path === normalizedCurrentPath;
+              return (
+                <DropdownMenuItem
+                  key={path}
+                  className="gap-1 pr-1"
+                  title={path}
+                  onClick={() => onSelectFavoritePath(path)}
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate font-mono text-[0.625rem]"
+                    style={{ color: isCurrent ? "var(--df-primary)" : undefined }}
+                  >
+                    {formatHistoryPath(path)}
+                  </span>
+                  <button
+                    type="button"
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    title={t("fileExplorer.removeFavorite")}
+                    aria-label={t("fileExplorer.removeFavorite")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onRemoveFavoritePath(path);
+                    }}
+                  >
+                    <MdBookmarkRemove className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuItem>
+              );
+            })
+          ) : (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              {t("fileExplorer.noFavorites")}
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {showHistory && (
         <div
