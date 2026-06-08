@@ -133,6 +133,8 @@
     "rejectExecute": "跳过",
     "repairSelected": "AI 根据选中内容生成修复命令",
     "requestFailed": "AI 请求失败",
+    "requestUserAgent": "User-Agent",
+    "requestUserAgentDesc": "发送到 AI 供应商请求中的 User-Agent 请求头。",
     "riskCritical": "极高风险",
     "riskHigh": "高风险",
     "riskLow": "低风险",

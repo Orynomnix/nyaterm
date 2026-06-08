@@ -133,6 +133,8 @@
     "rejectExecute": "Skip",
     "repairSelected": "AI generate a fix command from selection",
     "requestFailed": "AI request failed",
+    "requestUserAgent": "User-Agent",
+    "requestUserAgentDesc": "User-Agent header sent with AI provider requests.",
     "riskCritical": "Critical",
     "riskHigh": "High",
     "riskLow": "Low",
