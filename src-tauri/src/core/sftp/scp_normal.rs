@@ -339,6 +339,14 @@ fn parse_ls_line(line: &str) -> Option<FileEntry> {
     })
 }
 
+fn remote_child_path(parent: &str, name: &str) -> String {
+    if parent == "/" {
+        format!("/{name}")
+    } else {
+        format!("{}/{}", parent.trim_end_matches('/'), name)
+    }
+}
+
 fn parse_ls_line_to_properties(line: &str, path: &str) -> AppResult<FileProperties> {
     let line = line.trim();
     let parts: Vec<&str> = line.split_whitespace().collect();
@@ -748,7 +756,14 @@ impl RemoteFs for ScpNormalBackend {
             .await?;
         let mut entries = Vec::new();
         for line in output.lines() {
-            if let Some(entry) = parse_ls_line(line) {
+            if let Some(mut entry) = parse_ls_line(line) {
+                if entry.is_symlink {
+                    let child_path = remote_child_path(path, &entry.name);
+                    entry.is_dir = self
+                        .exec(&format!("test -d -- {}", sh_quote(&child_path)))
+                        .await
+                        .map_or(entry.is_dir, |result| result.exit_code == Some(0));
+                }
                 entries.push(entry);
             }
         }

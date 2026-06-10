@@ -632,10 +632,15 @@ impl RemoteFs for ScpEnhancedBackend {
             let permissions = fields[i + 4].to_string();
             let owner = fields[i + 5].to_string();
             let group = fields[i + 6].to_string();
-            // fields[i + 7] is the full path, unused
+            let full_path = fields[i + 7];
 
-            let is_dir = type_char == "d";
             let is_symlink = type_char == "l";
+            let is_symlink_to_dir = is_symlink
+                && self
+                    .exec(&format!("test -d -- {}", sh_quote(full_path)))
+                    .await
+                    .map_or(false, |result| result.exit_code == 0);
+            let is_dir = type_char == "d" || is_symlink_to_dir;
 
             if !name.is_empty() {
                 entries.push(FileEntry {

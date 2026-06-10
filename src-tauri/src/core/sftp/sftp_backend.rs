@@ -151,6 +151,18 @@ impl SftpBackend {
     }
 }
 
+fn sftp_attrs_is_dir(attrs: &FileAttributes) -> bool {
+    attrs.permissions.map_or(false, |permissions| {
+        (permissions & SFTP_FILE_TYPE_MASK) == 0o040000
+    })
+}
+
+fn sftp_attrs_is_symlink(attrs: &FileAttributes) -> bool {
+    attrs.permissions.map_or(false, |permissions| {
+        (permissions & SFTP_FILE_TYPE_MASK) == 0o120000
+    })
+}
+
 async fn remove_dir_recursive(sftp: &SftpSession, path: &str) -> AppResult<()> {
     let path = path.trim_end_matches('/');
     let dir = sftp.read_dir(path).await?;
@@ -689,7 +701,6 @@ impl RemoteFs for SftpBackend {
     async fn list_dir(&self, path: &str) -> AppResult<Vec<FileEntry>> {
         let sftp = self.open_sftp().await?;
         let dir = sftp.read_dir(path).await?;
-        let _ = sftp.close().await;
 
         let mut entries = Vec::new();
         for entry in dir {
@@ -698,10 +709,18 @@ impl RemoteFs for SftpBackend {
                 continue;
             }
             let file_type = entry.file_type();
-            let is_dir = file_type == FileType::Dir;
             let is_symlink = file_type == FileType::Symlink;
+            let full_path = format!("{}/{}", path.trim_end_matches('/'), name);
+            let is_symlink_to_dir = is_symlink
+                && sftp
+                    .metadata(&full_path)
+                    .await
+                    .ok()
+                    .as_ref()
+                    .map_or(false, sftp_attrs_is_dir);
+            let is_dir = file_type == FileType::Dir || is_symlink_to_dir;
             let type_char = if is_dir {
-                'd'
+                if is_symlink { 'l' } else { 'd' }
             } else if is_symlink {
                 'l'
             } else {
@@ -726,20 +745,26 @@ impl RemoteFs for SftpBackend {
             });
         }
 
+        let _ = sftp.close().await;
         Ok(entries)
     }
 
     async fn stat(&self, path: &str) -> AppResult<FileProperties> {
         let sftp = self.open_sftp().await?;
-        let attrs = sftp.metadata(path).await?;
+        let attrs = sftp.symlink_metadata(path).await?;
+        let is_symlink = sftp_attrs_is_symlink(&attrs);
+        let target_attrs = if is_symlink {
+            sftp.metadata(path).await.ok()
+        } else {
+            None
+        };
         let _ = sftp.close().await;
 
         let perms = attrs.permissions.unwrap_or(0);
-        let type_bits = perms & 0o170000;
-        let is_dir = type_bits == 0o040000;
-        let is_symlink = type_bits == 0o120000;
+        let is_dir =
+            sftp_attrs_is_dir(&attrs) || target_attrs.as_ref().map_or(false, sftp_attrs_is_dir);
         let type_char = if is_dir {
-            'd'
+            if is_symlink { 'l' } else { 'd' }
         } else if is_symlink {
             'l'
         } else {
@@ -775,12 +800,11 @@ impl RemoteFs for SftpBackend {
 
     async fn remove_file(&self, path: &str) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        let meta = sftp.metadata(path).await?;
-        let is_dir = meta
-            .permissions
-            .map_or(false, |p| (p & 0o170000) == 0o040000);
+        let meta = sftp.symlink_metadata(path).await?;
 
-        if is_dir {
+        if sftp_attrs_is_symlink(&meta) {
+            sftp.remove_file(path).await?;
+        } else if sftp_attrs_is_dir(&meta) {
             remove_dir_recursive(&sftp, path).await?;
         } else {
             sftp.remove_file(path).await?;
