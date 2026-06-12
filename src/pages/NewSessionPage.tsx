@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FaServer } from "react-icons/fa6";
 import { MdAdd, MdExpandMore } from "react-icons/md";
-import DeleteConnectionDialog from "@/components/dialog/connections/DeleteConnectionDialog";
 import {
   buildGroupPath,
   type ConnectionOption,
@@ -65,9 +64,7 @@ export default function NewSessionPage() {
   const [iconKey, setIconKey] = useState("");
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [groups, setGroups] = useState<Group[]>([]);
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
@@ -239,8 +236,6 @@ export default function NewSessionPage() {
     setShowIconPicker(false);
     setError("");
     setConnecting(false);
-    setDeleting(false);
-    setDeleteDialogOpen(false);
   }, []);
 
   const serialPortOptions: { unavailable?: boolean; value: string }[] = serialPorts.map((port) => ({
@@ -305,7 +300,7 @@ export default function NewSessionPage() {
   }, [editId, groupsById, savedConnections, t]);
 
   const handleClose = () => {
-    if (connecting || deleting) return;
+    if (connecting) return;
     getCurrentWindow().close();
   };
 
@@ -550,23 +545,6 @@ export default function NewSessionPage() {
       setError(getErrorMessage(e));
     } finally {
       setConnecting(false);
-    }
-  };
-
-  const handleDeleteConnection = async () => {
-    if (!editId || deleting) return;
-
-    setError("");
-    setDeleting(true);
-    try {
-      await invoke("delete_connection", { id: editId });
-      await emit("session-saved");
-      getCurrentWindow().close();
-    } catch (e) {
-      setError(getErrorMessage(e));
-    } finally {
-      setDeleting(false);
-      setDeleteDialogOpen(false);
     }
   };
 
@@ -919,19 +897,7 @@ export default function NewSessionPage() {
       </Tabs>
 
       {/* Footer */}
-      <ActionFooter
-        leading={
-          editId ? (
-            <ActionButton
-              variant="destructive"
-              onClick={() => setDeleteDialogOpen(true)}
-              disabled={connecting || deleting}
-            >
-              {deleting ? t("common.deleting") : t("savedConnections.delete")}
-            </ActionButton>
-          ) : null
-        }
-      >
+      <ActionFooter>
         <ActionButton variant="outline" onClick={handleClose}>
           {t("dialog.cancel")}
         </ActionButton>
@@ -943,14 +909,6 @@ export default function NewSessionPage() {
           {connecting ? t("dialog.saving") : t("dialog.save")}
         </ActionButton>
       </ActionFooter>
-      <DeleteConnectionDialog
-        open={deleteDialogOpen}
-        connectionName={name || initialData?.name}
-        onConfirm={() => {
-          void handleDeleteConnection();
-        }}
-        onCancel={() => setDeleteDialogOpen(false)}
-      />
     </div>
   );
 }
