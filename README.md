@@ -255,6 +255,33 @@ Download the latest build for your platform from [nyaterm.app](https://nyaterm.a
 
 For the Windows portable edition, extract the zip and run `NyaTerm.exe`. Portable updates are manual: download the new portable zip, close NyaTerm, replace the program files, and keep the `data/` folder.
 
+### Arch Linux / AUR
+
+Arch Linux users can install NyaTerm from the AUR:
+
+```bash
+yay -S nyaterm-bin
+```
+
+Or with `paru`:
+
+```bash
+paru -S nyaterm-bin
+```
+
+You can also build it manually from the AUR repository:
+
+```bash
+git clone https://aur.archlinux.org/nyaterm-bin.git
+cd nyaterm-bin
+makepkg -si
+```
+
+AUR package: [`nyaterm-bin`](https://aur.archlinux.org/packages/nyaterm-bin)
+
+> `nyaterm-bin` is a community-maintained binary AUR package. If the AUR package has not yet caught up with the latest release, download the official package from [Releases](https://github.com/nyakang/nyaterm/releases).
+
+
 ## Prerequisites for Development
 
 - Node.js 18+

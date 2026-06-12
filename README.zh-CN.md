@@ -256,6 +256,33 @@ NyaTerm 适合每天在服务器、本地命令、设备调试和配置文件之
 
 Windows 便携版解压后运行 `NyaTerm.exe` 即可。便携版更新需要手动完成：下载新的便携版 zip，关闭 NyaTerm，替换程序文件，并保留 `data/` 目录。
 
+### Arch Linux / AUR
+
+Arch Linux 用户可以通过 AUR 安装 NyaTerm：
+
+```bash
+yay -S nyaterm-bin
+```
+
+或使用 `paru`：
+
+```bash
+paru -S nyaterm-bin
+```
+
+也可以手动从 AUR 构建安装：
+
+```bash
+git clone https://aur.archlinux.org/nyaterm-bin.git
+cd nyaterm-bin
+makepkg -si
+```
+
+AUR 软件包：[`nyaterm-bin`](https://aur.archlinux.org/packages/nyaterm-bin)
+
+> `nyaterm-bin` 为社区维护的 AUR 二进制包。如果 AUR 版本暂未同步到最新发布版，可以从 [Releases](https://github.com/nyakang/nyaterm/releases) 下载官方安装包。
+
+
 ## 开发环境要求
 
 - Node.js 18+
