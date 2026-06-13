@@ -1,4 +1,3 @@
-import { FaServer } from "react-icons/fa6";
 import { MdContentCopy, MdDelete, MdDriveFileRenameOutline, MdEdit, MdLink } from "react-icons/md";
 import {
   ContextMenu,
@@ -8,7 +7,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import type { SavedConnection } from "@/types/global";
-import { CONNECTION_ICONS } from "../../icons";
+import { resolveConnectionIcon } from "../../icons";
 import { useSavedConnectionsContext } from "./context";
 
 interface ConnectionItemProps {
@@ -44,17 +43,15 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
   const isTarget = dragTarget?.id === conn.id && dragTarget.type === "connection";
   const showBefore = isTarget && dragTarget.position === "before";
   const showAfter = isTarget && dragTarget.position === "after";
-  const iconDef = conn.icon ? CONNECTION_ICONS[conn.icon] : null;
-  const ConnIcon = iconDef ? iconDef.icon : FaServer;
+  const iconDef = resolveConnectionIcon(conn.icon);
+  const ConnIcon = iconDef.icon;
   const isSelected = selectedConnectionIds.has(conn.id);
   const connectLabel =
     isSelected && selectedConnectionIds.size > 1
       ? t("savedConnections.connectSelected")
       : t("savedConnections.connect");
   const directConnectLabel = t("savedConnections.connect");
-  const iconStyle = iconDef
-    ? { color: isSelected ? "var(--df-primary)" : iconDef.color }
-    : undefined;
+  const iconStyle = { color: isSelected ? "var(--df-primary)" : iconDef.color };
   const indentLeft = indented ? `${8 + depth * 16 + 16}px` : "0.5rem";
 
   return (
@@ -94,10 +91,7 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
             onContextMenu={(e) => handleConnectionContextMenu(conn, e)}
             onDoubleClick={() => handleConnectOnly(conn)}
           >
-            <ConnIcon
-              className={`text-sm shrink-0${iconDef ? "" : " text-emerald-500/70"}`}
-              style={iconStyle}
-            />
+            <ConnIcon className="text-sm shrink-0" style={iconStyle} />
             <span
               className="shrink-0 whitespace-nowrap pr-16 text-xs font-medium"
               style={{ color: isSelected ? "var(--df-primary)" : "var(--df-text)" }}

@@ -2,6 +2,7 @@ import type { ElementType } from "react";
 import type { IconType } from "react-icons";
 import { DiBingSmall, DiYahooSmall } from "react-icons/di";
 import { FaWindows } from "react-icons/fa";
+import { FaServer } from "react-icons/fa6";
 import {
   MdApps,
   MdArticle,
@@ -136,11 +137,51 @@ export const SYSTEM_ICONS: Record<string, QuickIconDef> = {
 
 export type SystemIconName = keyof typeof SYSTEM_ICONS;
 
-/** Merged lookup for all connection icons (services + systems). */
+/**
+ * Default "server" glyph offered in several theme-friendly colors.
+ *
+ * These are the fallback icons used when a connection has no brand/system icon.
+ * The keys are stored verbatim in `connection.icon`. Colors are fixed mid-tone
+ * hues (Tailwind ~400 level) chosen to read well on both light and dark themes,
+ * echoing the accent families used across the bundled themes in `lib/themes.ts`
+ * (blue / emerald / amber / rose / violet / cyan / slate).
+ */
+export const SERVER_ICONS: Record<string, QuickIconDef> = {
+  server: { icon: FaServer, color: "#60a5fa" }, // blue-400
+  "server-emerald": { icon: FaServer, color: "#34d399" }, // emerald-400
+  "server-amber": { icon: FaServer, color: "#fbbf24" }, // amber-400
+  "server-rose": { icon: FaServer, color: "#fb7185" }, // rose-400
+  "server-violet": { icon: FaServer, color: "#a78bfa" }, // violet-400
+  "server-cyan": { icon: FaServer, color: "#22d3ee" }, // cyan-400
+  "server-slate": { icon: FaServer, color: "#94a3b8" }, // slate-400
+};
+
+export type ServerIconName = keyof typeof SERVER_ICONS;
+
+/** Canonical default icon used when a connection has no icon configured. */
+export const DEFAULT_CONNECTION_ICON: ServerIconName = "server";
+export const DEFAULT_CONNECTION_ICON_COLOR = SERVER_ICONS[DEFAULT_CONNECTION_ICON].color;
+
+/** Merged lookup for all connection icons (default servers + services + systems). */
 export const CONNECTION_ICONS: Record<string, QuickIconDef> = {
+  ...SERVER_ICONS,
   ...QUICK_ICONS,
   ...SYSTEM_ICONS,
 };
+
+/**
+ * Resolve a connection's stored icon key to a renderable icon + color.
+ *
+ * Falsy or unknown keys fall back to the canonical default server icon, so the
+ * "no icon" state renders identically everywhere (session form preview, saved
+ * connections list, tabs, header) instead of diverging per call site.
+ */
+export function resolveConnectionIcon(iconKey?: string | null): QuickIconDef {
+  if (iconKey && CONNECTION_ICONS[iconKey]) {
+    return CONNECTION_ICONS[iconKey];
+  }
+  return SERVER_ICONS[DEFAULT_CONNECTION_ICON];
+}
 
 export const SEARCH_ICONS: Record<string, QuickIconDef> = {
   google: { icon: SiGoogle, color: "#4285F4" },

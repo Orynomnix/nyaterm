@@ -2,14 +2,18 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FaServer } from "react-icons/fa6";
 import { MdAdd, MdExpandMore } from "react-icons/md";
 import {
   buildGroupPath,
   type ConnectionOption,
   sortLabel,
 } from "@/components/dialog/network/shared";
-import { SYSTEM_ICONS } from "@/components/icons";
+import {
+  DEFAULT_CONNECTION_ICON,
+  resolveConnectionIcon,
+  SERVER_ICONS,
+  SYSTEM_ICONS,
+} from "@/components/icons";
 import ChildWindowHeader from "@/components/layout/ChildWindowHeader";
 import { LocalTerminal } from "@/components/sessions/LocalTerminal";
 import { SerialForm } from "@/components/sessions/SerialForm";
@@ -593,19 +597,11 @@ export default function NewSessionPage() {
                     className="flex h-8 w-8 items-center justify-center p-0"
                     title={iconKey || t("dialog.none")}
                   >
-                    {iconKey && SYSTEM_ICONS[iconKey] ? (
-                      (() => {
-                        const IconComp = SYSTEM_ICONS[iconKey].icon;
-                        return (
-                          <IconComp
-                            style={{ color: SYSTEM_ICONS[iconKey].color }}
-                            className="text-sm"
-                          />
-                        );
-                      })()
-                    ) : (
-                      <FaServer className="text-sm text-muted-foreground" />
-                    )}
+                    {(() => {
+                      const def = resolveConnectionIcon(iconKey);
+                      const IconComp = def.icon;
+                      return <IconComp style={{ color: def.color }} className="text-sm" />;
+                    })()}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
@@ -615,17 +611,24 @@ export default function NewSessionPage() {
                   className="w-56 max-w-[calc(100vw-2rem)] p-2"
                 >
                   <div className="grid grid-cols-7 gap-0.5">
-                    <button
-                      type="button"
-                      className={`flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-accent ${!iconKey ? "bg-primary/15 ring-1 ring-primary/40" : ""}`}
-                      title={t("dialog.none")}
-                      onClick={() => {
-                        setIconKey("");
-                        setShowIconPicker(false);
-                      }}
-                    >
-                      <FaServer className="text-sm text-muted-foreground" />
-                    </button>
+                    {Object.entries(SERVER_ICONS).map(([key, def]) => {
+                      const IconComp = def.icon;
+                      const activeKey = iconKey || DEFAULT_CONNECTION_ICON;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          className={`flex h-7 w-7 items-center justify-center rounded transition-colors hover:bg-accent ${activeKey === key ? "bg-primary/15 ring-1 ring-primary/40" : ""}`}
+                          title={key === DEFAULT_CONNECTION_ICON ? t("dialog.none") : key}
+                          onClick={() => {
+                            setIconKey(key);
+                            setShowIconPicker(false);
+                          }}
+                        >
+                          <IconComp style={{ color: def.color }} className="text-sm" />
+                        </button>
+                      );
+                    })}
                     {Object.entries(SYSTEM_ICONS).map(([key, def]) => {
                       const IconComp = def.icon;
                       return (
