@@ -260,6 +260,19 @@ fn open_folder(path: &Path) -> AppResult<()> {
         ));
     }
 
-    open::that(path)
-        .map_err(|error| AppError::Config(format!("Failed to open target directory: {error}")))
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer")
+            .arg(path.as_os_str())
+            .spawn()
+            .map_err(|error| {
+                AppError::Config(format!("Failed to open target directory: {error}"))
+            })?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        open::that(path)
+            .map_err(|error| AppError::Config(format!("Failed to open target directory: {error}")))
+    }
 }
