@@ -521,6 +521,8 @@ fn pty_session_thread(
 
     let capture_processor = Arc::new(StdMutex::new(OutputCaptureProcessor::new()));
     let capture_for_reader = capture_processor.clone();
+    let output_pause = Arc::new((StdMutex::new(false), std::sync::Condvar::new()));
+    let output_pause_reader = output_pause.clone();
 
     let zmodem_state: Arc<StdMutex<Option<ZmodemTransfer>>> = Arc::new(StdMutex::new(None));
     let zmodem_state_reader = zmodem_state.clone();
@@ -545,6 +547,13 @@ fn pty_session_thread(
         let mut suppress_visible = suppress_startup_output;
         let mut zmodem_detector = ZmodemDetector::new();
         loop {
+            {
+                let (lock, cvar) = &*output_pause_reader;
+                let mut paused = lock.lock().unwrap();
+                while *paused {
+                    paused = cvar.wait(paused).unwrap();
+                }
+            }
             match reader.read(&mut raw_buf) {
                 Ok(0) => break,
                 Ok(n) => {
@@ -722,6 +731,19 @@ fn pty_session_thread(
                     pixel_height: 0,
                 });
             }
+            SessionCommand::PauseOutput => {
+                let (lock, _) = &*output_pause;
+                if let Ok(mut paused) = lock.lock() {
+                    *paused = true;
+                }
+            }
+            SessionCommand::ResumeOutput => {
+                let (lock, cvar) = &*output_pause;
+                if let Ok(mut paused) = lock.lock() {
+                    *paused = false;
+                    cvar.notify_all();
+                }
+            }
             SessionCommand::ZmodemAcceptDownload { save_dir } => {
                 let mut zm = zmodem_state.lock().unwrap();
                 if let Some(ref mut transfer) = *zm {
@@ -783,6 +805,13 @@ fn pty_session_thread(
         }
     }
 
+    {
+        let (lock, cvar) = &*output_pause;
+        if let Ok(mut paused) = lock.lock() {
+            *paused = false;
+            cvar.notify_all();
+        }
+    }
     output.close();
 
     if let Some(ref rec) = recording_mgr {

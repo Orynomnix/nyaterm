@@ -115,6 +115,7 @@ pub fn run() {
             cmd::session::cancel_session_creation,
             cmd::session::list_serial_ports,
             cmd::session::write_to_session,
+            cmd::session::set_session_output_paused,
             cmd::session::resize_session,
             cmd::session::attach_session,
             cmd::session::close_session,
