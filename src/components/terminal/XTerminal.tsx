@@ -48,6 +48,10 @@ import {
   getTrackedSubmissionCommand,
   resyncFromTerminalLine,
 } from "@/lib/terminalInputTracker";
+import {
+  consumePreservedTerminalReconnectContent,
+  registerTerminalReconnectCapture,
+} from "@/lib/terminalReconnectHistory";
 import { XTERM_PERFORMANCE_CONFIG } from "@/lib/xtermPerformance";
 import type { AiCaptureEvent, SessionType } from "@/types/global";
 import ActionLinkMenu from "./ActionLinkMenu";
@@ -403,11 +407,15 @@ export default function XTerminal({
     credentialPromptInputUntilRef.current = 0;
     shellIntegrationRef.current.enabled = false;
     shellIntegrationRef.current.commandRunning = false;
-    const preservedReconnectContent = preservedReconnectContentRef.current;
+    const preservedReconnectContent =
+      preservedReconnectContentRef.current ?? consumePreservedTerminalReconnectContent(sessionId);
     preservedReconnectContentRef.current = null;
     if (preservedReconnectContent) {
       terminal.write(preservedReconnectContent);
     }
+    const unregisterReconnectCapture = registerTerminalReconnectCapture(sessionId, () =>
+      serializeTerminalText(terminal),
+    );
     const isTerminalAlive = () => !disposed && terminalRef.current === terminal;
     const syncSuggestionsWithInputState = () => {
       if (canShowCommandSuggestions()) {
@@ -1715,6 +1723,7 @@ export default function XTerminal({
       removeLinkPopup();
       removePreviewListener();
       unregisterTerminalContext();
+      unregisterReconnectCapture();
 
       observer.disconnect();
       if (outputUnlisten) outputUnlisten();

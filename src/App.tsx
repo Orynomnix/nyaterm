@@ -60,6 +60,10 @@ import {
   type TerminalWindowNode,
   updateTerminalWindowSplitRatio,
 } from "./lib/tabWindows";
+import {
+  captureTerminalReconnectContent,
+  preserveTerminalReconnectContent,
+} from "./lib/terminalReconnectHistory";
 import { setBackendTransferDuplicatePrompt } from "./lib/transferDuplicatePrompt";
 import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import {
@@ -166,6 +170,11 @@ function focusTerminalSession(sessionId?: string | null) {
   requestAnimationFrame(() => {
     void emit(`focus-terminal-${sessionId}`);
   });
+}
+
+function capturePaneReconnectContent(pane: SessionPane) {
+  if (pane.connecting || pane.connectError) return null;
+  return captureTerminalReconnectContent(pane.sessionId);
 }
 
 /** Root layout: header, activity bars, sidebars, terminal area, dialogs. */
@@ -1306,18 +1315,18 @@ function App() {
       toast.info(t("tabCtx.reconnecting"));
 
       try {
+        const reconnectContent = capturePaneReconnectContent(pane);
         const closed = await closePaneBackendSession(pane);
         if (!closed) {
           throw new Error("close_session_failed");
         }
 
-        const createRequestId = markPaneConnecting(tab.id, pane.id);
-        if (!createRequestId) return;
-        const newSessionId = await createSessionForPane(pane, createRequestId);
+        const newSessionId = await createSessionForPane(pane);
         if (!hasPane(tab.id, pane.id)) {
           await closeStaleCreatedSession(newSessionId);
           return;
         }
+        preserveTerminalReconnectContent(newSessionId, reconnectContent);
         updatePaneSession(tab.id, pane.id, newSessionId);
         if (pane.connectionId) {
           recordRecentConnection(pane.connectionId);
@@ -1346,7 +1355,6 @@ function App() {
       closePaneBackendSession,
       createSessionForPane,
       hasPane,
-      markPaneConnecting,
       maybePromptConnectionEdit,
       recordRecentConnection,
       t,
@@ -1379,18 +1387,18 @@ function App() {
       toast.info(t("tabCtx.reconnecting"));
 
       try {
+        const reconnectContent = capturePaneReconnectContent(pane);
         const closed = await closePaneBackendSession(pane);
         if (!closed) {
           throw new Error("close_session_failed");
         }
 
-        const createRequestId = markPaneConnecting(tab.id, pane.id);
-        if (!createRequestId) return;
-        const newSessionId = await createSessionForPane(pane, createRequestId);
+        const newSessionId = await createSessionForPane(pane);
         if (!hasPane(tab.id, pane.id)) {
           await closeStaleCreatedSession(newSessionId);
           return;
         }
+        preserveTerminalReconnectContent(newSessionId, reconnectContent);
         updatePaneSession(tab.id, pane.id, newSessionId);
         if (pane.connectionId) {
           recordRecentConnection(pane.connectionId);
@@ -1419,7 +1427,6 @@ function App() {
       closePaneBackendSession,
       createSessionForPane,
       hasPane,
-      markPaneConnecting,
       maybePromptConnectionEdit,
       recordRecentConnection,
       t,
@@ -1533,18 +1540,18 @@ function App() {
       if (!pane || pane.connecting || !canCreateSessionFromPane(pane)) return;
 
       try {
+        const reconnectContent = capturePaneReconnectContent(pane);
         const closed = await closePaneBackendSession(pane);
         if (!closed) {
           throw new Error("close_session_failed");
         }
 
-        const createRequestId = markPaneConnecting(tabId, paneId);
-        if (!createRequestId) return;
-        const newSessionId = await createSessionForPane(pane, createRequestId);
+        const newSessionId = await createSessionForPane(pane);
         if (!hasPane(tabId, paneId)) {
           await closeStaleCreatedSession(newSessionId);
           return;
         }
+        preserveTerminalReconnectContent(newSessionId, reconnectContent);
         updatePaneSession(tabId, paneId, newSessionId);
         if (pane.connectionId) {
           recordRecentConnection(pane.connectionId);
@@ -1561,7 +1568,9 @@ function App() {
           ids: pane.connectionId ? { connection_id: pane.connectionId } : undefined,
           error,
         });
-        markPaneConnectionFailed(tabId, paneId, errorMessage);
+        if (pane.connectError) {
+          markPaneConnectionFailed(tabId, paneId, errorMessage);
+        }
         maybePromptConnectionEdit(pane.connectionId, errorMessage, {
           sourceTabId: tabId,
           sourcePaneId: paneId,
@@ -1573,7 +1582,6 @@ function App() {
       createSessionForPane,
       hasPane,
       markPaneConnectionFailed,
-      markPaneConnecting,
       maybePromptConnectionEdit,
       recordRecentConnection,
       tabs,
