@@ -5,7 +5,10 @@ use crate::core::{
 };
 use crate::error::{AppError, AppResult};
 use crate::observability::{self, StructuredLog, StructuredLogLevel};
-use crate::utils::fuzzy::{FuzzyResult, fuzzy_search_items};
+use crate::utils::fuzzy::{
+    FuzzyCandidateResult, FuzzyResult, FuzzySearchCandidate,
+    fuzzy_search_candidates as fuzzy_search_candidate_items, fuzzy_search_items,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -651,6 +654,15 @@ pub async fn fuzzy_search_commands(
         None,
         None,
     ))
+}
+
+#[tauri::command]
+pub async fn fuzzy_search_candidates(
+    pattern: String,
+    items: Vec<FuzzySearchCandidate>,
+    limit: usize,
+) -> AppResult<Vec<FuzzyCandidateResult>> {
+    Ok(fuzzy_search_candidate_items(&items, &pattern, limit))
 }
 
 #[tauri::command]

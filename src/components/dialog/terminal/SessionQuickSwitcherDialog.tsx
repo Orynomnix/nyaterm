@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { invoke } from "@/lib/invoke";
 import type { SavedConnection, SessionType } from "@/types/global";
 
 export interface QuickSwitcherSession {
@@ -28,7 +29,9 @@ type QuickSwitcherItem =
       id: string;
       title: string;
       subtitle: string;
-      searchText: string;
+      display: string;
+      rank: number;
+      order: number;
       session: QuickSwitcherSession;
     }
   | {
@@ -36,9 +39,25 @@ type QuickSwitcherItem =
       id: string;
       title: string;
       subtitle: string;
-      searchText: string;
+      display: string;
+      rank: number;
+      order: number;
       connection: SavedConnection;
     };
+
+interface FuzzySearchCandidate {
+  id: string;
+  value: string;
+  display: string;
+}
+
+interface FuzzySearchResult {
+  id: string;
+  value: string;
+  display: string;
+  score: number;
+  indices: number[];
+}
 
 interface SessionQuickSwitcherProps {
   open: boolean;
@@ -49,107 +68,6 @@ interface SessionQuickSwitcherProps {
   onSelectSession: (sessionId: string) => void;
   onOpenConnection: (connection: SavedConnection) => void;
   onNewSshSession: () => void;
-}
-
-function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/[\s_\-./\\:]+/g, "");
-}
-
-function splitSearchSegments(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[\s_\-./\\:@]+/)
-    .filter(Boolean);
-}
-
-function isSubsequence(needle: string, haystack: string) {
-  let cursor = 0;
-  for (const char of needle) {
-    cursor = haystack.indexOf(char, cursor);
-    if (cursor === -1) return false;
-    cursor += 1;
-  }
-  return true;
-}
-
-function isSegmentSubsequence(needleSegments: string[], haystackSegments: string[]) {
-  let cursor = 0;
-  for (const segment of needleSegments) {
-    const nextIndex = haystackSegments.findIndex(
-      (candidate, index) => index >= cursor && candidate.startsWith(segment),
-    );
-    if (nextIndex === -1) return false;
-    cursor = nextIndex + 1;
-  }
-  return true;
-}
-
-function getNumericSegments(value: string) {
-  return splitSearchSegments(value).filter((segment) => /^\d+$/.test(segment));
-}
-
-function isCompactNumericSegmentMatch(query: string, haystackSegments: string[]) {
-  const failedStates = new Set<string>();
-
-  const visit = (queryIndex: number, segmentIndex: number): boolean => {
-    if (queryIndex >= query.length) return true;
-    if (segmentIndex >= haystackSegments.length) return false;
-
-    const stateKey = `${queryIndex}:${segmentIndex}`;
-    if (failedStates.has(stateKey)) return false;
-
-    if (visit(queryIndex, segmentIndex + 1)) return true;
-
-    const segment = haystackSegments[segmentIndex];
-    const remainingQuery = query.slice(queryIndex);
-    if (
-      remainingQuery.startsWith(segment) &&
-      visit(queryIndex + segment.length, segmentIndex + 1)
-    ) {
-      return true;
-    }
-    if (segment.startsWith(remainingQuery)) return true;
-
-    failedStates.add(stateKey);
-    return false;
-  };
-
-  return visit(0, 0);
-}
-
-function allowsSubsequenceSearch(query: string) {
-  return /^[a-z]+$/i.test(query);
-}
-
-function matchesLooseSearch(searchText: string, query: string) {
-  const trimmed = query.trim().toLowerCase();
-  if (!trimmed) return true;
-
-  const normalizedSearch = searchText.toLowerCase();
-  const tokens = trimmed.split(/\s+/).filter(Boolean);
-  if (tokens.every((token) => normalizedSearch.includes(token))) return true;
-
-  const compactQuery = normalizeSearchText(trimmed);
-  const compactSearch = normalizeSearchText(searchText);
-  if (compactQuery.length > 0 && compactSearch.includes(compactQuery)) return true;
-
-  const querySegments = splitSearchSegments(trimmed);
-  if (
-    querySegments.length > 1 &&
-    /\d/.test(trimmed) &&
-    isSegmentSubsequence(querySegments, splitSearchSegments(searchText))
-  ) {
-    return true;
-  }
-
-  if (
-    /^\d+$/.test(compactQuery) &&
-    isCompactNumericSegmentMatch(compactQuery, getNumericSegments(searchText))
-  ) {
-    return true;
-  }
-
-  return allowsSubsequenceSearch(compactQuery) && isSubsequence(compactQuery, compactSearch);
 }
 
 function getConnectionTarget(connection: SavedConnection) {
@@ -176,6 +94,10 @@ function stringifySearchParts(parts: unknown[]) {
     .join(" ");
 }
 
+function sortByDefaultPriority(left: QuickSwitcherItem, right: QuickSwitcherItem) {
+  return left.rank - right.rank || left.order - right.order;
+}
+
 export default function SessionQuickSwitcher({
   open,
   activeSessionId,
@@ -188,19 +110,24 @@ export default function SessionQuickSwitcher({
 }: SessionQuickSwitcherProps) {
   const { t } = useTranslation();
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const searchRequestIdRef = useRef(0);
+  const lastMatchedItemIdsRef = useRef<string[] | null>(null);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [matchedItemIds, setMatchedItemIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
     setQuery("");
     setSelectedIndex(0);
+    setMatchedItemIds(null);
+    lastMatchedItemIdsRef.current = null;
     window.setTimeout(() => searchRef.current?.focus(), 0);
   }, [open]);
 
   const items = useMemo<QuickSwitcherItem[]>(() => {
-    const sessionItems = workspaceSessions.map((session) => {
+    const sessionItems = workspaceSessions.map((session, index) => {
       const status = session.connecting
         ? t("savedConnections.connecting", { name: session.name })
         : session.connectError
@@ -215,7 +142,7 @@ export default function SessionQuickSwitcher({
         id: `session:${session.id}`,
         title: session.name,
         subtitle,
-        searchText: stringifySearchParts([
+        display: stringifySearchParts([
           session.name,
           session.sessionType,
           session.connectionName,
@@ -224,17 +151,19 @@ export default function SessionQuickSwitcher({
           session.connectError,
           status,
         ]),
+        rank: session.id === activeSessionId ? 0 : 1,
+        order: index,
         session,
       };
     });
-    const connectionItems = savedConnections.map((connection) => {
+    const connectionItems = savedConnections.map((connection, index) => {
       const subtitle = getConnectionSubtitle(connection);
       return {
         kind: "connection" as const,
         id: `connection:${connection.id}`,
         title: connection.name,
         subtitle,
-        searchText: stringifySearchParts([
+        display: stringifySearchParts([
           connection.name,
           connection.description,
           connection.type,
@@ -247,28 +176,79 @@ export default function SessionQuickSwitcher({
           connection.working_dir,
           subtitle,
         ]),
+        rank: 2,
+        order: workspaceSessions.length + index,
         connection,
       };
     });
 
     return [...sessionItems, ...connectionItems];
-  }, [savedConnections, t, workspaceSessions]);
+  }, [activeSessionId, savedConnections, t, workspaceSessions]);
+
+  const sortedItems = useMemo(() => [...items].sort(sortByDefaultPriority), [items]);
+
+  const candidates = useMemo<FuzzySearchCandidate[]>(
+    () =>
+      items.map((item) => ({
+        id: item.id,
+        value: item.id,
+        display: item.display,
+      })),
+    [items],
+  );
+
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const pattern = query.trim();
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
+
+    if (!pattern) {
+      setMatchedItemIds(null);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await invoke<FuzzySearchResult[]>("fuzzy_search_candidates", {
+          pattern,
+          items: candidates,
+          limit: 50,
+        });
+        if (requestId !== searchRequestIdRef.current) return;
+
+        const ids = results
+          .filter((result) => itemById.has(result.id))
+          .sort((left, right) => {
+            const leftItem = itemById.get(left.id);
+            const rightItem = itemById.get(right.id);
+            if (!leftItem || !rightItem) return 0;
+            return (
+              leftItem.rank - rightItem.rank ||
+              right.score - left.score ||
+              leftItem.order - rightItem.order
+            );
+          })
+          .map((result) => result.id);
+
+        lastMatchedItemIdsRef.current = ids;
+        setMatchedItemIds(ids);
+      } catch {
+        if (requestId === searchRequestIdRef.current) {
+          setMatchedItemIds(lastMatchedItemIdsRef.current ?? []);
+        }
+      }
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [candidates, itemById, open, query]);
 
   const filteredItems = useMemo(
-    () =>
-      items
-        .filter((item) => matchesLooseSearch(item.searchText, query))
-        .map((item, index) => ({ item, index }))
-        .sort((left, right) => {
-          const getRank = ({ item }: { item: QuickSwitcherItem }) => {
-            if (item.kind === "session" && item.session.id === activeSessionId) return 0;
-            if (item.kind === "session") return 1;
-            return 2;
-          };
-          return getRank(left) - getRank(right) || left.index - right.index;
-        })
-        .map(({ item }) => item),
-    [activeSessionId, items, query],
+    () => (matchedItemIds ? matchedItemIds.flatMap((id) => itemById.get(id) ?? []) : sortedItems),
+    [itemById, matchedItemIds, sortedItems],
   );
 
   useEffect(() => {

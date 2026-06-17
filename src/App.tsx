@@ -9,7 +9,7 @@ import type { HostKeyVerifyRequest } from "./components/dialog/connections/HostK
 import type { OtpRequest } from "./components/dialog/connections/OtpDialog";
 import SessionQuickSwitcher, {
   type QuickSwitcherSession,
-} from "./components/terminal/SessionQuickSwitcher";
+} from "./components/dialog/terminal/SessionQuickSwitcherDialog";
 import { useApp } from "./context/AppContext";
 import { TransferProvider } from "./context/TransferContext";
 import { useActivityBarController } from "./hooks/useActivityBarController";

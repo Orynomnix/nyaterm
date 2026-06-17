@@ -129,6 +129,7 @@ pub fn run() {
             cmd::session::delete_command_history,
             cmd::session::fuzzy_search_history,
             cmd::session::fuzzy_search_commands,
+            cmd::session::fuzzy_search_candidates,
             cmd::session::start_recording,
             cmd::session::stop_recording,
             cmd::session::is_recording,
