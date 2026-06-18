@@ -33,6 +33,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "../../ui/context-menu";
+import { isKnownBinaryFile } from "./model";
 
 interface FileListItemProps {
   entry: FileEntry;
@@ -40,6 +41,7 @@ interface FileListItemProps {
   selectedCount: number;
   isParentDirectoryEntry?: boolean;
   activeSessionId: string | null;
+  editorType: "external" | "internal";
   columnTemplate: string;
   rowWidth: number;
   onSelectionStart: (entry: FileEntry, event: React.MouseEvent) => void;
@@ -47,6 +49,8 @@ interface FileListItemProps {
   onContextMenuSelect: (entry: FileEntry, event: React.MouseEvent) => void;
   onItemClick: (entry: FileEntry) => void;
   onOpenDefault: (entry: FileEntry) => void;
+  onOpenInternal: (entry: FileEntry) => void;
+  onOpenExternal: (entry: FileEntry) => void;
   onRefresh: () => void;
   onUpload: () => void;
   onUploadFolder: () => void;
@@ -87,6 +91,7 @@ export function FileListItem({
   selectedCount,
   isParentDirectoryEntry = false,
   activeSessionId,
+  editorType,
   columnTemplate,
   rowWidth,
   onSelectionStart,
@@ -94,6 +99,8 @@ export function FileListItem({
   onContextMenuSelect,
   onItemClick,
   onOpenDefault,
+  onOpenInternal,
+  onOpenExternal,
   onRefresh,
   onUpload,
   onUploadFolder,
@@ -128,6 +135,9 @@ export function FileListItem({
     ? t("fileExplorer.goUp")
     : `${permissions} ${fileSize} ${modifiedTime} ${owner}:${group}`;
   const isRenaming = !!inlineRename;
+  const isFile = !entry.is_dir;
+  const showOpenInternal = isFile && editorType === "external" && !isKnownBinaryFile(entry.name);
+  const showOpenExternal = isFile && editorType === "internal";
 
   useLayoutEffect(() => {
     if (!isRenaming) {
@@ -348,14 +358,22 @@ export function FileListItem({
           </>
         ) : (
           <>
-            <ContextMenuItem onClick={() => onItemClick(entry)}>
+            <ContextMenuItem
+              onClick={() => (entry.is_dir ? onItemClick(entry) : onOpenDefault(entry))}
+            >
               <MdFileOpen className="text-[0.875rem] text-muted-foreground mr-2" />
               {t("fileExplorer.cmOpen")}
             </ContextMenuItem>
-            {!entry.is_dir && (
-              <ContextMenuItem onClick={() => onOpenDefault(entry)}>
+            {showOpenInternal && (
+              <ContextMenuItem onClick={() => onOpenInternal(entry)}>
+                <MdEdit className="text-[0.875rem] text-muted-foreground mr-2" />
+                {t("fileExplorer.cmOpenInternalEditor")}
+              </ContextMenuItem>
+            )}
+            {showOpenExternal && (
+              <ContextMenuItem onClick={() => onOpenExternal(entry)}>
                 <MdOpenInNew className="text-[0.875rem] text-muted-foreground mr-2" />
-                {t("fileExplorer.cmOpenDefault")}
+                {t("fileExplorer.cmOpenExternalEditor")}
               </ContextMenuItem>
             )}
             <ContextMenuSeparator />

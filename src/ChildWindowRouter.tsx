@@ -11,12 +11,14 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const NewSessionPage = lazy(() => import("./pages/NewSessionPage"));
 const QuickCommandPage = lazy(() => import("./pages/QuickCommandPage"));
 const AutoUploadPage = lazy(() => import("./pages/FileUploadPage"));
+const RemoteFileEditorPage = lazy(() => import("./pages/RemoteFileEditorPage"));
 
 const PAGES: Record<string, React.ComponentType> = {
   settings: SettingsPage,
   "new-session": NewSessionPage,
   "quick-command": QuickCommandPage,
   "auto-upload": AutoUploadPage,
+  "file-editor": RemoteFileEditorPage,
 };
 
 export default function ChildWindowRouter({ windowType }: { windowType: string }) {

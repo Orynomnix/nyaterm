@@ -1,6 +1,7 @@
 //! Shared helpers for remote file system backends: path quoting, permission
 //! formatting, and common type definitions.
 
+use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const SFTP_FILE_TYPE_MASK: u32 = 0o170000;
@@ -48,6 +49,49 @@ pub struct RemoteTextFile {
     pub path: String,
     pub content: String,
     pub size: u64,
+    pub mtime: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteRemoteTextResult {
+    pub status: String,
+    pub mtime: Option<u64>,
+    pub size: Option<u64>,
+}
+
+impl WriteRemoteTextResult {
+    pub fn saved(mtime: u64, size: u64) -> Self {
+        Self {
+            status: "saved".to_string(),
+            mtime: Some(mtime),
+            size: Some(size),
+        }
+    }
+
+    pub fn conflict(mtime: u64, size: u64) -> Self {
+        Self {
+            status: "conflict".to_string(),
+            mtime: Some(mtime),
+            size: Some(size),
+        }
+    }
+}
+
+pub(crate) fn ensure_text_bytes(bytes: &[u8], max_bytes: u64) -> AppResult<()> {
+    if bytes.len() as u64 > max_bytes {
+        return Err(AppError::Config(format!(
+            "File is too large to open as text ({} bytes > {} bytes)",
+            bytes.len(),
+            max_bytes
+        )));
+    }
+    if bytes.contains(&0) {
+        return Err(AppError::Config(
+            "Binary files are not supported by the built-in editor".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// POSIX shell-safe quoting: wraps `input` in single quotes and escapes any

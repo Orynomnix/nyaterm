@@ -9,6 +9,7 @@ export interface RemoteTextFile {
   path: string;
   content: string;
   size: number;
+  mtime?: number;
 }
 
 export type FileExplorerSessionCache = {
@@ -100,8 +101,253 @@ export const PARENT_DIRECTORY_ENTRY: FileEntry = {
   mtime: 0,
 };
 
+export const BINARY_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "bmp",
+  "webp",
+  "ico",
+  "tiff",
+  "tif",
+  "heic",
+  "heif",
+  "avif",
+  "jfif",
+  "psd",
+  "ai",
+  "eps",
+  "raw",
+  "cr2",
+  "nef",
+  "mp3",
+  "wav",
+  "flac",
+  "aac",
+  "ogg",
+  "wma",
+  "m4a",
+  "aiff",
+  "opus",
+  "mp4",
+  "avi",
+  "mkv",
+  "mov",
+  "wmv",
+  "flv",
+  "webm",
+  "m4v",
+  "3gp",
+  "mpeg",
+  "mpg",
+  "zip",
+  "rar",
+  "7z",
+  "tar",
+  "gz",
+  "bz2",
+  "xz",
+  "lz",
+  "lzma",
+  "zst",
+  "tgz",
+  "tbz2",
+  "txz",
+  "cab",
+  "iso",
+  "dmg",
+  "exe",
+  "dll",
+  "so",
+  "dylib",
+  "bin",
+  "app",
+  "msi",
+  "deb",
+  "rpm",
+  "apk",
+  "ipa",
+  "jar",
+  "war",
+  "ear",
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "odp",
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "eot",
+  "db",
+  "sqlite",
+  "sqlite3",
+  "mdb",
+  "accdb",
+  "o",
+  "obj",
+  "pyc",
+  "pyo",
+  "class",
+  "beam",
+  "swf",
+  "fla",
+  "blend",
+  "unity3d",
+  "unitypackage",
+]);
+
+const LANGUAGE_BY_EXTENSION: Record<string, string> = {
+  bat: "batch",
+  bash: "shell",
+  c: "c",
+  cfg: "ini",
+  cc: "cpp",
+  cjs: "javascript",
+  cmd: "batch",
+  conf: "ini",
+  cpp: "cpp",
+  cs: "csharp",
+  css: "css",
+  cxx: "cpp",
+  dart: "dart",
+  diff: "diff",
+  dockerfile: "dockerfile",
+  fs: "fsharp",
+  fish: "shell",
+  gql: "graphql",
+  graphql: "graphql",
+  go: "go",
+  h: "c",
+  hpp: "cpp",
+  htm: "html",
+  html: "html",
+  ini: "ini",
+  just: "makefile",
+  java: "java",
+  js: "javascript",
+  json: "json",
+  json5: "json5",
+  jsonc: "jsonc",
+  jsx: "javascript",
+  kt: "kotlin",
+  kts: "kotlin",
+  less: "less",
+  log: "plaintext",
+  lua: "lua",
+  markdown: "markdown",
+  md: "markdown",
+  mdx: "markdown",
+  mjs: "javascript",
+  patch: "diff",
+  pl: "perl",
+  php: "php",
+  properties: "properties",
+  proto: "protobuf",
+  ps1: "powershell",
+  psm1: "powershell",
+  py: "python",
+  pyi: "python",
+  pyw: "python",
+  r: "r",
+  R: "r",
+  rb: "ruby",
+  rs: "rust",
+  sass: "sass",
+  scss: "scss",
+  sh: "shell",
+  sql: "sql",
+  svelte: "svelte",
+  swift: "swift",
+  toml: "toml",
+  ts: "typescript",
+  tsx: "typescript",
+  txt: "plaintext",
+  vb: "vb",
+  vue: "vue",
+  xml: "xml",
+  xhtml: "html",
+  xsl: "xml",
+  xslt: "xml",
+  yaml: "yaml",
+  yml: "yaml",
+  zsh: "shell",
+};
+
 export function getLocalPathName(path: string, fallback: string) {
   return path.split(/[\\/]/).pop() || fallback;
+}
+
+export function getFileExtension(name: string) {
+  const normalized = name.trim().toLocaleLowerCase();
+  const lastSlash = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  const baseName = normalized.slice(lastSlash + 1);
+  const index = baseName.lastIndexOf(".");
+  return index > 0 ? baseName.slice(index + 1) : "";
+}
+
+export function isKnownBinaryFile(name: string) {
+  const ext = getFileExtension(name);
+  return !!ext && BINARY_EXTENSIONS.has(ext);
+}
+
+export function languageFromFilename(name: string) {
+  const baseName = name.split(/[\\/]/).pop()?.toLocaleLowerCase() || name.toLocaleLowerCase();
+  const normalized = baseName.replace(/^\.+/, "");
+
+  if (
+    [
+      "bash_profile",
+      "bash_login",
+      "bash_logout",
+      "bashrc",
+      "profile",
+      "zprofile",
+      "zshenv",
+      "zshrc",
+      "zlogin",
+      "zlogout",
+      "kshrc",
+      "cshrc",
+      "tcshrc",
+    ].includes(normalized)
+  ) {
+    return "shell";
+  }
+
+  if (
+    [
+      "env",
+      "env.local",
+      "env.development",
+      "env.production",
+      "env.test",
+      "gitconfig",
+      "editorconfig",
+      "npmrc",
+      "yarnrc",
+      "curlrc",
+      "wgetrc",
+    ].includes(normalized)
+  ) {
+    return "ini";
+  }
+
+  if (baseName === "cmakelists.txt") return "cmake";
+  if (baseName === "dockerfile" || baseName.endsWith(".dockerfile")) return "dockerfile";
+  if (baseName === "makefile" || baseName === "gnumakefile" || baseName === "justfile") {
+    return "makefile";
+  }
+  if (baseName === "nginx.conf" || baseName.endsWith(".nginx.conf")) return "nginx";
+  if (baseName === "docker-compose.yml" || baseName === "docker-compose.yaml") return "yaml";
+  return LANGUAGE_BY_EXTENSION[getFileExtension(name)] || "plaintext";
 }
 
 export function buildRemoteUploadPath(remoteDir: string, name: string) {

@@ -20,11 +20,19 @@ pub struct ChildWindowOptions {
     label: String,
     title: String,
     url: String,
+    kind: Option<ChildWindowKind>,
     parent_label: Option<String>,
     width: Option<f64>,
     height: Option<f64>,
     resizable: Option<bool>,
     always_on_top: Option<bool>,
+}
+
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum ChildWindowKind {
+    Modal,
+    Modeless,
 }
 
 #[tauri::command]
@@ -77,6 +85,7 @@ pub async fn open_child_window(
 
     let width = options.width.unwrap_or(720.0);
     let height = options.height.unwrap_or(560.0);
+    let kind = options.kind.unwrap_or(ChildWindowKind::Modal);
     let parent_label = options
         .parent_label
         .as_deref()
@@ -103,13 +112,15 @@ pub async fn open_child_window(
             .hidden_title(true);
     }
 
-    if let Some(parent) = parent_label
-        .and_then(|label| app.get_webview_window(label))
-        .or_else(|| crate::app::focused_or_first_main_window(&app))
-    {
-        builder = builder
-            .parent(&parent)
-            .map_err(|error| AppError::Config(error.to_string()))?;
+    if kind == ChildWindowKind::Modal {
+        if let Some(parent) = parent_label
+            .and_then(|label| app.get_webview_window(label))
+            .or_else(|| crate::app::focused_or_first_main_window(&app))
+        {
+            builder = builder
+                .parent(&parent)
+                .map_err(|error| AppError::Config(error.to_string()))?;
+        }
     }
 
     if let Some(runtime) = app.try_state::<crate::runtime::AppRuntime>() {

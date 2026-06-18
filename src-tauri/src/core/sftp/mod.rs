@@ -29,7 +29,9 @@ pub(crate) use duplicate::TransferDuplicateManager;
 pub(crate) use transfer::{active_transfer_count, transfer_target_directory};
 pub use transfer::{cancel_transfer, pause_transfer, resume_transfer};
 pub(crate) use util::sanitize_download_file_name;
-pub use util::{FileEntry, FileProperties, RemoteFileAttributeUpdate, RemoteTextFile};
+pub use util::{
+    FileEntry, FileProperties, RemoteFileAttributeUpdate, RemoteTextFile, WriteRemoteTextResult,
+};
 
 /// Orchestrator that lazily initialises the best available remote file system
 /// backend and delegates all operations through it.
@@ -395,6 +397,22 @@ pub async fn read_remote_file_text(
     let guard = auto_fs.backend().await?;
     let fs = guard.as_ref().unwrap();
     fs.read_file_text(path, max_bytes).await
+}
+
+pub async fn write_remote_file_text(
+    manager: Arc<SessionManager>,
+    session_id: &str,
+    path: &str,
+    content: &str,
+    expected_mtime: Option<u64>,
+    expected_size: Option<u64>,
+    force: bool,
+) -> AppResult<WriteRemoteTextResult> {
+    let auto_fs = get_or_create_auto_fs(&manager, session_id).await?;
+    let guard = auto_fs.backend().await?;
+    let fs = guard.as_ref().unwrap();
+    fs.write_file_text(path, content, expected_mtime, expected_size, force)
+        .await
 }
 
 pub async fn create_remote_file(

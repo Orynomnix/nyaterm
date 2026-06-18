@@ -47,6 +47,10 @@ impl ScpNormalBackend {
         exec_command(&self.ssh_handle, command).await
     }
 
+    async fn exec_with_stdin(&self, command: &str, stdin: &[u8]) -> AppResult<ExecResult> {
+        exec_command_with_stdin(&self.ssh_handle, command, Some(stdin)).await
+    }
+
     async fn exec_ok(&self, command: &str) -> AppResult<String> {
         let result = self.exec(command).await?;
         if result.exit_code != Some(0) {
@@ -239,6 +243,14 @@ async fn exec_command(
     ssh_handle: &Arc<SshConnectionHandles>,
     command: &str,
 ) -> AppResult<ExecResult> {
+    exec_command_with_stdin(ssh_handle, command, None).await
+}
+
+async fn exec_command_with_stdin(
+    ssh_handle: &Arc<SshConnectionHandles>,
+    command: &str,
+    stdin: Option<&[u8]>,
+) -> AppResult<ExecResult> {
     let handle_mtx = ssh_handle.target_handle();
     let mut channel = {
         let handle = handle_mtx.lock().await;
@@ -249,6 +261,10 @@ async fn exec_command(
     };
 
     channel.exec(true, command.as_bytes()).await?;
+    if let Some(stdin) = stdin {
+        channel.data(stdin).await?;
+        channel.eof().await?;
+    }
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -945,6 +961,18 @@ impl RemoteFs for ScpNormalBackend {
     }
 
     async fn read_file_text(&self, path: &str, max_bytes: u64) -> AppResult<RemoteTextFile> {
+        let props = self.stat(path).await?;
+        if props.is_dir {
+            return Err(AppError::Config(
+                "Directories cannot be opened as text".to_string(),
+            ));
+        }
+        if props.size > max_bytes {
+            return Err(AppError::Config(format!(
+                "File is too large to open as text ({} bytes > {} bytes)",
+                props.size, max_bytes
+            )));
+        }
         let cmd = format!(
             "dd bs=1 count={} if={} 2>/dev/null",
             max_bytes,
@@ -961,23 +989,58 @@ impl RemoteFs for ScpNormalBackend {
         }
 
         let bytes = result.stdout;
-        let size = bytes.len() as u64;
+        ensure_text_bytes(&bytes, max_bytes)?;
 
-        if bytes.contains(&0) {
-            return Err(AppError::Config(
-                "Binary files are not supported for AI analysis".to_string(),
-            ));
-        }
-
-        let content = String::from_utf8(bytes).map_err(|_| {
-            AppError::Config("Only UTF-8 text files are supported for AI analysis".to_string())
-        })?;
+        let content = String::from_utf8(bytes)
+            .map_err(|_| AppError::Config("Only UTF-8 text files are supported".to_string()))?;
 
         Ok(RemoteTextFile {
             path: path.to_string(),
             content,
-            size,
+            size: props.size,
+            mtime: props.mtime,
         })
+    }
+
+    async fn write_file_text(
+        &self,
+        path: &str,
+        content: &str,
+        expected_mtime: Option<u64>,
+        expected_size: Option<u64>,
+        force: bool,
+    ) -> AppResult<WriteRemoteTextResult> {
+        let props = self.stat(path).await?;
+        if !force
+            && (expected_mtime.is_some_and(|mtime| props.mtime != 0 && mtime != props.mtime)
+                || expected_size.is_some_and(|size| size != props.size))
+        {
+            return Ok(WriteRemoteTextResult::conflict(props.mtime, props.size));
+        }
+
+        let tmp = format!(
+            "{}.nyaterm-edit-{}",
+            path,
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let cmd = format!(
+            "umask 077; cat > {} && mv -f -- {} {}",
+            sh_quote(&tmp),
+            sh_quote(&tmp),
+            sh_quote(path)
+        );
+        let result = self.exec_with_stdin(&cmd, content.as_bytes()).await?;
+        if result.exit_code != Some(0) {
+            let stderr_text = String::from_utf8_lossy(&result.stderr);
+            let _ = self.exec(&format!("rm -f -- {}", sh_quote(&tmp))).await;
+            return Err(AppError::Channel(format!(
+                "Failed to write remote file (exit {}): {}",
+                result.exit_code.unwrap_or(255),
+                stderr_text.trim()
+            )));
+        }
+        let props = self.stat(path).await?;
+        Ok(WriteRemoteTextResult::saved(props.mtime, props.size))
     }
 
     async fn download_file(

@@ -107,6 +107,28 @@ pub async fn read_remote_file_text(
 }
 
 #[tauri::command]
+pub async fn write_remote_file_text(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    path: String,
+    content: String,
+    expected_mtime: Option<u64>,
+    expected_size: Option<u64>,
+    force: Option<bool>,
+) -> AppResult<sftp::WriteRemoteTextResult> {
+    sftp::write_remote_file_text(
+        state.inner().clone(),
+        &session_id,
+        &path,
+        &content,
+        expected_mtime,
+        expected_size,
+        force.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn create_remote_file(
     state: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,

@@ -151,6 +151,7 @@ pub fn run() {
             cmd::sftp::upload_local_file,
             cmd::sftp::get_file_properties,
             cmd::sftp::read_remote_file_text,
+            cmd::sftp::write_remote_file_text,
             cmd::sftp::create_remote_file,
             cmd::sftp::create_remote_dir,
             cmd::sftp::create_remote_symlink,

@@ -62,7 +62,7 @@ import { logger } from "@/lib/logger";
 import { sendSessionInput } from "@/lib/sessionInput";
 import { matchesKeyEvent } from "@/lib/shortcutRegistry";
 import { cn, formatSize } from "@/lib/utils";
-import { openAutoUpload } from "@/lib/windowManager";
+import { openAutoUpload, openRemoteFileEditor } from "@/lib/windowManager";
 import type {
   AICustomActionConfig,
   FileEntry,
@@ -90,6 +90,7 @@ import {
   getLocalPathName,
   getRemoteParentDirectory,
   type InlineRenameState,
+  isKnownBinaryFile,
   isParentDirectoryEntry,
   type LoadDirectoryOptions,
   MIN_FILE_LIST_COLUMN_WIDTHS,
@@ -1542,7 +1543,7 @@ function FileExplorer({
     }
   };
 
-  const handleOpenDefault = async (entry: FileEntry) => {
+  const handleOpenExternal = async (entry: FileEntry) => {
     if (!activeSessionId || entry.is_dir) return;
     let localPath: string;
     try {
@@ -1577,6 +1578,36 @@ function FileExplorer({
     } catch (e) {
       toast.error(String(e));
     }
+  };
+
+  const handleOpenInternal = async (entry: FileEntry) => {
+    if (!activeSessionId || entry.is_dir) return;
+    if (isKnownBinaryFile(entry.name)) {
+      toast.info(t("fileExplorer.binaryOpenExternal"));
+      await handleOpenExternal(entry);
+      return;
+    }
+
+    try {
+      await openRemoteFileEditor({
+        sessionId: activeSessionId,
+        remotePath: getEntryFullPath(entry),
+        name: entry.name,
+        size: entry.size,
+        mtime: entry.mtime,
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error) || t("fileExplorer.openInternalFailed"));
+      await handleOpenExternal(entry);
+    }
+  };
+
+  const handleOpenDefault = async (entry: FileEntry) => {
+    if ((appSettings.transfer.editor_type || "external") === "internal") {
+      await handleOpenInternal(entry);
+      return;
+    }
+    await handleOpenExternal(entry);
   };
 
   const displayPath = (() => {
@@ -1841,6 +1872,7 @@ function FileExplorer({
                           selectedCount={selectedRealFiles.length}
                           isParentDirectoryEntry={isParentDirectoryEntry(entry)}
                           activeSessionId={activeSessionId}
+                          editorType={appSettings.transfer.editor_type || "external"}
                           columnTemplate={fileListGridTemplate}
                           rowWidth={fileListTableWidth}
                           onSelectionStart={handleSelectionStart}
@@ -1848,6 +1880,8 @@ function FileExplorer({
                           onContextMenuSelect={handleContextMenuSelection}
                           onItemClick={handleItemClick}
                           onOpenDefault={handleOpenDefault}
+                          onOpenInternal={handleOpenInternal}
+                          onOpenExternal={handleOpenExternal}
                           onRefresh={() => void refreshCurrentDirectory()}
                           onUpload={handleUploadFiles}
                           onUploadFolder={handleUploadFolder}

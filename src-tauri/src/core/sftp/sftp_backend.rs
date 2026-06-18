@@ -1391,17 +1391,18 @@ impl RemoteFs for SftpBackend {
         let sftp = self.open_sftp().await?;
         let attrs = sftp.metadata(path).await?;
         let size = attrs.size.unwrap_or(0);
+        let mtime = u64::from(attrs.mtime.unwrap_or(0));
         let type_bits = attrs.permissions.unwrap_or(0) & SFTP_FILE_TYPE_MASK;
         if type_bits == 0o040000 {
             let _ = sftp.close().await;
             return Err(AppError::Config(
-                "Directories are not supported for AI file analysis".to_string(),
+                "Directories cannot be opened as text".to_string(),
             ));
         }
         if size > max_bytes {
             let _ = sftp.close().await;
             return Err(AppError::Config(format!(
-                "File is too large for AI analysis ({} bytes > {} bytes)",
+                "File is too large to open as text ({} bytes > {} bytes)",
                 size, max_bytes
             )));
         }
@@ -1416,27 +1417,58 @@ impl RemoteFs for SftpBackend {
             .map_err(|error| AppError::Channel(format!("Failed to read remote file: {error}")))?;
         let _ = sftp.close().await;
 
-        if bytes.len() as u64 > max_bytes {
-            return Err(AppError::Config(format!(
-                "File is too large for AI analysis ({} bytes > {} bytes)",
-                bytes.len(),
-                max_bytes
-            )));
-        }
-        if bytes.contains(&0) {
-            return Err(AppError::Config(
-                "Binary files are not supported for AI analysis".to_string(),
-            ));
-        }
-        let content = String::from_utf8(bytes).map_err(|_| {
-            AppError::Config("Only UTF-8 text files are supported for AI analysis".to_string())
-        })?;
+        ensure_text_bytes(&bytes, max_bytes)?;
+        let content = String::from_utf8(bytes)
+            .map_err(|_| AppError::Config("Only UTF-8 text files are supported".to_string()))?;
 
         Ok(RemoteTextFile {
             path: path.to_string(),
             content,
             size,
+            mtime,
         })
+    }
+
+    async fn write_file_text(
+        &self,
+        path: &str,
+        content: &str,
+        expected_mtime: Option<u64>,
+        expected_size: Option<u64>,
+        force: bool,
+    ) -> AppResult<WriteRemoteTextResult> {
+        use tokio::io::AsyncWriteExt;
+
+        let sftp = self.open_sftp().await?;
+        if !force {
+            let attrs = sftp.metadata(path).await?;
+            let current_mtime = u64::from(attrs.mtime.unwrap_or(0));
+            let current_size = attrs.size.unwrap_or(0);
+            if expected_mtime.is_some_and(|mtime| mtime != current_mtime)
+                || expected_size.is_some_and(|size| size != current_size)
+            {
+                let _ = sftp.close().await;
+                return Ok(WriteRemoteTextResult::conflict(current_mtime, current_size));
+            }
+        }
+
+        let mut file = sftp
+            .create(path)
+            .await
+            .map_err(|error| AppError::Channel(format!("Failed to open remote file: {error}")))?;
+        file.write_all(content.as_bytes())
+            .await
+            .map_err(|error| AppError::Channel(format!("Failed to write remote file: {error}")))?;
+        file.flush()
+            .await
+            .map_err(|error| AppError::Channel(format!("Failed to flush remote file: {error}")))?;
+
+        let attrs = sftp.metadata(path).await?;
+        let _ = sftp.close().await;
+        Ok(WriteRemoteTextResult::saved(
+            u64::from(attrs.mtime.unwrap_or(0)),
+            attrs.size.unwrap_or(content.len() as u64),
+        ))
     }
 
     async fn download_file(

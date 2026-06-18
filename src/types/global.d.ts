@@ -556,6 +556,7 @@ export interface TerminalSettings {
 }
 
 export interface TransferSettings {
+  editor_type: "external" | "internal";
   download_threads: number;
   upload_threads: number;
   duplicate_strategy: string;

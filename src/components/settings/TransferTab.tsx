@@ -111,17 +111,30 @@ export function TransferTab() {
           />
         </SettingRow>
 
-        <PathPickerInput
-          label={t("settings.defaultEditor")}
-          desc={t("settings.defaultEditorDesc")}
-          value={transfer.default_editor}
-          placeholder={t("settings.defaultEditorDesc")}
-          onChange={(v) => update({ default_editor: v })}
-          directory={false}
-          filters={[
-            { name: "Executable", extensions: ["exe", "cmd", "bat", "com", "app", "sh", ""] },
-          ]}
-        />
+        <SettingSelect
+          label={t("settings.editorType")}
+          desc={t("settings.editorTypeDesc")}
+          value={transfer.editor_type || "external"}
+          controlClassName="max-w-sm"
+          onValueChange={(v) => update({ editor_type: v as "external" | "internal" })}
+        >
+          <SelectItem value="external">{t("settings.editorTypeExternal")}</SelectItem>
+          <SelectItem value="internal">{t("settings.editorTypeInternal")}</SelectItem>
+        </SettingSelect>
+
+        {(transfer.editor_type || "external") === "external" && (
+          <PathPickerInput
+            label={t("settings.defaultEditor")}
+            desc={t("settings.defaultEditorDesc")}
+            value={transfer.default_editor}
+            placeholder={t("settings.defaultEditorDesc")}
+            onChange={(v) => update({ default_editor: v })}
+            directory={false}
+            filters={[
+              { name: "Executable", extensions: ["exe", "cmd", "bat", "com", "app", "sh", ""] },
+            ]}
+          />
+        )}
       </SettingSection>
 
       <SettingSection

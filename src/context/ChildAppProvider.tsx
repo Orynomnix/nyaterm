@@ -84,6 +84,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     default_encoding: "UTF-8",
   },
   transfer: {
+    editor_type: "external",
     download_threads: 3,
     upload_threads: 3,
     duplicate_strategy: "ask",

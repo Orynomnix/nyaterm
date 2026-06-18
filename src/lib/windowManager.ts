@@ -13,6 +13,7 @@ interface ChildWindowOptions {
   label: string;
   title: string;
   url: string;
+  kind?: "modal" | "modeless";
   parentLabel?: string;
   width?: number;
   height?: number;
@@ -22,6 +23,7 @@ interface ChildWindowOptions {
 const MAIN_WINDOW_LABEL = "main";
 const MAIN_WINDOW_PREFIX = "main-";
 const AUTO_UPLOAD_WINDOW_PREFIX = "auto-upload-";
+const FILE_EDITOR_WINDOW_PREFIX = "file-editor-";
 const AUTO_UPLOAD_OWNER_SEPARATOR = "--";
 const MODAL_CHILD_BASE_LABELS = new Set(["settings", "new-session", "quick-command"]);
 const registeredDestroyedHandlers = new Set<string>();
@@ -92,6 +94,10 @@ function needsAlwaysOnTop(label: string) {
   return label.startsWith(AUTO_UPLOAD_WINDOW_PREFIX);
 }
 
+function childWindowKind(opts: ChildWindowOptions) {
+  return opts.kind ?? "modal";
+}
+
 async function getMainWindow() {
   return (await WebviewWindow.getByLabel(ownerMainWindowLabel)) ?? getCurrentWindow();
 }
@@ -157,7 +163,9 @@ function attachChildWindowDestroyedHandler(label: string, win: WebviewWindow) {
   win.once("tauri://destroyed", () => {
     registeredDestroyedHandlers.delete(label);
     emit("child-window-closed", { label });
-    void prepareForModalChildClose(label);
+    if (isModalChildLabel(label)) {
+      void prepareForModalChildClose(label);
+    }
   });
 }
 
@@ -183,6 +191,8 @@ export async function bounceTopModalWindow() {
 }
 
 export async function openChildWindow(opts: ChildWindowOptions) {
+  const kind = childWindowKind(opts);
+  const isModal = kind === "modal";
   const existing = await WebviewWindow.getByLabel(opts.label);
   if (existing) {
     await existing.setTitle(opts.title).catch(() => {});
@@ -190,7 +200,9 @@ export async function openChildWindow(opts: ChildWindowOptions) {
     await existing.show().catch(() => {});
     await existing.setFocus().catch(() => {});
     emit("child-window-opened", { label: opts.label });
-    await syncMainWindowModalState().catch(() => {});
+    if (isModal) {
+      await syncMainWindowModalState().catch(() => {});
+    }
     return existing;
   }
 
@@ -199,6 +211,7 @@ export async function openChildWindow(opts: ChildWindowOptions) {
       label: opts.label,
       title: opts.title,
       url: opts.url,
+      kind,
       parentLabel: opts.parentLabel ?? ownerMainWindowLabel,
       width: opts.width ?? 720,
       height: opts.height ?? 560,
@@ -217,7 +230,9 @@ export async function openChildWindow(opts: ChildWindowOptions) {
   await win.show().catch(() => {});
   await win.setFocus().catch(() => {});
   emit("child-window-opened", { label: opts.label });
-  await syncMainWindowModalState().catch(() => {});
+  if (isModal) {
+    await syncMainWindowModalState().catch(() => {});
+  }
   return win;
 }
 
@@ -319,5 +334,36 @@ export function openAutoUpload(data: { sessionId: string; localPath: string; rem
     width: 440,
     height: 240,
     resizable: false,
+  });
+}
+
+export interface RemoteFileEditorWindowData {
+  sessionId: string;
+  remotePath: string;
+  name: string;
+  size: number;
+  mtime: number;
+}
+
+export function openRemoteFileEditor(data: RemoteFileEditorWindowData) {
+  const label = `${FILE_EDITOR_WINDOW_PREFIX}${ownerToken()}`;
+  const url = `index.html?window=file-editor&owner=${encodeURIComponent(ownerMainWindowLabel)}&data=${encodeURIComponent(JSON.stringify(data))}`;
+  return openChildWindow({
+    label,
+    title: i18n.t("fileEditor.title"),
+    url,
+    kind: "modeless",
+    parentLabel: ownerMainWindowLabel,
+    width: 980,
+    height: 720,
+  }).then((win) => {
+    const payload = { targetLabel: label, data };
+    emit("remote-file-editor-open", payload);
+    window.setTimeout(() => {
+      void win.show().catch(() => {});
+      void win.setFocus().catch(() => {});
+      emit("remote-file-editor-open", payload);
+    }, 120);
+    return win;
   });
 }
