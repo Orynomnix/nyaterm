@@ -1,5 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KeywordHighlighter } from "../lib/keywordHighlighter";
 import { getBuiltinRules } from "../lib/keywordHighlightPresets";
 import type { AppSettings, KeywordHighlightRule } from "../types/global";
@@ -15,13 +15,14 @@ import type { AppSettings, KeywordHighlightRule } from "../types/global";
  * built-in rule colors switch automatically when the user changes themes.
  */
 export function useKeywordHighlighter(
-  terminalRef: React.RefObject<Terminal | null>,
+  terminal: Terminal | null,
   terminalSettings: AppSettings["terminal"],
-  sessionId: string,
+  _sessionId: string,
   isDark: boolean,
   suspended = false,
 ): void {
   const highlighterRef = useRef<KeywordHighlighter | null>(null);
+  const [highlighterInstance, setHighlighterInstance] = useState<KeywordHighlighter | null>(null);
   const enabled = terminalSettings.keyword_highlights_enabled ?? false;
 
   // Merge user rules (higher priority) + built-in rules (lower priority).
@@ -48,46 +49,44 @@ export function useKeywordHighlighter(
     terminalSettings.keyword_highlights,
   ]);
 
-  // Create the highlighter once per terminal session.
-  // Relies on XTerminal's terminal-creation effect running first (same dep).
+  // Create the highlighter once per terminal instance.
   useEffect(() => {
     if (!enabled) {
       highlighterRef.current?.dispose();
       highlighterRef.current = null;
+      setHighlighterInstance(null);
       return;
     }
 
-    const term = terminalRef.current;
-    if (!term) return;
+    if (!terminal) return;
 
-    const highlighter = new KeywordHighlighter(term);
-    highlighter.setRules(
-      mergedRules,
-      enabled,
-      terminalSettings.keyword_highlights_across_wrapped_lines ?? false,
-    );
-    highlighter.setSuspended(suspended);
+    const highlighter = new KeywordHighlighter(terminal);
     highlighterRef.current = highlighter;
+    setHighlighterInstance(highlighter);
 
     return () => {
       highlighter.dispose();
       highlighterRef.current = null;
+      setHighlighterInstance((current) => (current === highlighter ? null : current));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, enabled]);
+  }, [terminal, enabled]);
 
   // Re-push rules whenever settings change or theme family switches.
   useEffect(() => {
-    const highlighter = highlighterRef.current;
-    if (!highlighter) return;
-    highlighter.setRules(
+    if (!highlighterInstance) return;
+    highlighterInstance.setRules(
       mergedRules,
       enabled,
       terminalSettings.keyword_highlights_across_wrapped_lines ?? false,
     );
-  }, [mergedRules, enabled, terminalSettings.keyword_highlights_across_wrapped_lines]);
+  }, [
+    highlighterInstance,
+    mergedRules,
+    enabled,
+    terminalSettings.keyword_highlights_across_wrapped_lines,
+  ]);
 
   useEffect(() => {
-    highlighterRef.current?.setSuspended(suspended);
-  }, [suspended]);
+    highlighterInstance?.setSuspended(suspended);
+  }, [highlighterInstance, suspended]);
 }

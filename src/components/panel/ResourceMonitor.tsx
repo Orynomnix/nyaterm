@@ -355,9 +355,16 @@ export default function ResourceMonitor({ activeSessionId }: ResourceMonitorProp
                       }}
                     >
                       <div className="pt-1.5 space-y-0.5">
-                        {stats.cpu.per_core.map((coreUsage, idx) => (
-                          <CoreRow key={`core-${idx}`} index={idx + 1} usage={coreUsage} />
-                        ))}
+                        {stats.cpu.per_core.map((coreUsage, idx) => {
+                          const coreNumber = idx + 1;
+                          return (
+                            <CoreRow
+                              key={`cpu-core-${coreNumber}`}
+                              index={coreNumber}
+                              usage={coreUsage}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

@@ -40,5 +40,5 @@ export function renderAiCommandEnd(event: Extract<AiCaptureEvent, { type: "comma
   const footer = `${DIM}${ACCENT}└${RESET} ${statusColor}${statusIcon} ${exitStr}${RESET} ${DIM}· ${duration}${RESET}`;
   parts.push(footer);
 
-  return parts.map((l) => `\r\n${l}`).join("") + "\r\n";
+  return `${parts.map((l) => `\r\n${l}`).join("")}\r\n`;
 }

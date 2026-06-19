@@ -47,8 +47,8 @@ pub use password::{
 };
 #[allow(unused_imports)]
 pub use proxy::{
-    ProxyConfig, ProxyGroup, ProxyGroupsConfig, load_proxies, load_proxy_by_id,
-    load_proxy_groups, save_proxies, save_proxy_groups,
+    ProxyConfig, ProxyGroup, ProxyGroupsConfig, load_proxies, load_proxy_by_id, load_proxy_groups,
+    save_proxies, save_proxy_groups,
 };
 #[allow(unused_imports)]
 pub use quick_command::{
@@ -68,8 +68,8 @@ pub use settings::{
 };
 #[allow(unused_imports)]
 pub use tunnel::{
-    TunnelConfig, TunnelGroup, TunnelGroupsConfig, TunnelsConfig, load_tunnel_groups,
-    load_tunnels, save_tunnel_groups, save_tunnels,
+    TunnelConfig, TunnelGroup, TunnelGroupsConfig, TunnelsConfig, load_tunnel_groups, load_tunnels,
+    save_tunnel_groups, save_tunnels,
 };
 #[allow(unused_imports)]
 pub use ui::{ActivityBarLayout, RestorablePaneNode, RestorableTab, UiConfig};

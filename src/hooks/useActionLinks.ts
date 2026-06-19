@@ -45,13 +45,14 @@ export interface UseActionLinksResult {
  * Returns reactive tooltip/menu state for overlay rendering.
  */
 export function useActionLinks(
-  terminalRef: React.RefObject<Terminal | null>,
+  terminal: Terminal | null,
   terminalSettings: AppSettings["terminal"],
-  sessionId: string,
+  _sessionId: string,
   executeCommandRef: React.RefObject<((command: string) => void) | null>,
   suspended = false,
 ): UseActionLinksResult {
   const addonRef = useRef<ActionLinksAddon | null>(null);
+  const [addonInstance, setAddonInstance] = useState<ActionLinksAddon | null>(null);
   const [tooltipState, setTooltipState] = useState<TooltipState | null>(null);
   const [menuState, setMenuState] = useState<MenuState | null>(null);
 
@@ -69,18 +70,18 @@ export function useActionLinks(
     return list;
   }, [matcherSettings?.ipv4, matcherSettings?.archive, matcherSettings?.host_port]);
 
-  // Create and load addon once per terminal session
+  // Create and load addon once per terminal instance.
   useEffect(() => {
     if (!enabled) {
       addonRef.current?.dispose();
       addonRef.current = null;
+      setAddonInstance(null);
       setTooltipState(null);
       setMenuState(null);
       return;
     }
 
-    const term = terminalRef.current;
-    if (!term) return;
+    if (!terminal) return;
 
     const options: ActionLinksAddonOptions = {
       allowCtrlOrMetaClickExecute: true,
@@ -96,33 +97,32 @@ export function useActionLinks(
       },
     };
 
-    const addon = new ActionLinksAddon(matchers, options);
-    addon.setSuspended(suspended);
-    term.loadAddon(addon);
+    const addon = new ActionLinksAddon([], options);
+    terminal.loadAddon(addon);
     addonRef.current = addon;
+    setAddonInstance(addon);
 
     return () => {
       addon.dispose();
       addonRef.current = null;
+      setAddonInstance((current) => (current === addon ? null : current));
       setTooltipState(null);
       setMenuState(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, enabled]);
+  }, [terminal, enabled, executeCommandRef]);
 
   // Sync matchers and enabled state when settings change
   useEffect(() => {
-    const addon = addonRef.current;
-    if (!addon) return;
-    addon.setSuspended(suspended);
+    if (!addonInstance) return;
+    addonInstance.setSuspended(suspended);
     if (!suspended) {
-      addon.setMatchers(matchers);
+      addonInstance.setMatchers(matchers);
     }
     if (suspended || matchers.length === 0) {
       setTooltipState(null);
       setMenuState(null);
     }
-  }, [matchers, suspended]);
+  }, [addonInstance, matchers, suspended]);
 
   return { tooltipState, menuState, closeMenu, closeTooltip };
 }

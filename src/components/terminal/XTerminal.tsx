@@ -121,6 +121,7 @@ export default function XTerminal({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [terminalInstance, setTerminalInstance] = useState<Terminal | null>(null);
   const [terminalReady, setTerminalReady] = useState(false);
   const [performanceMode, setPerformanceMode] = useState<PerformanceMode>("normal");
   const [performanceOverlay, setPerformanceOverlay] = useState<PerformanceOverlayState>(null);
@@ -408,6 +409,7 @@ export default function XTerminal({
     searchAddonRef.current = searchAddon;
 
     terminalRef.current = terminal;
+    setTerminalInstance(terminal);
     fitAddonRef.current = fitAddon;
     inputStateRef.current = createTerminalInputState();
     credentialPromptBufferRef.current = "";
@@ -1777,6 +1779,7 @@ export default function XTerminal({
       outputWriteQueueRef.current = Promise.resolve();
       terminal.dispose();
       terminalRef.current = null;
+      setTerminalInstance(null);
       fitAddonRef.current = null;
       searchAddonRef.current = null;
     };
@@ -1800,7 +1803,7 @@ export default function XTerminal({
   // switch automatically when the user changes themes.
   const isDark = hexLuminance(terminalTheme.colors.terminal.background) < 0.5;
   useKeywordHighlighter(
-    terminalRef,
+    terminalInstance,
     terminalSettings,
     sessionId,
     isDark,
@@ -1808,7 +1811,7 @@ export default function XTerminal({
   );
 
   const { tooltipState, menuState, closeMenu } = useActionLinks(
-    terminalRef,
+    terminalInstance,
     terminalSettings,
     sessionId,
     executeActionCommandRef,

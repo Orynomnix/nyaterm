@@ -50,10 +50,7 @@ pub fn save_proxy(app: tauri::AppHandle, mut proxy: ProxyConfig) -> AppResult<St
 }
 
 #[tauri::command]
-pub fn save_proxy_group(
-    app: tauri::AppHandle,
-    mut group: config::ProxyGroup,
-) -> AppResult<String> {
+pub fn save_proxy_group(app: tauri::AppHandle, mut group: config::ProxyGroup) -> AppResult<String> {
     let mut groups = config::load_proxy_groups(&app)?;
 
     if group.id.is_empty() {

@@ -620,8 +620,8 @@ fn advance_one_char(text: &str, index: &mut usize) {
 #[cfg(test)]
 mod tests {
     use super::{
-        consume_matching_prefix, strip_one_leading_newline, strip_terminal_control_sequences,
-        RecordingManager,
+        RecordingManager, consume_matching_prefix, strip_one_leading_newline,
+        strip_terminal_control_sequences,
     };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};

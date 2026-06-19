@@ -326,6 +326,7 @@ export default function FileTransfer({ activeSessionId }: FileTransferProps) {
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
   const [pendingDeleteTransfer, setPendingDeleteTransfer] = useState<TransferItem | null>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
+  const previousActiveSessionIdRef = useRef(activeSessionId);
 
   useEffect(() => {
     downloadDir()
@@ -354,9 +355,11 @@ export default function FileTransfer({ activeSessionId }: FileTransferProps) {
   }, [activeSessionId, transfers]);
 
   useEffect(() => {
+    if (previousActiveSessionIdRef.current === activeSessionId) return;
+    previousActiveSessionIdRef.current = activeSessionId;
     setSelectedTransferId(null);
     setPendingDeleteTransfer(null);
-  }, [activeSessionId]);
+  });
 
   useEffect(() => {
     if (

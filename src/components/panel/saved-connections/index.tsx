@@ -259,7 +259,7 @@ export default function SavedConnections({
       });
       return changed ? next : prev;
     });
-  }, [keyword, rootNodes]);
+  }, [expandedGroups, keyword, rootNodes]);
 
   const visibleConnectionIds = useMemo(() => {
     const ids: string[] = [];
