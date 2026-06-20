@@ -534,6 +534,12 @@ export interface KeywordHighlightRule {
   enabled: boolean;
 }
 
+export interface KeywordHighlightImportResult {
+  imported_rules: number;
+  updated_rules: number;
+  total_rules: number;
+}
+
 export interface ActionLinksMatcherSettings {
   ipv4: boolean;
   archive: boolean;

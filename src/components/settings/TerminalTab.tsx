@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MdAdd, MdDelete, MdExpandLess, MdExpandMore } from "react-icons/md";
+import { MdAdd, MdDelete, MdExpandLess, MdExpandMore, MdFileUpload } from "react-icons/md";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { getBuiltinRules, hexLuminance } from "@/lib/keywordHighlightPresets";
 import type { KeywordHighlightRule } from "@/types/global";
+import { KeywordHighlightImportDialog } from "../dialog/terminal/KeywordHighlightImportDialog";
 import {
   SettingInput,
   SettingNumberInput,
@@ -29,6 +30,7 @@ export function TerminalTab() {
   const { appSettings, updateAppSettings, updateUi } = useApp();
   const { terminalTheme } = useTheme();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   const isDark = useMemo(
     () => hexLuminance(terminalTheme.colors.terminal.background) < 0.5,
@@ -362,10 +364,21 @@ export function TerminalTab() {
         >
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">{t("settings.keywordHighlightRules")}</Label>
-            <Button variant="ghost" size="xs" className="text-primary" onClick={addRule}>
-              <MdAdd className="text-[0.875rem]" />
-              {t("common.add")}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-primary"
+                onClick={() => setShowImportDialog(true)}
+              >
+                <MdFileUpload className="text-[0.875rem]" />
+                {t("settings.keywordHighlightImport")}
+              </Button>
+              <Button variant="ghost" size="xs" className="text-primary" onClick={addRule}>
+                <MdAdd className="text-[0.875rem]" />
+                {t("common.add")}
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -524,6 +537,18 @@ export function TerminalTab() {
           </div>
         </div>
       </SettingSection>
+      <KeywordHighlightImportDialog
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        onImportedRules={(rules) =>
+          updateAppSettings((prev) => ({
+            terminal: {
+              ...prev.terminal,
+              keyword_highlights: rules,
+            },
+          }))
+        }
+      />
     </div>
   );
 }
