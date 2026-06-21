@@ -10,7 +10,7 @@ use http::{HeaderValue, Request, Response};
 use md5::{Digest as Md5Digest, Md5};
 use opendal::layers::{HttpClientLayer, RetryLayer, TimeoutLayer, TracingLayer};
 use opendal::raw::{HttpBody, HttpClient, HttpFetch};
-use opendal::services::{S3, Webdav};
+use opendal::services::{AliyunDrive, Gdrive, Onedrive, S3, Webdav};
 use opendal::{Buffer, EntryMode, Error, ErrorKind, Operator};
 use rand::RngCore;
 use sha2::Sha256;
@@ -24,10 +24,14 @@ use super::remote::remote_path;
 const GITEE_REMOTE_FILE_PREFIX: &str = "nyaterm-";
 const GITEE_REMOTE_FILE_SUFFIX: &str = ".blob";
 const GITEE_REMOTE_TIMEOUT: Duration = Duration::from_secs(30);
+const GITHUB_GIST_API_ENDPOINT: &str = "https://api.github.com";
+const GITHUB_GIST_REMOTE_TIMEOUT: Duration = Duration::from_secs(30);
+const GITHUB_API_VERSION: &str = "2022-11-28";
 
 pub(super) enum CloudRemote {
     OpenDal(Operator),
     GiteeSnippet(GiteeSnippetRemote),
+    GithubGist(GithubGistRemote),
 }
 
 impl CloudRemote {
@@ -35,6 +39,7 @@ impl CloudRemote {
         match self {
             Self::OpenDal(operator) => operator.create_dir(path).await.map_err(map_storage_error),
             Self::GiteeSnippet(_) => Ok(()),
+            Self::GithubGist(_) => Ok(()),
         }
     }
 
@@ -42,6 +47,7 @@ impl CloudRemote {
         match self {
             Self::OpenDal(operator) => operator.exists(path).await.map_err(map_storage_error),
             Self::GiteeSnippet(remote) => remote.exists(path).await,
+            Self::GithubGist(remote) => remote.exists(path).await,
         }
     }
 
@@ -53,6 +59,7 @@ impl CloudRemote {
                 .map_err(map_storage_error)?
                 .to_vec()),
             Self::GiteeSnippet(remote) => remote.read(path).await,
+            Self::GithubGist(remote) => remote.read(path).await,
         }
     }
 
@@ -71,6 +78,7 @@ impl CloudRemote {
                 ))
             }
             Self::GiteeSnippet(remote) => remote.read_if_exists(path).await,
+            Self::GithubGist(remote) => remote.read_if_exists(path).await,
         }
     }
 
@@ -84,6 +92,7 @@ impl CloudRemote {
                 Ok(())
             }
             Self::GiteeSnippet(remote) => remote.write(path, &content).await,
+            Self::GithubGist(remote) => remote.write(path, &content).await,
         }
     }
 
@@ -91,6 +100,7 @@ impl CloudRemote {
         match self {
             Self::OpenDal(operator) => operator.delete(path).await.map_err(map_storage_error),
             Self::GiteeSnippet(remote) => remote.delete(path).await,
+            Self::GithubGist(remote) => remote.delete(path).await,
         }
     }
 
@@ -110,6 +120,7 @@ impl CloudRemote {
                     .collect())
             }
             Self::GiteeSnippet(remote) => remote.list_files(path).await,
+            Self::GithubGist(remote) => remote.list_files(path).await,
         }
     }
 }
@@ -119,6 +130,10 @@ pub(super) fn build_remote(settings: &CloudSyncSettings) -> AppResult<CloudRemot
         "webdav" => build_webdav_operator(settings).map(CloudRemote::OpenDal),
         "s3" => build_s3_operator(settings).map(CloudRemote::OpenDal),
         "gitee_snippet" => GiteeSnippetRemote::new(settings).map(CloudRemote::GiteeSnippet),
+        "google_drive" => build_google_drive_operator(settings).map(CloudRemote::OpenDal),
+        "onedrive" => build_onedrive_operator(settings).map(CloudRemote::OpenDal),
+        "aliyun_drive" => build_aliyun_drive_operator(settings).map(CloudRemote::OpenDal),
+        "github_gist" => GithubGistRemote::new(settings).map(CloudRemote::GithubGist),
         other => Err(AppError::Config(format!(
             "Unsupported cloud provider '{}'",
             other
@@ -149,11 +164,7 @@ fn build_webdav_operator(settings: &CloudSyncSettings) -> AppResult<Operator> {
     );
     Ok(Operator::new(builder)
         .map_err(map_storage_error)?
-        .layer(
-            TimeoutLayer::new()
-                .with_timeout(Duration::from_secs(30))
-                .with_io_timeout(Duration::from_secs(30)),
-        )
+        .layer(storage_timeout_layer())
         .layer(HttpClientLayer::new(HttpClient::with(digest_client)))
         .layer(RetryLayer::new().with_max_times(3))
         .layer(TracingLayer)
@@ -199,27 +210,150 @@ fn build_s3_operator(settings: &CloudSyncSettings) -> AppResult<Operator> {
     if settings.s3.virtual_host_style {
         builder = builder.enable_virtual_host_style();
     }
+    finish_opendal_operator(builder)
+}
+
+fn build_google_drive_operator(settings: &CloudSyncSettings) -> AppResult<Operator> {
+    let mut builder = Gdrive::default();
+    if !settings.google_drive.root.trim().is_empty() {
+        builder = builder.root(&settings.google_drive.root);
+    }
+    if let Some(access_token) = settings
+        .google_drive
+        .access_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.access_token(access_token);
+    }
+    if let Some(refresh_token) = settings
+        .google_drive
+        .refresh_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.refresh_token(refresh_token);
+    }
+    if let Some(client_id) = settings
+        .google_drive
+        .client_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_id(client_id);
+    }
+    if let Some(client_secret) = settings
+        .google_drive
+        .client_secret
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_secret(client_secret);
+    }
+    finish_opendal_operator(builder)
+}
+
+fn build_onedrive_operator(settings: &CloudSyncSettings) -> AppResult<Operator> {
+    let mut builder = Onedrive::default();
+    if !settings.onedrive.root.trim().is_empty() {
+        builder = builder.root(&settings.onedrive.root);
+    }
+    if let Some(access_token) = settings
+        .onedrive
+        .access_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.access_token(access_token);
+    }
+    if let Some(refresh_token) = settings
+        .onedrive
+        .refresh_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.refresh_token(refresh_token);
+    }
+    if let Some(client_id) = settings
+        .onedrive
+        .client_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_id(client_id);
+    }
+    if let Some(client_secret) = settings
+        .onedrive
+        .client_secret
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_secret(client_secret);
+    }
+    finish_opendal_operator(builder)
+}
+
+fn build_aliyun_drive_operator(settings: &CloudSyncSettings) -> AppResult<Operator> {
+    let mut builder = AliyunDrive::default();
+    if !settings.aliyun_drive.root.trim().is_empty() {
+        builder = builder.root(&settings.aliyun_drive.root);
+    }
+    if !settings.aliyun_drive.drive_type.trim().is_empty() {
+        builder = builder.drive_type(&settings.aliyun_drive.drive_type);
+    }
+    if let Some(access_token) = settings
+        .aliyun_drive
+        .access_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.access_token(access_token);
+    }
+    if let Some(refresh_token) = settings
+        .aliyun_drive
+        .refresh_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.refresh_token(refresh_token);
+    }
+    if let Some(client_id) = settings
+        .aliyun_drive
+        .client_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_id(client_id);
+    }
+    if let Some(client_secret) = settings
+        .aliyun_drive
+        .client_secret
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        builder = builder.client_secret(client_secret);
+    }
+    finish_opendal_operator(builder)
+}
+
+fn finish_opendal_operator(builder: impl opendal::Builder) -> AppResult<Operator> {
     Ok(Operator::new(builder)
         .map_err(map_storage_error)?
-        .layer(
-            TimeoutLayer::new()
-                .with_timeout(Duration::from_secs(30))
-                .with_io_timeout(Duration::from_secs(30)),
-        )
+        .layer(storage_timeout_layer())
         .layer(RetryLayer::new().with_max_times(3))
         .layer(TracingLayer)
         .finish())
 }
 
+fn storage_timeout_layer() -> TimeoutLayer {
+    TimeoutLayer::new()
+        .with_timeout(Duration::from_secs(30))
+        .with_io_timeout(Duration::from_secs(30))
+}
+
 pub(super) async fn ensure_remote_layout(remote: &CloudRemote, base_root: &str) -> AppResult<()> {
     remote
         .create_dir(&remote_path(base_root, super::remote::SYNC_SNAPSHOTS_DIR))
-        .await?;
-    remote
-        .create_dir(&remote_path(
-            base_root,
-            super::remote::BACKUPS_SNAPSHOTS_DIR,
-        ))
         .await?;
     Ok(())
 }
@@ -522,6 +656,224 @@ fn map_gitee_client_error(error: reqwest::Error) -> AppError {
         ))
     } else {
         AppError::Config(format!("Gitee snippet request failed: {error}"))
+    }
+}
+
+pub(super) struct GithubGistRemote {
+    client: reqwest::Client,
+    gist_id: String,
+    access_token: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GithubGist {
+    #[serde(default)]
+    files: HashMap<String, GithubGistFile>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GithubGistFile {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    raw_url: Option<String>,
+}
+
+impl GithubGistRemote {
+    fn new(settings: &CloudSyncSettings) -> AppResult<Self> {
+        let gist_id = settings.github_gist.gist_id.trim().to_string();
+        let access_token = settings
+            .github_gist
+            .access_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| AppError::Config("GitHub Gist access token is required".to_string()))?
+            .to_string();
+
+        if gist_id.is_empty() {
+            return Err(AppError::Config("GitHub Gist ID is required".to_string()));
+        }
+
+        let client = github_client()?;
+
+        Ok(Self {
+            client,
+            gist_id,
+            access_token,
+        })
+    }
+
+    async fn exists(&self, path: &str) -> AppResult<bool> {
+        let gist = self.fetch_gist().await?;
+        Ok(gist.files.contains_key(&github_gist_remote_filename(path)))
+    }
+
+    async fn read(&self, path: &str) -> AppResult<Vec<u8>> {
+        self.read_if_exists(path)
+            .await?
+            .ok_or_else(|| AppError::Config(format!("GitHub Gist file '{}' not found", path)))
+    }
+
+    async fn read_if_exists(&self, path: &str) -> AppResult<Option<Vec<u8>>> {
+        let filename = github_gist_remote_filename(path);
+        let gist = self.fetch_gist().await?;
+        let Some(file) = gist.files.get(&filename) else {
+            return Ok(None);
+        };
+        let content = match file
+            .content
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(content) => content.to_string(),
+            None => self.fetch_raw_file(file).await?,
+        };
+        decode_github_gist_file_content(&content).map(Some)
+    }
+
+    async fn write(&self, path: &str, content: &[u8]) -> AppResult<()> {
+        let encoded = BASE64_STANDARD.encode(content);
+        self.patch_file(&github_gist_remote_filename(path), encoded)
+            .await
+    }
+
+    async fn delete(&self, path: &str) -> AppResult<()> {
+        self.delete_file(&github_gist_remote_filename(path)).await
+    }
+
+    async fn list_files(&self, path: &str) -> AppResult<Vec<String>> {
+        let gist = self.fetch_gist().await?;
+        let prefix = path.trim_start_matches('/');
+        Ok(gist
+            .files
+            .keys()
+            .filter_map(|filename| github_gist_remote_path(filename))
+            .filter(|remote_path| remote_path.starts_with(prefix))
+            .collect())
+    }
+
+    async fn fetch_gist(&self) -> AppResult<GithubGist> {
+        let response = self
+            .client
+            .get(format!("{GITHUB_GIST_API_ENDPOINT}/gists/{}", self.gist_id))
+            .bearer_auth(&self.access_token)
+            .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+            .send()
+            .await
+            .map_err(map_github_gist_client_error)?;
+        decode_github_gist_response(response).await
+    }
+
+    async fn fetch_raw_file(&self, file: &GithubGistFile) -> AppResult<String> {
+        let raw_url = file
+            .raw_url
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| AppError::Config("GitHub Gist file raw URL is missing".to_string()))?;
+        let response = self
+            .client
+            .get(raw_url)
+            .bearer_auth(&self.access_token)
+            .send()
+            .await
+            .map_err(map_github_gist_client_error)?;
+        decode_github_gist_text_response(response).await
+    }
+
+    async fn patch_file(&self, filename: &str, content: String) -> AppResult<()> {
+        let file_value = serde_json::json!({ "content": content });
+        let mut files = serde_json::Map::new();
+        files.insert(filename.to_string(), file_value);
+        self.patch_files(files).await
+    }
+
+    async fn delete_file(&self, filename: &str) -> AppResult<()> {
+        let mut files = serde_json::Map::new();
+        files.insert(filename.to_string(), serde_json::Value::Null);
+        self.patch_files(files).await
+    }
+
+    async fn patch_files(
+        &self,
+        files: serde_json::Map<String, serde_json::Value>,
+    ) -> AppResult<()> {
+        let body = serde_json::json!({ "files": files });
+        let response = self
+            .client
+            .patch(format!("{GITHUB_GIST_API_ENDPOINT}/gists/{}", self.gist_id))
+            .bearer_auth(&self.access_token)
+            .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+            .json(&body)
+            .send()
+            .await
+            .map_err(map_github_gist_client_error)?;
+        let _: serde_json::Value = decode_github_gist_response(response).await?;
+        Ok(())
+    }
+}
+
+fn github_client() -> AppResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(GITHUB_GIST_REMOTE_TIMEOUT)
+        .user_agent("NyaTerm")
+        .build()
+        .map_err(map_github_gist_client_error)
+}
+
+fn github_gist_remote_filename(path: &str) -> String {
+    format!(
+        "{}{}{}",
+        GITEE_REMOTE_FILE_PREFIX,
+        URL_SAFE_NO_PAD.encode(path.as_bytes()),
+        GITEE_REMOTE_FILE_SUFFIX
+    )
+}
+
+fn github_gist_remote_path(filename: &str) -> Option<String> {
+    let encoded = filename
+        .strip_prefix(GITEE_REMOTE_FILE_PREFIX)?
+        .strip_suffix(GITEE_REMOTE_FILE_SUFFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    String::from_utf8(bytes).ok()
+}
+
+fn decode_github_gist_file_content(content: &str) -> AppResult<Vec<u8>> {
+    BASE64_STANDARD
+        .decode(content.trim())
+        .map_err(|error| AppError::Config(format!("Invalid GitHub Gist content: {error}")))
+}
+
+async fn decode_github_gist_response<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+) -> AppResult<T> {
+    let text = decode_github_gist_text_response(response).await?;
+    serde_json::from_str(&text).map_err(Into::into)
+}
+
+async fn decode_github_gist_text_response(response: reqwest::Response) -> AppResult<String> {
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(map_github_gist_client_error)?;
+    if !status.is_success() {
+        return Err(AppError::Config(format!(
+            "GitHub Gist request failed ({status}): {}",
+            text.trim()
+        )));
+    }
+    Ok(text)
+}
+
+fn map_github_gist_client_error(error: reqwest::Error) -> AppError {
+    if error.is_timeout() {
+        AppError::Io(io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!("GitHub Gist operation timed out: {error}"),
+        ))
+    } else {
+        AppError::Config(format!("GitHub Gist request failed: {error}"))
     }
 }
 
@@ -867,6 +1219,17 @@ mod tests {
     }
 
     #[test]
+    fn github_gist_remote_filename_roundtrips_path() {
+        let path = "nyaterm/backups/snapshots/rev.redb.enc";
+        let filename = github_gist_remote_filename(path);
+
+        assert!(filename.starts_with(GITEE_REMOTE_FILE_PREFIX));
+        assert!(filename.ends_with(GITEE_REMOTE_FILE_SUFFIX));
+        assert!(!filename.contains('/'));
+        assert_eq!(github_gist_remote_path(&filename).as_deref(), Some(path));
+    }
+
+    #[test]
     fn gitee_delete_patch_body_marks_file_as_null() {
         let filename = gitee_remote_filename("nyaterm/sync/snapshots/rev.redb.enc");
         let mut files = serde_json::Map::new();
@@ -912,5 +1275,20 @@ mod tests {
             AppError::Config(message) => assert!(message.contains("WebDAV authentication failed")),
             other => panic!("expected config auth error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn unsupported_provider_reports_config_error() {
+        let mut settings = CloudSyncSettings::default();
+        settings.provider = "unknown".to_string();
+
+        let error = match build_remote(&settings) {
+            Ok(_) => panic!("unknown provider should fail"),
+            Err(error) => error,
+        };
+
+        assert!(
+            matches!(error, AppError::Config(message) if message.contains("Unsupported cloud provider"))
+        );
     }
 }

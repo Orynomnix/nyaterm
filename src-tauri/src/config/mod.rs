@@ -17,12 +17,11 @@ mod ui;
 
 #[allow(unused_imports)]
 pub use cloud_sync::{
-    CLOUD_SYNC_HISTORY_VERSION, CloudConflictPreview, CloudSyncHistoryEntry, CloudSyncSettings,
-    CloudSyncState, CloudSyncStatus, GiteeSnippetSyncSettings, MASKED_SECRET_VALUE,
-    RemoteBackupEntry, RemoteBackupIndex, S3SyncSettings, WebdavSyncSettings,
-    decrypt_cloud_sync_settings, encrypt_cloud_sync_settings, load_cloud_sync_settings,
-    load_cloud_sync_state, mask_cloud_sync_settings, merge_masked_cloud_sync_settings,
-    save_cloud_sync_state,
+    CloudConflictPreview, CloudSyncHistoryEntry, CloudSyncSettings, CloudSyncState,
+    CloudSyncStatus, GiteeSnippetSyncSettings, MASKED_SECRET_VALUE, S3SyncSettings,
+    WebdavSyncSettings, decrypt_cloud_sync_settings, encrypt_cloud_sync_settings,
+    load_cloud_sync_settings, load_cloud_sync_state, mask_cloud_sync_settings,
+    merge_masked_cloud_sync_settings, save_cloud_sync_state,
 };
 #[allow(unused_imports)]
 pub use connection::{

@@ -9,7 +9,7 @@ use tokio::sync::{Mutex, Notify};
 
 use crate::config::{
     self, CloudConflictPreview, CloudSyncHistoryEntry, CloudSyncSettings, CloudSyncState,
-    CloudSyncStatus, RemoteBackupEntry,
+    CloudSyncStatus,
 };
 use crate::error::{AppError, AppResult};
 
@@ -17,9 +17,9 @@ use super::crypto::{decrypt_snapshot_bytes, encrypt_snapshot_bytes, require_mast
 use super::history_log::{log_history_entry, read_cloud_sync_history_from_logs};
 use super::operator::{build_remote, ensure_remote_layout};
 use super::remote::{
-    BACKUPS_SNAPSHOTS_DIR, RemoteSyncPointer, SYNC_CURRENT_FILE, SYNC_SNAPSHOTS_DIR,
-    current_time_ms, elapsed_ms, is_legacy_sync_snapshot_path, legacy_sync_snapshot_file,
-    load_backup_index, load_sync_pointer, remote_path, write_backup_index, write_sync_pointer,
+    RemoteSyncPointer, SYNC_CURRENT_FILE, SYNC_SNAPSHOTS_DIR, current_time_ms, elapsed_ms,
+    is_legacy_sync_snapshot_path, legacy_sync_snapshot_file, load_sync_pointer, remote_path,
+    write_sync_pointer,
 };
 
 use crate::core::portable_snapshot::{
@@ -27,7 +27,6 @@ use crate::core::portable_snapshot::{
     decode_portable_snapshot, encode_portable_snapshot,
 };
 
-const BACKUP_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 const CLOUD_SYNC_STARTUP_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const CLOUD_SYNC_OPERATION_TIMEOUT: Duration = Duration::from_secs(300);
 const CLOUD_SYNC_QUICK_OPERATION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -41,7 +40,6 @@ pub struct CloudSyncManager {
     automatic_retry: Arc<Mutex<AutomaticRetryState>>,
     auto_push_notify: Arc<Notify>,
     auto_push_worker_started: AtomicBool,
-    backup_worker_started: AtomicBool,
     operation_lock: Arc<Mutex<()>>,
 }
 
@@ -69,7 +67,6 @@ impl CloudSyncManager {
             automatic_retry: Arc::new(Mutex::new(AutomaticRetryState::default())),
             auto_push_notify: Arc::new(Notify::new()),
             auto_push_worker_started: AtomicBool::new(false),
-            backup_worker_started: AtomicBool::new(false),
             operation_lock: Arc::new(Mutex::new(())),
         }
     }
@@ -96,7 +93,6 @@ impl CloudSyncManager {
             *self.state.lock().await = state;
         }
         self.ensure_auto_push_worker();
-        self.ensure_backup_worker();
 
         self.set_status("idle", String::new(), None, None).await;
 
@@ -156,7 +152,7 @@ impl CloudSyncManager {
             CLOUD_SYNC_QUICK_OPERATION_TIMEOUT,
             async {
                 let _ = require_master_password()?;
-                let remote = build_remote(&settings)?;
+                let remote = self.build_remote_with_recovery(settings.clone()).await?;
                 ensure_remote_layout(&remote, &settings.remote_root).await?;
                 let _ = remote
                     .exists(&remote_path(&settings.remote_root, SYNC_SNAPSHOTS_DIR))
@@ -229,25 +225,6 @@ impl CloudSyncManager {
         }
     }
 
-    pub async fn run_cloud_backup_now(self: &Arc<Self>, trigger: &str) -> AppResult<()> {
-        match with_operation_timeout(
-            trigger,
-            CLOUD_SYNC_OPERATION_TIMEOUT,
-            self.backup_snapshot(trigger),
-        )
-        .await
-        {
-            Ok(()) => {
-                self.reset_automatic_retry().await;
-                Ok(())
-            }
-            Err(error) => {
-                self.record_failure("backup", trigger, &error).await;
-                Err(error)
-            }
-        }
-    }
-
     pub async fn resolve_cloud_sync_conflict(self: &Arc<Self>, action: &str) -> AppResult<()> {
         let result = with_operation_timeout(action, CLOUD_SYNC_OPERATION_TIMEOUT, async {
             match action {
@@ -273,89 +250,6 @@ impl CloudSyncManager {
         }
     }
 
-    pub async fn list_remote_backups(&self) -> AppResult<Vec<RemoteBackupEntry>> {
-        with_operation_timeout(
-            "list_remote_backups",
-            CLOUD_SYNC_QUICK_OPERATION_TIMEOUT,
-            async {
-                let settings = self.settings.lock().await.clone();
-                let remote = build_remote(&settings)?;
-                let index = load_backup_index(&remote, &settings.remote_root).await?;
-                Ok(index.entries)
-            },
-        )
-        .await
-    }
-
-    pub async fn restore_remote_backup(
-        self: &Arc<Self>,
-        revision: &str,
-        trigger: &str,
-    ) -> AppResult<()> {
-        let result = with_operation_timeout(
-            trigger,
-            CLOUD_SYNC_OPERATION_TIMEOUT,
-            self.restore_remote_backup_inner(revision, trigger),
-        )
-        .await;
-        if let Err(error) = &result {
-            self.record_failure("backup", trigger, error).await;
-        }
-        result
-    }
-
-    async fn restore_remote_backup_inner(
-        self: &Arc<Self>,
-        revision: &str,
-        trigger: &str,
-    ) -> AppResult<()> {
-        let _guard = self.operation_lock.lock().await;
-        let _ = require_master_password()?;
-        let settings = self.settings.lock().await.clone();
-        self.set_status(
-            "running",
-            "Restoring remote backup".to_string(),
-            Some("restore_remote_backup".to_string()),
-            None,
-        )
-        .await;
-        let started = Instant::now();
-        let remote = build_remote(&settings)?;
-        let remote_file = remote_path(
-            &settings.remote_root,
-            &format!("{BACKUPS_SNAPSHOTS_DIR}{revision}.redb.enc"),
-        );
-        let raw = remote.read(&remote_file).await?;
-        let decrypted = decrypt_snapshot_bytes(raw.as_slice())?;
-        let envelope = decode_portable_snapshot(&decrypted)?;
-        apply_portable_snapshot(&self.app()?, &envelope).await?;
-
-        {
-            let mut state = self.state.lock().await;
-            state.last_synced_payload_hash = None;
-            state.last_applied_remote_revision = None;
-            state.last_checked_at_ms = Some(current_time_ms());
-            config::save_cloud_sync_state(&self.app()?, &state)?;
-        }
-
-        self.append_history(CloudSyncHistoryEntry {
-            id: uuid::Uuid::new_v4().to_string(),
-            timestamp_ms: current_time_ms(),
-            kind: "backup".to_string(),
-            status: "success".to_string(),
-            trigger: trigger.to_string(),
-            provider: Some(settings.provider.clone()),
-            revision: Some(revision.to_string()),
-            duration_ms: Some(elapsed_ms(started.elapsed())),
-            message: "Remote backup restored".to_string(),
-        })
-        .await;
-        self.set_status("idle", "Remote backup restored".to_string(), None, None)
-            .await;
-        self.reset_automatic_retry().await;
-        Ok(())
-    }
-
     async fn startup_check(self: &Arc<Self>) -> AppResult<()> {
         let Ok(_guard) = self.operation_lock.try_lock() else {
             self.set_status(
@@ -375,7 +269,7 @@ impl CloudSyncManager {
             return Ok(());
         }
         let _ = require_master_password()?;
-        let remote = build_remote(&settings)?;
+        let remote = self.build_remote_with_recovery(settings.clone()).await?;
         ensure_remote_layout(&remote, &settings.remote_root).await?;
 
         let local_envelope = {
@@ -535,44 +429,6 @@ impl CloudSyncManager {
         });
     }
 
-    fn ensure_backup_worker(self: &Arc<Self>) {
-        if self.backup_worker_started.swap(true, Ordering::SeqCst) {
-            return;
-        }
-
-        let manager = Arc::clone(self);
-        async_runtime::spawn(async move {
-            loop {
-                tokio::time::sleep(BACKUP_CHECK_INTERVAL).await;
-
-                let settings = manager.settings.lock().await.clone();
-                if !settings.enabled || !settings.scheduled_backup_enabled {
-                    continue;
-                }
-
-                let state = manager.state.lock().await.clone();
-                let now = current_time_ms();
-                let due = state.last_backup_at_ms.map_or(true, |last| {
-                    now.saturating_sub(last)
-                        >= settings.backup_interval_hours.max(1) * 60 * 60 * 1000
-                });
-                if !due {
-                    continue;
-                }
-                if !matches!(
-                    manager.automatic_retry_gate().await,
-                    AutomaticRetryGate::Run
-                ) {
-                    continue;
-                }
-
-                if let Err(error) = manager.run_cloud_backup_now("scheduled_backup").await {
-                    tracing::warn!("Scheduled backup failed: {}", error);
-                }
-            }
-        });
-    }
-
     async fn push_snapshot(self: &Arc<Self>, trigger: &str, force: bool) -> AppResult<()> {
         let _guard = self.operation_lock.lock().await;
         let _ = require_master_password()?;
@@ -593,7 +449,7 @@ impl CloudSyncManager {
 
         let started = Instant::now();
         let state_snapshot = self.state.lock().await.clone();
-        let remote = build_remote(&settings)?;
+        let remote = self.build_remote_with_recovery(settings.clone()).await?;
         ensure_remote_layout(&remote, &settings.remote_root).await?;
 
         let envelope = build_portable_snapshot(
@@ -729,7 +585,7 @@ impl CloudSyncManager {
         .await;
 
         let started = Instant::now();
-        let remote = build_remote(&settings)?;
+        let remote = self.build_remote_with_recovery(settings.clone()).await?;
         let latest = load_sync_pointer(&remote, &settings.remote_root)
             .await?
             .ok_or_else(|| AppError::Config("No remote sync snapshot found".to_string()))?;
@@ -835,97 +691,6 @@ impl CloudSyncManager {
         Ok(())
     }
 
-    async fn backup_snapshot(self: &Arc<Self>, trigger: &str) -> AppResult<()> {
-        let _guard = self.operation_lock.lock().await;
-        let _ = require_master_password()?;
-        let settings = self.settings.lock().await.clone();
-        if !settings.enabled {
-            return Err(AppError::Config(
-                "Cloud sync is disabled in settings".to_string(),
-            ));
-        }
-
-        self.set_status(
-            "running",
-            "Uploading cloud backup".to_string(),
-            Some("backup".to_string()),
-            None,
-        )
-        .await;
-
-        let started = Instant::now();
-        let state_snapshot = self.state.lock().await.clone();
-        let remote = build_remote(&settings)?;
-        ensure_remote_layout(&remote, &settings.remote_root).await?;
-
-        let envelope = build_portable_snapshot(
-            &self.app()?,
-            PortableSnapshotKind::Backup,
-            &state_snapshot.device_id,
-        )?;
-        let encoded = encode_portable_snapshot(&envelope)?;
-        let encrypted = encrypt_snapshot_bytes(&encoded)?;
-        let snapshot_path = remote_path(
-            &settings.remote_root,
-            &format!("{BACKUPS_SNAPSHOTS_DIR}{}.redb.enc", envelope.revision_id),
-        );
-        remote.write(&snapshot_path, encrypted).await?;
-
-        let mut index = load_backup_index(&remote, &settings.remote_root).await?;
-        index.entries.insert(
-            0,
-            RemoteBackupEntry {
-                revision: envelope.revision_id.clone(),
-                created_at_ms: envelope.created_at_ms,
-                payload_hash: envelope.payload_hash.clone(),
-                device_id: envelope.device_id.clone(),
-                app_version: envelope.app_version.clone(),
-                message: format!("Backup from {}", settings.device_name),
-            },
-        );
-
-        let overflow: Vec<RemoteBackupEntry> = index
-            .entries
-            .iter()
-            .skip(settings.backup_retention_count)
-            .cloned()
-            .collect();
-        index.entries.truncate(settings.backup_retention_count);
-
-        write_backup_index(&remote, &settings.remote_root, &index).await?;
-
-        for old in overflow {
-            let old_path = remote_path(
-                &settings.remote_root,
-                &format!("{BACKUPS_SNAPSHOTS_DIR}{}.redb.enc", old.revision),
-            );
-            let _ = remote.delete(&old_path).await;
-        }
-
-        {
-            let mut state = self.state.lock().await;
-            state.last_backup_revision = Some(envelope.revision_id.clone());
-            state.last_backup_at_ms = Some(current_time_ms());
-            config::save_cloud_sync_state(&self.app()?, &state)?;
-        }
-
-        self.append_history(CloudSyncHistoryEntry {
-            id: uuid::Uuid::new_v4().to_string(),
-            timestamp_ms: current_time_ms(),
-            kind: "backup".to_string(),
-            status: "success".to_string(),
-            trigger: trigger.to_string(),
-            provider: Some(settings.provider.clone()),
-            revision: Some(envelope.revision_id.clone()),
-            duration_ms: Some(elapsed_ms(started.elapsed())),
-            message: "Cloud backup uploaded".to_string(),
-        })
-        .await;
-        self.set_status("idle", "Cloud backup uploaded".to_string(), None, None)
-            .await;
-        Ok(())
-    }
-
     async fn append_history(&self, entry: CloudSyncHistoryEntry) {
         let Ok(app) = self.app() else {
             return;
@@ -1000,6 +765,62 @@ impl CloudSyncManager {
             Some(current_time_ms().saturating_add(AUTOMATIC_RETRY_BACKOFF_MS[index]));
     }
 
+    async fn build_remote_with_recovery(
+        &self,
+        mut settings: CloudSyncSettings,
+    ) -> AppResult<super::operator::CloudRemote> {
+        if settings.provider != "github_gist" {
+            return build_remote(&settings);
+        }
+
+        let Some(access_token) = settings
+            .github_gist
+            .access_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return build_remote(&settings);
+        };
+
+        let existing_gist_id = settings.github_gist.gist_id.clone();
+        let resolved_gist_id = super::github_gist_auth::resolve_github_gist_id(
+            access_token,
+            Some(existing_gist_id.clone()),
+        )
+        .await?;
+
+        if resolved_gist_id != existing_gist_id.trim() {
+            tracing::warn!(
+                old_gist_id = %existing_gist_id,
+                new_gist_id = %resolved_gist_id,
+                "GitHub Gist sync storage was missing; created a replacement gist"
+            );
+            settings.github_gist.gist_id = resolved_gist_id;
+            self.persist_recovered_settings(settings.clone()).await?;
+        }
+
+        build_remote(&settings)
+    }
+
+    async fn persist_recovered_settings(&self, settings: CloudSyncSettings) -> AppResult<()> {
+        *self.settings.lock().await = settings.clone();
+
+        let app = self.app()?;
+        let mut app_settings = config::load_app_settings(&app)?;
+        app_settings.cloud_sync = settings;
+
+        let mut persisted_settings = app_settings.clone();
+        persisted_settings.cloud_sync =
+            config::encrypt_cloud_sync_settings(persisted_settings.cloud_sync)?;
+        persisted_settings.ai = config::encrypt_ai_settings(persisted_settings.ai)?;
+        config::save_app_settings(&app, &persisted_settings)?;
+
+        let _ = app.emit("settings-changed", ());
+        crate::tray::schedule_refresh(&app);
+        Ok(())
+    }
+
     async fn set_status(
         &self,
         state_value: &str,
@@ -1018,7 +839,6 @@ impl CloudSyncManager {
             current_operation,
             last_checked_at_ms: state.last_checked_at_ms,
             last_synced_at_ms: state.last_synced_at_ms,
-            last_backup_at_ms: state.last_backup_at_ms,
             conflict: conflict.clone(),
         };
         *self.status.lock().await = status.clone();
@@ -1149,7 +969,7 @@ async fn cleanup_legacy_sync_snapshots(remote: &super::operator::CloudRemote, re
 }
 
 fn is_automatic_trigger(trigger: &str) -> bool {
-    matches!(trigger, "auto_push" | "scheduled_backup" | "startup_check")
+    matches!(trigger, "auto_push" | "startup_check")
 }
 
 fn is_non_retryable_automatic_error(error: &AppError) -> bool {
@@ -1217,7 +1037,6 @@ mod tests {
     #[test]
     fn automatic_trigger_detection_is_limited_to_background_work() {
         assert!(is_automatic_trigger("auto_push"));
-        assert!(is_automatic_trigger("scheduled_backup"));
         assert!(is_automatic_trigger("startup_check"));
         assert!(!is_automatic_trigger("manual_push"));
         assert!(!is_automatic_trigger("manual_test_connection"));

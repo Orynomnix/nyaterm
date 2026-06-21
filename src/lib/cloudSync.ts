@@ -1,9 +1,4 @@
-import type {
-  CloudConflictPreview,
-  CloudSyncSettings,
-  CloudSyncStatus,
-  RemoteBackupEntry,
-} from "@/types/global";
+import type { CloudConflictPreview, CloudSyncSettings, CloudSyncStatus } from "@/types/global";
 
 export type CloudSyncValidationCode =
   | "webdavEndpointRequired"
@@ -12,7 +7,12 @@ export type CloudSyncValidationCode =
   | "s3CredentialsIncomplete"
   | "giteeSnippetEndpointRequired"
   | "giteeSnippetIdRequired"
-  | "giteeSnippetTokenRequired";
+  | "giteeSnippetTokenRequired"
+  | "driveRefreshTokenRequired"
+  | "driveClientIdRequired"
+  | "driveClientSecretRequired"
+  | "githubGistRequired"
+  | "githubGistTokenRequired";
 
 export const MASKED_CLOUD_SECRET_VALUE = "__SET__";
 
@@ -24,9 +24,6 @@ export const DEFAULT_CLOUD_SYNC_SETTINGS: CloudSyncSettings = {
   auto_check_on_startup: true,
   auto_push_on_change: true,
   sync_debounce_seconds: 15,
-  scheduled_backup_enabled: true,
-  backup_interval_hours: 24,
-  backup_retention_count: 30,
   webdav: {
     endpoint: "",
     root: "",
@@ -48,6 +45,32 @@ export const DEFAULT_CLOUD_SYNC_SETTINGS: CloudSyncSettings = {
     gist_id: "",
     access_token: null,
   },
+  google_drive: {
+    root: "",
+    access_token: null,
+    refresh_token: null,
+    client_id: null,
+    client_secret: null,
+  },
+  onedrive: {
+    root: "",
+    access_token: null,
+    refresh_token: null,
+    client_id: null,
+    client_secret: null,
+  },
+  aliyun_drive: {
+    root: "",
+    access_token: null,
+    refresh_token: null,
+    client_id: null,
+    client_secret: null,
+    drive_type: "resource",
+  },
+  github_gist: {
+    gist_id: "",
+    access_token: null,
+  },
 };
 
 export const DEFAULT_CLOUD_SYNC_STATUS: CloudSyncStatus = {
@@ -58,7 +81,6 @@ export const DEFAULT_CLOUD_SYNC_STATUS: CloudSyncStatus = {
   current_operation: null,
   last_checked_at_ms: null,
   last_synced_at_ms: null,
-  last_backup_at_ms: null,
   conflict: null,
 };
 
@@ -120,7 +142,50 @@ export function getCloudSyncValidationErrors(
     }
   }
 
+  if (settings.provider === "google_drive") {
+    addOAuthDriveValidationErrors(settings.google_drive, errors);
+  }
+
+  if (settings.provider === "onedrive") {
+    addOAuthDriveValidationErrors(settings.onedrive, errors);
+  }
+
+  if (settings.provider === "aliyun_drive") {
+    addOAuthDriveValidationErrors(settings.aliyun_drive, errors);
+  }
+
+  if (settings.provider === "github_gist") {
+    if (settings.github_gist.gist_id.trim().length === 0) {
+      errors.push("githubGistRequired");
+    }
+
+    if (!settings.github_gist.access_token?.trim()) {
+      errors.push("githubGistTokenRequired");
+    }
+  }
+
   return errors;
+}
+
+function addOAuthDriveValidationErrors(
+  settings: {
+    refresh_token?: string | null;
+    client_id?: string | null;
+    client_secret?: string | null;
+  },
+  errors: CloudSyncValidationCode[],
+) {
+  if (!settings.refresh_token?.trim()) {
+    errors.push("driveRefreshTokenRequired");
+  }
+
+  if (!settings.client_id?.trim()) {
+    errors.push("driveClientIdRequired");
+  }
+
+  if (!settings.client_secret?.trim()) {
+    errors.push("driveClientSecretRequired");
+  }
 }
 
 export function formatCloudProvider(provider?: string | null) {
@@ -131,6 +196,14 @@ export function formatCloudProvider(provider?: string | null) {
       return "S3";
     case "gitee_snippet":
       return "Gitee Snippet";
+    case "google_drive":
+      return "Google Drive";
+    case "onedrive":
+      return "OneDrive";
+    case "aliyun_drive":
+      return "AliyunDrive";
+    case "github_gist":
+      return "GitHub Gist";
     default:
       return provider || "-";
   }
@@ -158,8 +231,4 @@ export function shortValue(value?: string | null, size = 8) {
 
 export function hasConflict(conflict?: CloudConflictPreview | null) {
   return Boolean(conflict?.remote_revision);
-}
-
-export function sortRemoteBackups(entries: RemoteBackupEntry[]) {
-  return [...entries].sort((a, b) => b.created_at_ms - a.created_at_ms);
 }

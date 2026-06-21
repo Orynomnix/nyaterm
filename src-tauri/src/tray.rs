@@ -18,7 +18,6 @@ const MENU_NEW_SESSION: &str = "tray::new_session";
 const MENU_OPEN_ACTIVE_SESSIONS_PANEL: &str = "tray::open_active_sessions_panel";
 const MENU_SYNC_PUSH: &str = "tray::sync_push";
 const MENU_SYNC_PULL: &str = "tray::sync_pull";
-const MENU_SYNC_BACKUP: &str = "tray::sync_backup";
 const MENU_OPEN_SYNC_HISTORY: &str = "tray::open_sync_history";
 const MENU_SETTINGS: &str = "tray::settings";
 const MENU_MINIMIZE_TO_TRAY: &str = "tray::minimize_to_tray";
@@ -27,7 +26,7 @@ const MENU_CHECK_UPDATES: &str = "tray::check_updates";
 const MENU_QUIT: &str = "tray::quit";
 
 const SUBMENU_ACTIVE_SESSIONS: &str = "tray::submenu::active_sessions";
-const SUBMENU_SYNC_BACKUP: &str = "tray::submenu::sync_backup";
+const SUBMENU_CLOUD_SYNC: &str = "tray::submenu::cloud_sync";
 
 const MENU_DISABLED_ACTIVE_SESSIONS: &str = "tray::disabled::active_sessions";
 const MENU_DISABLED_ACTIVE_SESSIONS_LIMITED: &str = "tray::disabled::active_sessions_limited";
@@ -109,12 +108,11 @@ struct TrayStrings {
     no_active_sessions: &'static str,
     only_showing_first_8: &'static str,
     open_active_sessions_panel: &'static str,
-    sync_backup: &'static str,
+    cloud_sync: &'static str,
     current_status: &'static str,
     sync_push_now: &'static str,
     sync_pull_now: &'static str,
-    sync_backup_now: &'static str,
-    open_sync_backup_history: &'static str,
+    open_cloud_sync_history: &'static str,
     settings: &'static str,
     minimize_to_tray: &'static str,
     lock_screen: &'static str,
@@ -143,12 +141,11 @@ impl TrayStrings {
                 no_active_sessions: "暂无活动会话",
                 only_showing_first_8: "仅显示前 8 个",
                 open_active_sessions_panel: "打开活动会话面板",
-                sync_backup: "同步与备份",
+                cloud_sync: "云同步",
                 current_status: "当前状态",
                 sync_push_now: "立即推送",
                 sync_pull_now: "立即拉取",
-                sync_backup_now: "立即备份",
-                open_sync_backup_history: "打开同步与备份历史",
+                open_cloud_sync_history: "打开云同步历史",
                 settings: "设置…",
                 minimize_to_tray: "关闭时最小化到托盘",
                 lock_screen: "锁定界面",
@@ -173,12 +170,11 @@ impl TrayStrings {
                 no_active_sessions: "No Active Sessions",
                 only_showing_first_8: "Showing only the first 8",
                 open_active_sessions_panel: "Open Active Sessions Panel",
-                sync_backup: "Sync & Backup",
+                cloud_sync: "Cloud Sync",
                 current_status: "Current Status",
                 sync_push_now: "Push Now",
                 sync_pull_now: "Pull Now",
-                sync_backup_now: "Backup Now",
-                open_sync_backup_history: "Open Sync & Backup History",
+                open_cloud_sync_history: "Open Cloud Sync History",
                 settings: "Settings…",
                 minimize_to_tray: "Minimize To Tray On Close",
                 lock_screen: "Lock Screen",
@@ -205,10 +201,10 @@ impl TrayStrings {
         }
     }
 
-    fn sync_backup_title(&self, language: TrayLanguage, status: &str) -> String {
+    fn cloud_sync_title(&self, language: TrayLanguage, status: &str) -> String {
         match language {
-            TrayLanguage::ZhCn => format!("{}（{status}）", self.sync_backup),
-            TrayLanguage::En => format!("{} ({status})", self.sync_backup),
+            TrayLanguage::ZhCn => format!("{}（{status}）", self.cloud_sync),
+            TrayLanguage::En => format!("{} ({status})", self.cloud_sync),
         }
     }
 
@@ -315,7 +311,7 @@ fn rebuild_root_menu(
     let new_session = new_menu_item(app, MENU_NEW_SESSION, strings.new_session, true)?;
     let active_sessions_submenu = build_active_sessions_submenu(app, language, strings, sessions)?;
     let sync_backup_submenu =
-        build_sync_backup_submenu(app, language, strings, settings, effective_sync_state)?;
+        build_cloud_sync_submenu(app, language, strings, settings, effective_sync_state)?;
     let separator_2 = PredefinedMenuItem::separator(app)?;
     let settings_item = new_menu_item(app, MENU_SETTINGS, strings.settings, true)?;
     let minimize_to_tray = CheckMenuItem::with_id(
@@ -420,7 +416,7 @@ fn build_active_sessions_submenu(
     Ok(submenu)
 }
 
-fn build_sync_backup_submenu(
+fn build_cloud_sync_submenu(
     app: &AppHandle,
     language: TrayLanguage,
     strings: &TrayStrings,
@@ -430,8 +426,8 @@ fn build_sync_backup_submenu(
     let localized_status = strings.localized_status(effective_sync_state);
     let submenu = Submenu::with_id(
         app,
-        SUBMENU_SYNC_BACKUP,
-        escape_menu_text(&strings.sync_backup_title(language, &localized_status)),
+        SUBMENU_CLOUD_SYNC,
+        escape_menu_text(&strings.cloud_sync_title(language, &localized_status)),
         true,
     )?;
 
@@ -465,23 +461,16 @@ fn build_sync_backup_submenu(
             strings.sync_pull_now,
             enable_manual_operations,
         )?;
-        let backup = new_menu_item(
-            app,
-            MENU_SYNC_BACKUP,
-            strings.sync_backup_now,
-            enable_manual_operations,
-        )?;
         submenu.append(&separator)?;
         submenu.append(&push)?;
         submenu.append(&pull)?;
-        submenu.append(&backup)?;
     }
 
     let separator = PredefinedMenuItem::separator(app)?;
     let open_history = new_menu_item(
         app,
         MENU_OPEN_SYNC_HISTORY,
-        strings.open_sync_backup_history,
+        strings.open_cloud_sync_history,
         true,
     )?;
     submenu.append(&separator)?;
@@ -540,17 +529,6 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             tauri::async_runtime::spawn(async move {
                 if let Some(manager) = app_handle.try_state::<Arc<CloudSyncManager>>() {
                     let _ = manager.inner().sync_pull_now("tray_manual_pull").await;
-                }
-            });
-        }
-        MENU_SYNC_BACKUP => {
-            let app_handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Some(manager) = app_handle.try_state::<Arc<CloudSyncManager>>() {
-                    let _ = manager
-                        .inner()
-                        .run_cloud_backup_now("tray_manual_backup")
-                        .await;
                 }
             });
         }

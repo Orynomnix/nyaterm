@@ -358,9 +358,7 @@ function SyncBackupHistoryPanel() {
             ) : history.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
                 <MdHistory className="text-3xl text-muted-foreground/25" />
-                <span className="text-sm text-muted-foreground">
-                  {t("settings.noSyncHistory")}
-                </span>
+                <span className="text-sm text-muted-foreground">{t("settings.noSyncHistory")}</span>
               </div>
             ) : (
               history.map((entry) => (

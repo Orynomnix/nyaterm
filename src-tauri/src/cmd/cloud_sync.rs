@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use crate::config::{CloudSyncHistoryEntry, CloudSyncStatus, RemoteBackupEntry};
-use crate::core::CloudSyncManager;
+use crate::config::{CloudSyncHistoryEntry, CloudSyncStatus};
+use crate::core::cloud_sync::{GithubGistDeviceFlowPoll, GithubGistDeviceFlowStart};
+use crate::core::{self, CloudSyncManager};
 use crate::error::AppResult;
 
 #[tauri::command]
@@ -37,13 +38,6 @@ pub async fn resolve_cloud_sync_conflict(
 }
 
 #[tauri::command]
-pub async fn run_cloud_backup_now(
-    manager: tauri::State<'_, Arc<CloudSyncManager>>,
-) -> AppResult<()> {
-    manager.inner().run_cloud_backup_now("manual_backup").await
-}
-
-#[tauri::command]
 pub async fn list_cloud_sync_history(
     manager: tauri::State<'_, Arc<CloudSyncManager>>,
 ) -> AppResult<Vec<CloudSyncHistoryEntry>> {
@@ -51,19 +45,20 @@ pub async fn list_cloud_sync_history(
 }
 
 #[tauri::command]
-pub async fn list_remote_backups(
-    manager: tauri::State<'_, Arc<CloudSyncManager>>,
-) -> AppResult<Vec<RemoteBackupEntry>> {
-    manager.list_remote_backups().await
+pub async fn begin_github_gist_device_flow() -> AppResult<GithubGistDeviceFlowStart> {
+    core::cloud_sync::begin_github_gist_device_flow().await
 }
 
 #[tauri::command]
-pub async fn restore_remote_backup(
-    manager: tauri::State<'_, Arc<CloudSyncManager>>,
-    revision: String,
-) -> AppResult<()> {
-    manager
-        .inner()
-        .restore_remote_backup(&revision, "manual_restore_backup")
-        .await
+pub async fn poll_github_gist_device_flow(
+    flow_id: String,
+    existing_gist_id: Option<String>,
+) -> AppResult<GithubGistDeviceFlowPoll> {
+    core::cloud_sync::poll_github_gist_device_flow(&flow_id, existing_gist_id).await
+}
+
+#[tauri::command]
+pub async fn cancel_github_gist_device_flow(flow_id: String) -> AppResult<()> {
+    core::cloud_sync::cancel_github_gist_device_flow(&flow_id).await;
+    Ok(())
 }

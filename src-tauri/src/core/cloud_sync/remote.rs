@@ -5,7 +5,6 @@ use redb::{Database, ReadableDatabase, TableDefinition};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{self, RemoteBackupIndex};
 use crate::error::{AppError, AppResult};
 
 use super::operator::CloudRemote;
@@ -13,14 +12,10 @@ use super::operator::CloudRemote;
 pub(super) const SYNC_CURRENT_FILE: &str = "sync/current.redb.enc";
 pub(super) const SYNC_LATEST_FILE: &str = "sync/latest.redb";
 pub(super) const SYNC_SNAPSHOTS_DIR: &str = "sync/snapshots/";
-pub(super) const BACKUPS_INDEX_FILE: &str = "backups/index.redb";
-pub(super) const BACKUPS_SNAPSHOTS_DIR: &str = "backups/snapshots/";
 
 const REMOTE_SYNC_POINTER_TABLE: TableDefinition<&str, &str> = TableDefinition::new("sync_pointer");
-const REMOTE_BACKUP_INDEX_TABLE: TableDefinition<&str, &str> = TableDefinition::new("backup_index");
 
 const REMOTE_SYNC_POINTER_KEY: &str = "latest";
-const REMOTE_BACKUP_INDEX_KEY: &str = "index";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct RemoteSyncPointer {
@@ -89,36 +84,6 @@ pub(super) async fn write_sync_pointer(
         encode_redb_json_doc(REMOTE_SYNC_POINTER_TABLE, REMOTE_SYNC_POINTER_KEY, pointer)?;
     remote
         .write(&remote_path(base_root, SYNC_LATEST_FILE), encoded)
-        .await?;
-    Ok(())
-}
-
-pub(super) async fn load_backup_index(
-    remote: &CloudRemote,
-    base_root: &str,
-) -> AppResult<RemoteBackupIndex> {
-    let path = remote_path(base_root, BACKUPS_INDEX_FILE);
-    let Some(raw) = remote.read_if_exists(&path).await? else {
-        return Ok(RemoteBackupIndex {
-            version: config::CLOUD_SYNC_HISTORY_VERSION,
-            entries: Vec::new(),
-        });
-    };
-    decode_redb_json_doc(
-        raw.as_slice(),
-        REMOTE_BACKUP_INDEX_TABLE,
-        REMOTE_BACKUP_INDEX_KEY,
-    )
-}
-
-pub(super) async fn write_backup_index(
-    remote: &CloudRemote,
-    base_root: &str,
-    index: &RemoteBackupIndex,
-) -> AppResult<()> {
-    let encoded = encode_redb_json_doc(REMOTE_BACKUP_INDEX_TABLE, REMOTE_BACKUP_INDEX_KEY, index)?;
-    remote
-        .write(&remote_path(base_root, BACKUPS_INDEX_FILE), encoded)
         .await?;
     Ok(())
 }

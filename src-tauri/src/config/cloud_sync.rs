@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 pub const MASKED_SECRET_VALUE: &str = "__SET__";
-pub const CLOUD_SYNC_HISTORY_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebdavSyncSettings {
@@ -87,6 +86,78 @@ impl Default for GiteeSnippetSyncSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthDriveSyncSettings {
+    #[serde(default)]
+    pub root: String,
+    #[serde(default)]
+    pub access_token: Option<String>,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_secret: Option<String>,
+}
+
+impl Default for OAuthDriveSyncSettings {
+    fn default() -> Self {
+        Self {
+            root: String::new(),
+            access_token: None,
+            refresh_token: None,
+            client_id: None,
+            client_secret: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AliyunDriveSyncSettings {
+    #[serde(default)]
+    pub root: String,
+    #[serde(default)]
+    pub access_token: Option<String>,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    #[serde(default = "default_aliyun_drive_type")]
+    pub drive_type: String,
+}
+
+impl Default for AliyunDriveSyncSettings {
+    fn default() -> Self {
+        Self {
+            root: String::new(),
+            access_token: None,
+            refresh_token: None,
+            client_id: None,
+            client_secret: None,
+            drive_type: default_aliyun_drive_type(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubGistSyncSettings {
+    #[serde(default)]
+    pub gist_id: String,
+    #[serde(default)]
+    pub access_token: Option<String>,
+}
+
+impl Default for GithubGistSyncSettings {
+    fn default() -> Self {
+        Self {
+            gist_id: String::new(),
+            access_token: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudSyncSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -102,18 +173,20 @@ pub struct CloudSyncSettings {
     pub auto_push_on_change: bool,
     #[serde(default = "default_sync_debounce_seconds")]
     pub sync_debounce_seconds: u64,
-    #[serde(default = "default_true")]
-    pub scheduled_backup_enabled: bool,
-    #[serde(default = "default_backup_interval_hours")]
-    pub backup_interval_hours: u64,
-    #[serde(default = "default_backup_retention_count")]
-    pub backup_retention_count: usize,
     #[serde(default)]
     pub webdav: WebdavSyncSettings,
     #[serde(default)]
     pub s3: S3SyncSettings,
     #[serde(default)]
     pub gitee_snippet: GiteeSnippetSyncSettings,
+    #[serde(default)]
+    pub google_drive: OAuthDriveSyncSettings,
+    #[serde(default)]
+    pub onedrive: OAuthDriveSyncSettings,
+    #[serde(default)]
+    pub aliyun_drive: AliyunDriveSyncSettings,
+    #[serde(default)]
+    pub github_gist: GithubGistSyncSettings,
 }
 
 impl Default for CloudSyncSettings {
@@ -126,12 +199,13 @@ impl Default for CloudSyncSettings {
             auto_check_on_startup: true,
             auto_push_on_change: true,
             sync_debounce_seconds: default_sync_debounce_seconds(),
-            scheduled_backup_enabled: true,
-            backup_interval_hours: default_backup_interval_hours(),
-            backup_retention_count: default_backup_retention_count(),
             webdav: WebdavSyncSettings::default(),
             s3: S3SyncSettings::default(),
             gitee_snippet: GiteeSnippetSyncSettings::default(),
+            google_drive: OAuthDriveSyncSettings::default(),
+            onedrive: OAuthDriveSyncSettings::default(),
+            aliyun_drive: AliyunDriveSyncSettings::default(),
+            github_gist: GithubGistSyncSettings::default(),
         }
     }
 }
@@ -145,13 +219,9 @@ pub struct CloudSyncState {
     #[serde(default)]
     pub last_applied_remote_revision: Option<String>,
     #[serde(default)]
-    pub last_backup_revision: Option<String>,
-    #[serde(default)]
     pub last_checked_at_ms: Option<u64>,
     #[serde(default)]
     pub last_synced_at_ms: Option<u64>,
-    #[serde(default)]
-    pub last_backup_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,8 +254,6 @@ pub struct CloudSyncStatus {
     #[serde(default)]
     pub last_synced_at_ms: Option<u64>,
     #[serde(default)]
-    pub last_backup_at_ms: Option<u64>,
-    #[serde(default)]
     pub conflict: Option<CloudConflictPreview>,
 }
 
@@ -199,7 +267,6 @@ impl Default for CloudSyncStatus {
             current_operation: None,
             last_checked_at_ms: None,
             last_synced_at_ms: None,
-            last_backup_at_ms: None,
             conflict: None,
         }
     }
@@ -222,24 +289,6 @@ pub struct CloudSyncHistoryEntry {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemoteBackupEntry {
-    pub revision: String,
-    pub created_at_ms: u64,
-    pub payload_hash: String,
-    pub device_id: String,
-    pub app_version: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RemoteBackupIndex {
-    #[serde(default = "default_history_version")]
-    pub version: u32,
-    #[serde(default)]
-    pub entries: Vec<RemoteBackupEntry>,
-}
-
 fn default_provider() -> String {
     "webdav".to_string()
 }
@@ -252,6 +301,10 @@ fn default_gitee_api_endpoint() -> String {
     "https://gitee.com/api/v5".to_string()
 }
 
+fn default_aliyun_drive_type() -> String {
+    "resource".to_string()
+}
+
 fn default_device_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -262,20 +315,8 @@ fn default_sync_debounce_seconds() -> u64 {
     15
 }
 
-fn default_backup_interval_hours() -> u64 {
-    24
-}
-
-fn default_backup_retention_count() -> usize {
-    30
-}
-
 fn default_status_state() -> String {
     "idle".to_string()
-}
-
-fn default_history_version() -> u32 {
-    CLOUD_SYNC_HISTORY_VERSION
 }
 
 pub fn load_cloud_sync_settings(app: &AppHandle) -> AppResult<CloudSyncSettings> {
@@ -305,6 +346,10 @@ pub fn decrypt_cloud_sync_settings(
     settings.s3.secret_access_key = decrypt_secret(settings.s3.secret_access_key)?;
     settings.s3.session_token = decrypt_secret(settings.s3.session_token)?;
     settings.gitee_snippet.access_token = decrypt_secret(settings.gitee_snippet.access_token)?;
+    decrypt_oauth_drive_settings(&mut settings.google_drive)?;
+    decrypt_oauth_drive_settings(&mut settings.onedrive)?;
+    decrypt_aliyun_drive_settings(&mut settings.aliyun_drive)?;
+    settings.github_gist.access_token = decrypt_secret(settings.github_gist.access_token)?;
     Ok(settings)
 }
 
@@ -316,6 +361,10 @@ pub fn encrypt_cloud_sync_settings(
     settings.s3.secret_access_key = encrypt_secret(settings.s3.secret_access_key)?;
     settings.s3.session_token = encrypt_secret(settings.s3.session_token)?;
     settings.gitee_snippet.access_token = encrypt_secret(settings.gitee_snippet.access_token)?;
+    encrypt_oauth_drive_settings(&mut settings.google_drive)?;
+    encrypt_oauth_drive_settings(&mut settings.onedrive)?;
+    encrypt_aliyun_drive_settings(&mut settings.aliyun_drive)?;
+    settings.github_gist.access_token = encrypt_secret(settings.github_gist.access_token)?;
     Ok(settings)
 }
 
@@ -325,6 +374,10 @@ pub fn mask_cloud_sync_settings(mut settings: CloudSyncSettings) -> CloudSyncSet
     settings.s3.secret_access_key = mask_secret(settings.s3.secret_access_key);
     settings.s3.session_token = mask_secret(settings.s3.session_token);
     settings.gitee_snippet.access_token = mask_secret(settings.gitee_snippet.access_token);
+    mask_oauth_drive_settings(&mut settings.google_drive);
+    mask_oauth_drive_settings(&mut settings.onedrive);
+    mask_aliyun_drive_settings(&mut settings.aliyun_drive);
+    settings.github_gist.access_token = mask_secret(settings.github_gist.access_token);
     settings
 }
 
@@ -352,7 +405,69 @@ pub fn merge_masked_cloud_sync_settings(
         current.gitee_snippet.access_token.as_ref(),
         next.gitee_snippet.access_token.as_ref(),
     );
+    merge_oauth_drive_settings(&current.google_drive, &mut next.google_drive);
+    merge_oauth_drive_settings(&current.onedrive, &mut next.onedrive);
+    merge_aliyun_drive_settings(&current.aliyun_drive, &mut next.aliyun_drive);
+    next.github_gist.access_token = merge_secret(
+        current.github_gist.access_token.as_ref(),
+        next.github_gist.access_token.as_ref(),
+    );
     next
+}
+
+fn decrypt_oauth_drive_settings(settings: &mut OAuthDriveSyncSettings) -> AppResult<()> {
+    settings.access_token = decrypt_secret(settings.access_token.take())?;
+    settings.refresh_token = decrypt_secret(settings.refresh_token.take())?;
+    settings.client_secret = decrypt_secret(settings.client_secret.take())?;
+    Ok(())
+}
+
+fn encrypt_oauth_drive_settings(settings: &mut OAuthDriveSyncSettings) -> AppResult<()> {
+    settings.access_token = encrypt_secret(settings.access_token.take())?;
+    settings.refresh_token = encrypt_secret(settings.refresh_token.take())?;
+    settings.client_secret = encrypt_secret(settings.client_secret.take())?;
+    Ok(())
+}
+
+fn mask_oauth_drive_settings(settings: &mut OAuthDriveSyncSettings) {
+    settings.access_token = mask_secret(settings.access_token.take());
+    settings.refresh_token = mask_secret(settings.refresh_token.take());
+    settings.client_secret = mask_secret(settings.client_secret.take());
+}
+
+fn merge_oauth_drive_settings(current: &OAuthDriveSyncSettings, next: &mut OAuthDriveSyncSettings) {
+    next.access_token = merge_secret(current.access_token.as_ref(), next.access_token.as_ref());
+    next.refresh_token = merge_secret(current.refresh_token.as_ref(), next.refresh_token.as_ref());
+    next.client_secret = merge_secret(current.client_secret.as_ref(), next.client_secret.as_ref());
+}
+
+fn decrypt_aliyun_drive_settings(settings: &mut AliyunDriveSyncSettings) -> AppResult<()> {
+    settings.access_token = decrypt_secret(settings.access_token.take())?;
+    settings.refresh_token = decrypt_secret(settings.refresh_token.take())?;
+    settings.client_secret = decrypt_secret(settings.client_secret.take())?;
+    Ok(())
+}
+
+fn encrypt_aliyun_drive_settings(settings: &mut AliyunDriveSyncSettings) -> AppResult<()> {
+    settings.access_token = encrypt_secret(settings.access_token.take())?;
+    settings.refresh_token = encrypt_secret(settings.refresh_token.take())?;
+    settings.client_secret = encrypt_secret(settings.client_secret.take())?;
+    Ok(())
+}
+
+fn mask_aliyun_drive_settings(settings: &mut AliyunDriveSyncSettings) {
+    settings.access_token = mask_secret(settings.access_token.take());
+    settings.refresh_token = mask_secret(settings.refresh_token.take());
+    settings.client_secret = mask_secret(settings.client_secret.take());
+}
+
+fn merge_aliyun_drive_settings(
+    current: &AliyunDriveSyncSettings,
+    next: &mut AliyunDriveSyncSettings,
+) {
+    next.access_token = merge_secret(current.access_token.as_ref(), next.access_token.as_ref());
+    next.refresh_token = merge_secret(current.refresh_token.as_ref(), next.refresh_token.as_ref());
+    next.client_secret = merge_secret(current.client_secret.as_ref(), next.client_secret.as_ref());
 }
 
 fn decrypt_secret(value: Option<String>) -> AppResult<Option<String>> {
@@ -384,5 +499,56 @@ fn merge_secret(current: Option<&String>, incoming: Option<&String>) -> Option<S
         Some(MASKED_SECRET_VALUE) | None => current.cloned(),
         Some("") => None,
         Some(value) => Some(value.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn masked_cloud_sync_merge_preserves_new_provider_secrets() {
+        let mut current = CloudSyncSettings::default();
+        current.google_drive.access_token = Some("google-access".to_string());
+        current.google_drive.refresh_token = Some("google-refresh".to_string());
+        current.google_drive.client_secret = Some("google-secret".to_string());
+        current.onedrive.access_token = Some("onedrive-access".to_string());
+        current.aliyun_drive.refresh_token = Some("aliyun-refresh".to_string());
+        current.github_gist.access_token = Some("github-token".to_string());
+
+        let mut next = CloudSyncSettings::default();
+        next.google_drive.access_token = Some(MASKED_SECRET_VALUE.to_string());
+        next.google_drive.refresh_token = Some(MASKED_SECRET_VALUE.to_string());
+        next.google_drive.client_secret = Some(MASKED_SECRET_VALUE.to_string());
+        next.onedrive.access_token = Some(MASKED_SECRET_VALUE.to_string());
+        next.aliyun_drive.refresh_token = Some(MASKED_SECRET_VALUE.to_string());
+        next.github_gist.access_token = Some(MASKED_SECRET_VALUE.to_string());
+
+        let merged = merge_masked_cloud_sync_settings(&current, next);
+
+        assert_eq!(
+            merged.google_drive.access_token.as_deref(),
+            Some("google-access")
+        );
+        assert_eq!(
+            merged.google_drive.refresh_token.as_deref(),
+            Some("google-refresh")
+        );
+        assert_eq!(
+            merged.google_drive.client_secret.as_deref(),
+            Some("google-secret")
+        );
+        assert_eq!(
+            merged.onedrive.access_token.as_deref(),
+            Some("onedrive-access")
+        );
+        assert_eq!(
+            merged.aliyun_drive.refresh_token.as_deref(),
+            Some("aliyun-refresh")
+        );
+        assert_eq!(
+            merged.github_gist.access_token.as_deref(),
+            Some("github-token")
+        );
     }
 }

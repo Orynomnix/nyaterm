@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Copy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -17,7 +18,6 @@ import {
   secretInputValue,
   secretPlaceholder,
   shortValue,
-  sortRemoteBackups,
 } from "@/lib/cloudSync";
 import { getErrorMessage } from "@/lib/errors";
 import { invoke } from "@/lib/invoke";
@@ -25,7 +25,8 @@ import type {
   CloudConflictPreview,
   CloudSyncSettings,
   CloudSyncStatus,
-  RemoteBackupEntry,
+  GithubGistDeviceFlowPoll,
+  GithubGistDeviceFlowStart,
 } from "@/types/global";
 import {
   SettingFieldGrid,
@@ -60,8 +61,24 @@ function getValidationMessage(
       return t("settings.giteeSnippetIdRequired");
     case "giteeSnippetTokenRequired":
       return t("settings.giteeSnippetTokenRequired");
+    case "driveRefreshTokenRequired":
+      return t("settings.driveRefreshTokenRequired");
+    case "driveClientIdRequired":
+      return t("settings.driveClientIdRequired");
+    case "driveClientSecretRequired":
+      return t("settings.driveClientSecretRequired");
+    case "githubGistRequired":
+      return t("settings.githubGistRequired");
+    case "githubGistTokenRequired":
+      return t("settings.githubGistTokenRequired");
   }
 }
+
+type GithubGistAuthState = {
+  flow: GithubGistDeviceFlowStart | null;
+  login: string | null;
+  message: string | null;
+};
 
 export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
   const { t } = useTranslation();
@@ -74,11 +91,13 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
   const hasCommittedMasterPassword = Boolean(committedSettings.security.master_password);
 
   const [status, setStatus] = useState<CloudSyncStatus>(DEFAULT_CLOUD_SYNC_STATUS);
-  const [remoteBackups, setRemoteBackups] = useState<RemoteBackupEntry[]>([]);
-  const [remoteBackupsLoading, setRemoteBackupsLoading] = useState(false);
-  const [remoteBackupsError, setRemoteBackupsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [runningAction, setRunningAction] = useState<string | null>(null);
+  const [githubAuth, setGithubAuth] = useState<GithubGistAuthState>({
+    flow: null,
+    login: null,
+    message: null,
+  });
 
   const validationErrors = useMemo(() => getCloudSyncValidationErrors(settings), [settings]);
   const committedValidationErrors = useMemo(
@@ -88,7 +107,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
 
   const formDisabled = !hasDraftMasterPassword || isSaving;
   const autoSyncSectionDisabled = formDisabled || !settings.enabled;
-  const backupSectionDisabled = formDisabled || !settings.enabled;
   const canUseCommittedProvider =
     hasCommittedMasterPassword && committedValidationErrors.length === 0;
   const canRunConfigDependentActions = canUseCommittedProvider && !isDirty && !isSaving;
@@ -126,51 +144,16 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
     return nextStatus;
   }, []);
 
-  const doFetchRemoteBackups = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!canUseCommittedProvider) {
-        setRemoteBackups([]);
-        setRemoteBackupsError(null);
-        return [];
-      }
-
-      setRemoteBackupsLoading(true);
-      try {
-        const entries = sortRemoteBackups(await invoke<RemoteBackupEntry[]>("list_remote_backups"));
-        setRemoteBackups(entries);
-        setRemoteBackupsError(null);
-        return entries;
-      } catch (error) {
-        const message = getErrorMessage(error);
-        setRemoteBackups([]);
-        setRemoteBackupsError(message);
-        if (!options?.silent) {
-          toast.error(message);
-        }
-        return [];
-      } finally {
-        setRemoteBackupsLoading(false);
-      }
-    },
-    [canUseCommittedProvider],
-  );
-
   const loadRuntimeData = useCallback(async () => {
     setLoading(true);
     try {
       await refreshStatus();
-      if (canUseCommittedProvider) {
-        await doFetchRemoteBackups({ silent: true });
-      } else {
-        setRemoteBackups([]);
-        setRemoteBackupsError(null);
-      }
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [canUseCommittedProvider, doFetchRemoteBackups, refreshStatus]);
+  }, [refreshStatus]);
 
   useEffect(() => {
     void loadRuntimeData();
@@ -193,11 +176,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
           conflict,
         }));
       }),
-      listen("cloud-sync-history-changed", () => {
-        if (canUseCommittedProvider) {
-          void doFetchRemoteBackups({ silent: true });
-        }
-      }),
     ];
 
     return () => {
@@ -205,14 +183,14 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
         promise.then((unlisten) => unlisten());
       });
     };
-  }, [canUseCommittedProvider, doFetchRemoteBackups]);
+  }, []);
 
   const runAction = useCallback(
     async (
       actionKey: string,
       successMessage: string,
       task: () => Promise<void>,
-      options?: { allowWhenDisabled?: boolean; refreshBackups?: boolean },
+      options?: { allowWhenDisabled?: boolean },
     ) => {
       if (!hasCommittedMasterPassword) {
         toast.error(t("settings.masterPasswordRequiredDesc"));
@@ -239,9 +217,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
       try {
         await task();
         await refreshStatus();
-        if (options?.refreshBackups) {
-          await doFetchRemoteBackups({ silent: true });
-        }
         toast.success(successMessage);
       } catch (error) {
         toast.error(getErrorMessage(error));
@@ -252,7 +227,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
     [
       committedCloudSync.enabled,
       committedValidationErrors,
-      doFetchRemoteBackups,
       hasCommittedMasterPassword,
       isDirty,
       onNavigateSecurity,
@@ -261,30 +235,114 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
     ],
   );
 
-  const handleRestoreBackup = useCallback(
-    async (entry: RemoteBackupEntry) => {
-      const confirmed = await ask(
-        t("settings.restoreRemoteBackupConfirm", {
-          revision: shortValue(entry.revision, 6),
-        }),
-        {
-          title: t("settings.remoteBackups"),
-          kind: "warning",
-        },
-      );
-      if (confirmed !== true) {
-        return;
-      }
+  const handleStartGithubGistAuth = useCallback(async () => {
+    setRunningAction("github-gist-auth");
+    try {
+      const flow = await invoke<GithubGistDeviceFlowStart>("begin_github_gist_device_flow");
+      setGithubAuth({
+        flow,
+        login: null,
+        message: t("settings.githubGistWaitingForAuth"),
+      });
+      await openUrl(flow.verification_uri);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setRunningAction(null);
+    }
+  }, [t]);
 
-      await runAction(
-        `restore-${entry.revision}`,
-        t("settings.restoreRemoteBackupSuccess"),
-        () => invoke("restore_remote_backup", { revision: entry.revision }),
-        { allowWhenDisabled: true, refreshBackups: true },
-      );
-    },
-    [runAction, t],
-  );
+  const handleCancelGithubGistAuth = useCallback(async () => {
+    const flowId = githubAuth.flow?.flow_id;
+    if (flowId) {
+      await invoke("cancel_github_gist_device_flow", { flowId }).catch(() => {});
+    }
+    setGithubAuth({ flow: null, login: null, message: null });
+  }, [githubAuth.flow?.flow_id]);
+
+  const handleCopyGithubGistUserCode = useCallback(async () => {
+    const userCode = githubAuth.flow?.user_code;
+    if (!userCode) return;
+
+    try {
+      await navigator.clipboard.writeText(userCode);
+      toast.success(t("settings.githubGistUserCodeCopied"));
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    }
+  }, [githubAuth.flow?.user_code, t]);
+
+  useEffect(() => {
+    const flow = githubAuth.flow;
+    if (!flow) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async (delaySeconds: number) => {
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        try {
+          const result = await invoke<GithubGistDeviceFlowPoll>("poll_github_gist_device_flow", {
+            flowId: flow.flow_id,
+            existingGistId: settings.github_gist.gist_id || null,
+          });
+
+          if (cancelled) return;
+
+          if (result.state === "success" && result.access_token && result.gist_id) {
+            updateCloudSync({
+              github_gist: {
+                ...settings.github_gist,
+                access_token: result.access_token,
+                gist_id: result.gist_id,
+              },
+            });
+            setGithubAuth({
+              flow: null,
+              login: result.login ?? null,
+              message: t("settings.githubGistConnected"),
+            });
+            toast.success(t("settings.githubGistConnected"));
+            return;
+          }
+
+          if (result.state === "expired" || result.state === "denied" || result.state === "error") {
+            setGithubAuth({
+              flow: null,
+              login: null,
+              message: result.message ?? t("settings.githubGistAuthFailed"),
+            });
+            toast.error(result.message ?? t("settings.githubGistAuthFailed"));
+            return;
+          }
+
+          setGithubAuth((current) => ({
+            ...current,
+            message:
+              result.state === "slow_down"
+                ? t("settings.githubGistSlowDown")
+                : t("settings.githubGistWaitingForAuth"),
+          }));
+          void poll(result.interval ?? flow.interval);
+        } catch (error) {
+          setGithubAuth({
+            flow: null,
+            login: null,
+            message: getErrorMessage(error),
+          });
+          toast.error(getErrorMessage(error));
+        }
+      }, delaySeconds * 1000);
+    };
+
+    void poll(flow.interval);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [githubAuth.flow, settings.github_gist, t, updateCloudSync]);
 
   const statusItems = useMemo(
     () => [
@@ -303,10 +361,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
       {
         label: t("settings.lastSyncAt"),
         value: formatTimestamp(status.last_synced_at_ms) ?? t("settings.never"),
-      },
-      {
-        label: t("settings.lastBackupAt"),
-        value: formatTimestamp(status.last_backup_at_ms) ?? t("settings.never"),
       },
       {
         label: t("settings.currentOperation"),
@@ -331,6 +385,89 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
     }
     return null;
   }, [committedValidationErrors, hasCommittedMasterPassword, isDirty, t]);
+
+  const renderOAuthDriveFields = (
+    provider: "google_drive" | "onedrive",
+    label: string,
+    desc: string,
+  ) => {
+    const providerSettings = settings[provider];
+
+    return (
+      <SettingFieldGrid>
+        <SettingInput
+          label={t("settings.providerRoot")}
+          desc={t("settings.providerRootDesc")}
+          value={providerSettings.root}
+          placeholder="/apps/nyaterm"
+          disabled={formDisabled}
+          onChange={(event) =>
+            updateCloudSync({
+              [provider]: { ...providerSettings, root: event.target.value },
+            } as Partial<CloudSyncSettings>)
+          }
+        />
+        <SettingInput
+          label={t("settings.driveAccessToken")}
+          desc={t("settings.driveAccessTokenDesc")}
+          type="password"
+          value={secretInputValue(providerSettings.access_token)}
+          placeholder={secretPlaceholder(
+            providerSettings.access_token,
+            t("settings.optionalField"),
+          )}
+          disabled={formDisabled}
+          onChange={(event) =>
+            updateCloudSync({
+              [provider]: { ...providerSettings, access_token: event.target.value },
+            } as Partial<CloudSyncSettings>)
+          }
+        />
+        <SettingInput
+          label={t("settings.driveRefreshToken")}
+          desc={desc}
+          type="password"
+          value={secretInputValue(providerSettings.refresh_token)}
+          placeholder={secretPlaceholder(
+            providerSettings.refresh_token,
+            t("settings.driveRefreshToken"),
+          )}
+          disabled={formDisabled}
+          onChange={(event) =>
+            updateCloudSync({
+              [provider]: { ...providerSettings, refresh_token: event.target.value },
+            } as Partial<CloudSyncSettings>)
+          }
+        />
+        <SettingInput
+          label={t("settings.driveClientId")}
+          desc={label}
+          value={providerSettings.client_id ?? ""}
+          disabled={formDisabled}
+          onChange={(event) =>
+            updateCloudSync({
+              [provider]: { ...providerSettings, client_id: event.target.value },
+            } as Partial<CloudSyncSettings>)
+          }
+        />
+        <SettingInput
+          label={t("settings.driveClientSecret")}
+          type="password"
+          value={secretInputValue(providerSettings.client_secret)}
+          placeholder={secretPlaceholder(
+            providerSettings.client_secret,
+            t("settings.driveClientSecret"),
+          )}
+          disabled={formDisabled}
+          onChange={(event) =>
+            updateCloudSync({
+              [provider]: { ...providerSettings, client_secret: event.target.value },
+            } as Partial<CloudSyncSettings>)
+          }
+        />
+      </SettingFieldGrid>
+    );
+  };
 
   if (loading) {
     return <div className="py-10 text-sm text-muted-foreground">{t("common.loading")}</div>;
@@ -396,6 +533,10 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
             <SelectItem value="webdav">WebDAV</SelectItem>
             <SelectItem value="s3">S3 Compatible</SelectItem>
             <SelectItem value="gitee_snippet">Gitee Snippet</SelectItem>
+            <SelectItem value="github_gist">GitHub Gist</SelectItem>
+            <SelectItem value="google_drive">Google Drive</SelectItem>
+            <SelectItem value="onedrive">OneDrive</SelectItem>
+            <SelectItem value="aliyun_drive">AliyunDrive</SelectItem>
           </SettingSelect>
 
           <SettingInput
@@ -565,7 +706,7 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
               />
             </SettingRow>
           </SettingFieldGrid>
-        ) : (
+        ) : settings.provider === "gitee_snippet" ? (
           <SettingFieldGrid>
             <SettingInput
               label={t("settings.giteeSnippetApiEndpoint")}
@@ -613,7 +754,200 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
               }
             />
           </SettingFieldGrid>
-        )}
+        ) : settings.provider === "github_gist" ? (
+          <SettingFieldGrid>
+            <SettingInput
+              label={t("settings.githubGistId")}
+              desc={t("settings.githubGistIdDesc")}
+              value={settings.github_gist.gist_id}
+              disabled={formDisabled || githubAuth.flow !== null}
+              onChange={(event) =>
+                updateCloudSync({
+                  github_gist: { ...settings.github_gist, gist_id: event.target.value },
+                })
+              }
+            />
+            <SettingRow
+              label={t("settings.githubGistAuth")}
+              desc={t("settings.githubGistAuthDesc")}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={formDisabled || runningAction !== null || githubAuth.flow !== null}
+                  onClick={() => void handleStartGithubGistAuth()}
+                >
+                  {settings.github_gist.access_token
+                    ? t("settings.githubGistReconnect")
+                    : t("settings.githubGistConnect")}
+                </Button>
+                {githubAuth.flow ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={runningAction !== null}
+                    onClick={() => void handleCancelGithubGistAuth()}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                ) : null}
+              </div>
+            </SettingRow>
+            {githubAuth.flow ? (
+              <div className="rounded-lg border border-border/70 bg-muted/15 px-4 py-3">
+                <div className="text-xs text-muted-foreground">
+                  {t("settings.githubGistUserCode")}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <div className="font-mono text-lg font-semibold tracking-[0.2em]">
+                    {githubAuth.flow.user_code}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => void handleCopyGithubGistUserCode()}
+                  >
+                    <Copy />
+                    {t("settings.copyGithubGistUserCode")}
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="mt-1 h-auto p-0"
+                  onClick={() => void openUrl(githubAuth.flow?.verification_uri ?? "")}
+                >
+                  {githubAuth.flow.verification_uri}
+                </Button>
+              </div>
+            ) : null}
+            {githubAuth.message || githubAuth.login || settings.github_gist.gist_id ? (
+              <div className="min-w-0 rounded-lg border border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
+                {githubAuth.login ? (
+                  <div>{t("settings.githubGistConnectedAs", { login: githubAuth.login })}</div>
+                ) : null}
+                {settings.github_gist.gist_id ? (
+                  <div>
+                    {t("settings.githubGistCurrentId", {
+                      gistId: shortValue(settings.github_gist.gist_id, 10),
+                    })}
+                  </div>
+                ) : null}
+                {githubAuth.message ? <div>{githubAuth.message}</div> : null}
+              </div>
+            ) : null}
+          </SettingFieldGrid>
+        ) : settings.provider === "google_drive" ? (
+          renderOAuthDriveFields(
+            "google_drive",
+            t("settings.googleDriveClientIdDesc"),
+            t("settings.googleDriveRefreshTokenDesc"),
+          )
+        ) : settings.provider === "onedrive" ? (
+          renderOAuthDriveFields(
+            "onedrive",
+            t("settings.onedriveClientIdDesc"),
+            t("settings.onedriveRefreshTokenDesc"),
+          )
+        ) : settings.provider === "aliyun_drive" ? (
+          <SettingFieldGrid>
+            <SettingInput
+              label={t("settings.providerRoot")}
+              desc={t("settings.providerRootDesc")}
+              value={settings.aliyun_drive.root}
+              placeholder="/apps/nyaterm"
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: { ...settings.aliyun_drive, root: event.target.value },
+                })
+              }
+            />
+            <SettingInput
+              label={t("settings.aliyunDriveType")}
+              desc={t("settings.aliyunDriveTypeDesc")}
+              value={settings.aliyun_drive.drive_type}
+              placeholder="resource"
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: { ...settings.aliyun_drive, drive_type: event.target.value },
+                })
+              }
+            />
+            <SettingInput
+              label={t("settings.driveAccessToken")}
+              desc={t("settings.driveAccessTokenDesc")}
+              type="password"
+              value={secretInputValue(settings.aliyun_drive.access_token)}
+              placeholder={secretPlaceholder(
+                settings.aliyun_drive.access_token,
+                t("settings.optionalField"),
+              )}
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: {
+                    ...settings.aliyun_drive,
+                    access_token: event.target.value,
+                  },
+                })
+              }
+            />
+            <SettingInput
+              label={t("settings.driveRefreshToken")}
+              desc={t("settings.aliyunDriveRefreshTokenDesc")}
+              type="password"
+              value={secretInputValue(settings.aliyun_drive.refresh_token)}
+              placeholder={secretPlaceholder(
+                settings.aliyun_drive.refresh_token,
+                t("settings.driveRefreshToken"),
+              )}
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: {
+                    ...settings.aliyun_drive,
+                    refresh_token: event.target.value,
+                  },
+                })
+              }
+            />
+            <SettingInput
+              label={t("settings.driveClientId")}
+              desc={t("settings.aliyunDriveClientIdDesc")}
+              value={settings.aliyun_drive.client_id ?? ""}
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: { ...settings.aliyun_drive, client_id: event.target.value },
+                })
+              }
+            />
+            <SettingInput
+              label={t("settings.driveClientSecret")}
+              type="password"
+              value={secretInputValue(settings.aliyun_drive.client_secret)}
+              placeholder={secretPlaceholder(
+                settings.aliyun_drive.client_secret,
+                t("settings.driveClientSecret"),
+              )}
+              disabled={formDisabled}
+              onChange={(event) =>
+                updateCloudSync({
+                  aliyun_drive: {
+                    ...settings.aliyun_drive,
+                    client_secret: event.target.value,
+                  },
+                })
+              }
+            />
+          </SettingFieldGrid>
+        ) : null}
       </SettingSection>
 
       <SettingSection
@@ -650,43 +984,6 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
           max={3600}
           onChange={(sync_debounce_seconds) => updateCloudSync({ sync_debounce_seconds })}
         />
-      </SettingSection>
-
-      <SettingSection
-        title={t("settings.backupStrategy")}
-        desc={t("settings.backupStrategyDesc")}
-        contentClassName="space-y-5"
-      >
-        <SettingRow
-          label={t("settings.scheduledBackupEnabled")}
-          desc={t("settings.scheduledBackupEnabledDesc")}
-        >
-          <SettingSwitch
-            checked={settings.scheduled_backup_enabled}
-            disabled={backupSectionDisabled}
-            onChange={(scheduled_backup_enabled) => updateCloudSync({ scheduled_backup_enabled })}
-          />
-        </SettingRow>
-        <SettingFieldGrid>
-          <SettingNumberInput
-            label={t("settings.backupIntervalHours")}
-            desc={t("settings.backupIntervalHoursDesc")}
-            value={settings.backup_interval_hours}
-            disabled={backupSectionDisabled || !settings.scheduled_backup_enabled}
-            min={1}
-            max={720}
-            onChange={(backup_interval_hours) => updateCloudSync({ backup_interval_hours })}
-          />
-          <SettingNumberInput
-            label={t("settings.backupRetentionCount")}
-            desc={t("settings.backupRetentionCountDesc")}
-            value={settings.backup_retention_count}
-            disabled={backupSectionDisabled || !settings.scheduled_backup_enabled}
-            min={1}
-            max={365}
-            onChange={(backup_retention_count) => updateCloudSync({ backup_retention_count })}
-          />
-        </SettingFieldGrid>
       </SettingSection>
 
       <SettingSection title={t("settings.manualSyncActions")} contentClassName="space-y-5">
@@ -751,36 +1048,12 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
           >
             {t("settings.syncPullNow")}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() =>
-              void runAction(
-                "backup",
-                t("settings.backupRunSuccess"),
-                () => invoke("run_cloud_backup_now"),
-                { refreshBackups: true },
-              )
-            }
-            disabled={isBusy || !canRunEnabledActions}
-          >
-            {t("settings.runBackupNow")}
-          </Button>
         </div>
       </SettingSection>
 
       <SettingSection
-        title={t("settings.remoteBackups")}
-        desc={t("settings.remoteBackupsDesc")}
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void doFetchRemoteBackups({ silent: false })}
-            disabled={remoteBackupsLoading || !canRunConfigDependentActions}
-          >
-            {t("resourceMonitor.refresh")}
-          </Button>
-        }
+        title={t("settings.syncConflictSection")}
+        desc={t("settings.syncConflictSectionDesc")}
         contentClassName="space-y-4"
       >
         {status.conflict ? (
@@ -852,57 +1125,11 @@ export function SyncBackupTab({ onNavigateSecurity }: SyncBackupTabProps) {
           </div>
         ) : null}
 
-        {remoteBackupsError ? (
-          <div className="min-w-0 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive break-words [overflow-wrap:anywhere]">
-            {remoteBackupsError}
+        {!status.conflict ? (
+          <div className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
+            {t("settings.noSyncConflict")}
           </div>
         ) : null}
-
-        {remoteBackups.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-sm text-muted-foreground">
-            {remoteBackupsLoading ? t("common.loading") : t("settings.noRemoteBackups")}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {remoteBackups.map((entry) => (
-              <div
-                key={entry.revision}
-                className="rounded-lg border border-border/70 bg-card/60 px-4 py-4"
-              >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">{entry.message}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {formatTimestamp(entry.created_at_ms) ?? t("settings.never")}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleRestoreBackup(entry)}
-                    disabled={isBusy || !canRunConfigDependentActions}
-                  >
-                    {t("menu.restore")}
-                  </Button>
-                </div>
-                <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
-                  <div>
-                    {t("settings.revisionLabel")}: {shortValue(entry.revision, 10)}
-                  </div>
-                  <div>
-                    {t("settings.deviceLabel")}: {entry.device_id}
-                  </div>
-                  <div>
-                    {t("settings.payloadHashLabel")}: {shortValue(entry.payload_hash, 10)}
-                  </div>
-                  <div>
-                    {t("settings.appVersionLabel")}: {entry.app_version}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </SettingSection>
     </div>
   );

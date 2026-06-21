@@ -158,7 +158,7 @@ export default function SettingsPage() {
       {
         id: "syncBackup_group",
         label: t("settings.groupSyncBackup"),
-        icon: "backup",
+        icon: "cloud_sync",
         items: ["syncBackup"],
       },
     ],
@@ -232,7 +232,7 @@ export default function SettingsPage() {
       Component: TranslationTab,
     },
     { id: "security", label: t("settings.security"), icon: "security", Component: SecurityTab },
-    { id: "syncBackup", label: t("settings.syncBackup"), icon: "backup" },
+    { id: "syncBackup", label: t("settings.syncBackup"), icon: "cloud_sync" },
     {
       id: "terminal-general",
       label: t("settings.general"),
@@ -275,7 +275,7 @@ export default function SettingsPage() {
   const ActiveComponent = activeTabConfig?.Component;
 
   const iconMap: Record<string, React.ElementType> = {
-    backup: MdBackup,
+    cloud_sync: MdBackup,
     dashboard: MdDashboard,
     dns: MdDns,
     settings: MdSettings,

@@ -889,6 +889,28 @@ export interface GiteeSnippetSyncSettings {
   access_token?: string | null;
 }
 
+export interface OAuthDriveSyncSettings {
+  root: string;
+  access_token?: string | null;
+  refresh_token?: string | null;
+  client_id?: string | null;
+  client_secret?: string | null;
+}
+
+export interface AliyunDriveSyncSettings {
+  root: string;
+  access_token?: string | null;
+  refresh_token?: string | null;
+  client_id?: string | null;
+  client_secret?: string | null;
+  drive_type: string;
+}
+
+export interface GithubGistSyncSettings {
+  gist_id: string;
+  access_token?: string | null;
+}
+
 export interface CloudSyncSettings {
   enabled: boolean;
   provider: string;
@@ -897,12 +919,31 @@ export interface CloudSyncSettings {
   auto_check_on_startup: boolean;
   auto_push_on_change: boolean;
   sync_debounce_seconds: number;
-  scheduled_backup_enabled: boolean;
-  backup_interval_hours: number;
-  backup_retention_count: number;
   webdav: WebdavSyncSettings;
   s3: S3SyncSettings;
   gitee_snippet: GiteeSnippetSyncSettings;
+  google_drive: OAuthDriveSyncSettings;
+  onedrive: OAuthDriveSyncSettings;
+  aliyun_drive: AliyunDriveSyncSettings;
+  github_gist: GithubGistSyncSettings;
+}
+
+export interface GithubGistDeviceFlowStart {
+  flow_id: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface GithubGistDeviceFlowPoll {
+  state: "pending" | "slow_down" | "success" | "expired" | "denied" | "error";
+  access_token?: string | null;
+  scope?: string | null;
+  login?: string | null;
+  gist_id?: string | null;
+  interval?: number | null;
+  message?: string | null;
 }
 
 export interface CloudConflictPreview {
@@ -924,7 +965,6 @@ export interface CloudSyncStatus {
   current_operation?: string | null;
   last_checked_at_ms?: number | null;
   last_synced_at_ms?: number | null;
-  last_backup_at_ms?: number | null;
   conflict?: CloudConflictPreview | null;
 }
 
@@ -937,14 +977,5 @@ export interface CloudSyncHistoryEntry {
   provider?: string | null;
   revision?: string | null;
   duration_ms?: number | null;
-  message: string;
-}
-
-export interface RemoteBackupEntry {
-  revision: string;
-  created_at_ms: number;
-  payload_hash: string;
-  device_id: string;
-  app_version: string;
   message: string;
 }
