@@ -191,6 +191,18 @@ jobs:
           console.log(`Tauri updater signing key prepared at: ${keyPath}`);
           NODE
 
+      - name: Verify GitHub Gist OAuth Client ID
+        shell: bash
+        env:
+          NYATERM_GITHUB_GIST_CLIENT_ID: ${{ vars.NYATERM_GITHUB_GIST_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NYATERM_GITHUB_GIST_CLIENT_ID:-}" ]; then
+            echo "NYATERM_GITHUB_GIST_CLIENT_ID repository variable is required for release builds."
+            exit 1
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
