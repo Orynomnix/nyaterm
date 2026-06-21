@@ -133,6 +133,19 @@ pnpm tauri build
 
 构建产物位于 `src-tauri/target/release/bundle/`。
 
+如果需要在本地打包后使用 GitHub Gist 云同步授权，请在构建前设置 GitHub OAuth App 的 device flow Client ID：
+
+```bash
+NYATERM_GITHUB_GIST_CLIENT_ID=your_client_id pnpm tauri build
+```
+
+Windows PowerShell：
+
+```powershell
+$env:NYATERM_GITHUB_GIST_CLIENT_ID = "your_client_id"
+pnpm tauri build
+```
+
 ## 文档开发提示
 
 如果你在修改 README 或 `docs-site/docs/` / `docs-site/i18n/en/` 下的文档，建议至少执行：

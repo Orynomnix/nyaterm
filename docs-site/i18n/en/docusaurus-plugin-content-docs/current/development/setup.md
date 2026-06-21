@@ -75,6 +75,19 @@ pnpm tauri build
 
 Build artifacts are in `src-tauri/target/release/bundle/`.
 
+To use GitHub Gist cloud sync authorization in a locally packaged build, set the GitHub OAuth App device flow Client ID before building:
+
+```bash
+NYATERM_GITHUB_GIST_CLIENT_ID=your_client_id pnpm tauri build
+```
+
+Windows PowerShell:
+
+```powershell
+$env:NYATERM_GITHUB_GIST_CLIENT_ID = "your_client_id"
+pnpm tauri build
+```
+
 ## Available Scripts
 
 | Command | Description |
