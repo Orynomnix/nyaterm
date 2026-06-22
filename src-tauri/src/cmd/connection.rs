@@ -227,6 +227,7 @@ mod tests {
                 raw_tcp_cli: false,
                 enter_mode: "cr".to_string(),
                 local_echo: false,
+                local_line_edit: false,
                 force_character_at_a_time: false,
                 send_naws: true,
                 send_sga: true,

@@ -112,6 +112,7 @@ export default function NewSessionPage() {
   const [telnetRawTcpCli, setTelnetRawTcpCli] = useState(false);
   const [telnetEnterMode, setTelnetEnterMode] = useState<"crlf" | "cr" | "lf">("cr");
   const [telnetLocalEcho, setTelnetLocalEcho] = useState(false);
+  const [telnetLocalLineEdit, setTelnetLocalLineEdit] = useState(false);
   const [telnetForceCharacterAtATime, setTelnetForceCharacterAtATime] = useState(false);
   const [telnetSendNaws, setTelnetSendNaws] = useState(true);
   const [telnetSendSga, setTelnetSendSga] = useState(true);
@@ -177,6 +178,7 @@ export default function NewSessionPage() {
           setTelnetRawTcpCli(found.raw_tcp_cli ?? false);
           setTelnetEnterMode(found.enter_mode || "cr");
           setTelnetLocalEcho(found.local_echo ?? false);
+          setTelnetLocalLineEdit(found.local_line_edit ?? false);
           setTelnetForceCharacterAtATime(found.force_character_at_a_time ?? false);
           setTelnetSendNaws(found.send_naws ?? true);
           setTelnetSendSga(found.send_sga ?? true);
@@ -258,6 +260,7 @@ export default function NewSessionPage() {
     setTelnetRawTcpCli(false);
     setTelnetEnterMode("cr");
     setTelnetLocalEcho(false);
+    setTelnetLocalLineEdit(false);
     setTelnetForceCharacterAtATime(false);
     setTelnetSendNaws(true);
     setTelnetSendSga(true);
@@ -539,6 +542,7 @@ export default function NewSessionPage() {
               raw_tcp_cli: telnetRawTcpCli,
               enter_mode: telnetEnterMode,
               local_echo: telnetLocalEcho,
+              local_line_edit: telnetLocalLineEdit,
               force_character_at_a_time: telnetForceCharacterAtATime,
               send_naws: telnetSendNaws,
               send_sga: telnetSendSga,
@@ -891,6 +895,8 @@ export default function NewSessionPage() {
               setEnterMode={setTelnetEnterMode}
               localEcho={telnetLocalEcho}
               setLocalEcho={setTelnetLocalEcho}
+              localLineEdit={telnetLocalLineEdit}
+              setLocalLineEdit={setTelnetLocalLineEdit}
               forceCharacterAtATime={telnetForceCharacterAtATime}
               setForceCharacterAtATime={setTelnetForceCharacterAtATime}
               sendNaws={telnetSendNaws}

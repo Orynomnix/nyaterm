@@ -63,6 +63,7 @@ pub struct TelnetSessionConfig {
     pub raw_tcp_cli: bool,
     pub enter_mode: TelnetEnterMode,
     pub local_echo: bool,
+    pub local_line_edit: bool,
     pub force_character_at_a_time: bool,
     pub send_naws: bool,
     pub send_sga: bool,
@@ -78,6 +79,7 @@ impl Default for TelnetSessionConfig {
             raw_tcp_cli: false,
             enter_mode: TelnetEnterMode::Cr,
             local_echo: false,
+            local_line_edit: false,
             force_character_at_a_time: false,
             send_naws: true,
             send_sga: true,
@@ -207,6 +209,14 @@ fn normalize_enter_bytes(data: &[u8], enter_mode: TelnetEnterMode) -> Vec<u8> {
     normalized
 }
 
+fn enter_bytes(enter_mode: TelnetEnterMode) -> &'static [u8] {
+    match enter_mode {
+        TelnetEnterMode::Crlf => b"\r\n",
+        TelnetEnterMode::Cr => b"\r",
+        TelnetEnterMode::Lf => b"\n",
+    }
+}
+
 fn split_write_chunks(data: &[u8], force_character_at_a_time: bool) -> Vec<Vec<u8>> {
     if !force_character_at_a_time {
         return vec![data.to_vec()];
@@ -263,12 +273,131 @@ fn local_echo_text(data: &[u8]) -> String {
     String::from_utf8_lossy(&visible).to_string()
 }
 
+#[derive(Debug, Default)]
+struct TelnetLineEditor {
+    buffer: String,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct TelnetLineEditResult {
+    display: String,
+    writes: Vec<Vec<u8>>,
+}
+
+impl TelnetLineEditor {
+    #[cfg(test)]
+    fn buffer(&self) -> &str {
+        &self.buffer
+    }
+
+    fn process(&mut self, data: &[u8], enter_mode: TelnetEnterMode) -> TelnetLineEditResult {
+        let input = String::from_utf8_lossy(data);
+        let mut result = TelnetLineEditResult::default();
+        let mut chars = input.char_indices().peekable();
+
+        while let Some((idx, ch)) = chars.next() {
+            match ch {
+                '\r' | '\n' => {
+                    if ch == '\r' {
+                        if let Some((_, '\n')) = chars.peek().copied() {
+                            chars.next();
+                        }
+                    }
+
+                    let mut line = self.buffer.as_bytes().to_vec();
+                    line.extend_from_slice(enter_bytes(enter_mode));
+                    result.writes.push(line);
+                    result.display.push_str("\r\n");
+                    self.buffer.clear();
+                }
+                '\u{7f}' | '\u{8}' => {
+                    self.backspace(&mut result.display);
+                }
+                '\u{1b}' => {
+                    let end = consume_escape_sequence_end(idx, &mut chars);
+                    let sequence = &input.as_bytes()[idx..end];
+                    if sequence == b"\x1b[3~" {
+                        self.backspace(&mut result.display);
+                    } else {
+                        result.writes.push(sequence.to_vec());
+                    }
+                }
+                '\t' | ' '..='\u{7e}' if !ch.is_control() => {
+                    self.buffer.push(ch);
+                    result.display.push(ch);
+                }
+                ch if !ch.is_control() => {
+                    self.buffer.push(ch);
+                    result.display.push(ch);
+                }
+                _ => {
+                    let mut bytes = [0u8; 4];
+                    result
+                        .writes
+                        .push(ch.encode_utf8(&mut bytes).as_bytes().to_vec());
+                }
+            }
+        }
+
+        result
+    }
+
+    fn backspace(&mut self, display: &mut String) {
+        if self.buffer.pop().is_some() {
+            display.push_str("\x08 \x08");
+        }
+    }
+}
+
+fn consume_escape_sequence_end(
+    start: usize,
+    chars: &mut std::iter::Peekable<std::str::CharIndices<'_>>,
+) -> usize {
+    let Some((_, next)) = chars.peek().copied() else {
+        return start + 1;
+    };
+
+    match next {
+        '[' => {
+            let mut end = start + 1;
+            while let Some((idx, ch)) = chars.next() {
+                end = idx + ch.len_utf8();
+                if (('\u{40}'..='\u{7e}').contains(&ch)) && ch != '[' {
+                    break;
+                }
+            }
+            end
+        }
+        ']' => {
+            let mut end = start + 1;
+            while let Some((idx, ch)) = chars.next() {
+                end = idx + ch.len_utf8();
+                if ch == '\u{7}' {
+                    break;
+                }
+                if ch == '\u{1b}' {
+                    if let Some((_, '\\')) = chars.peek().copied() {
+                        let (esc_end_idx, esc_end_ch) = chars.next().expect("peeked char");
+                        end = esc_end_idx + esc_end_ch.len_utf8();
+                        break;
+                    }
+                }
+            }
+            end
+        }
+        _ => {
+            let (idx, ch) = chars.next().expect("peeked char");
+            idx + ch.len_utf8()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        DO, IAC, OPT_NAWS, OPT_SUPPRESS_GO_AHEAD, TelnetEnterMode, TelnetSessionConfig, WILL,
-        maybe_build_naws, negotiate_response, normalize_enter_bytes, split_write_chunks,
-        strip_telnet_commands,
+        DO, IAC, OPT_NAWS, OPT_SUPPRESS_GO_AHEAD, TelnetEnterMode, TelnetLineEditor,
+        TelnetSessionConfig, WILL, maybe_build_naws, negotiate_response, normalize_enter_bytes,
+        split_write_chunks, strip_telnet_commands,
     };
 
     #[test]
@@ -368,6 +497,60 @@ mod tests {
         });
         assert_eq!(visible, b"hi");
         assert_eq!(seen, vec![(DO, OPT_NAWS)]);
+    }
+
+    #[test]
+    fn local_line_editor_backspace_updates_buffer() {
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process(b"abc\x7f", TelnetEnterMode::Cr);
+
+        assert_eq!(editor.buffer(), "ab");
+        assert_eq!(result.display, "abc\x08 \x08");
+        assert!(result.writes.is_empty());
+    }
+
+    #[test]
+    fn local_line_editor_sends_buffer_on_enter() {
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process(b"abc\x7fd\r", TelnetEnterMode::Cr);
+
+        assert_eq!(editor.buffer(), "");
+        assert_eq!(result.writes, vec![b"abd\r".to_vec()]);
+        assert_eq!(result.display, "abc\x08 \x08d\r\n");
+
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process(b"abc\x7fd\r", TelnetEnterMode::Crlf);
+        assert_eq!(result.writes, vec![b"abd\r\n".to_vec()]);
+
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process(b"abc\x7fd\r", TelnetEnterMode::Lf);
+        assert_eq!(result.writes, vec![b"abd\n".to_vec()]);
+    }
+
+    #[test]
+    fn local_line_editor_backspace_removes_one_utf8_char() {
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process("中a\u{7f}".as_bytes(), TelnetEnterMode::Cr);
+
+        assert_eq!(editor.buffer(), "中");
+        assert_eq!(result.display, "中a\x08 \x08");
+
+        let result = editor.process(b"\x7f", TelnetEnterMode::Cr);
+        assert_eq!(editor.buffer(), "");
+        assert_eq!(result.display, "\x08 \x08");
+    }
+
+    #[test]
+    fn local_line_editor_passes_controls_without_buffering() {
+        let mut editor = TelnetLineEditor::default();
+        let result = editor.process(b"a\x03\x04\x1b[A\x1b[3~", TelnetEnterMode::Cr);
+
+        assert_eq!(editor.buffer(), "");
+        assert_eq!(
+            result.writes,
+            vec![vec![0x03], vec![0x04], b"\x1b[A".to_vec()]
+        );
+        assert_eq!(result.display, "a\x08 \x08");
     }
 }
 
@@ -638,6 +821,9 @@ async fn telnet_session_task(
         let _ = app_reader.emit(&format!("session-closed-{}", sid_reader), ());
     });
 
+    let line_edit_active = config.raw_tcp_cli && config.local_line_edit;
+    let mut line_editor = TelnetLineEditor::default();
+
     loop {
         tokio::select! {
             Some(neg_data) = negotiate_rx.recv() => {
@@ -672,26 +858,45 @@ async fn telnet_session_task(
                         if zmodem_state.lock().await.is_some() {
                             continue;
                         }
-                        if backspace_as_bs {
-                            remap_del_to_bs(&mut data);
-                        }
-                        let data = normalize_enter_bytes(&data, config.enter_mode);
-                        if config.local_echo {
-                            let echoed = local_echo_text(&data);
-                            if !echoed.is_empty() {
-                                output.push_owned(echoed);
-                            }
-                        }
-                        if let Some(ref recorder) = recording_mgr {
-                            recorder.write_input(&session_id, &data);
-                        }
+
                         let mut write_failed = None;
-                        for chunk in split_write_chunks(&data, config.force_character_at_a_time) {
-                            if let Err(e) = writer.write_all(&chunk).await {
-                                write_failed = Some(e);
-                                break;
+                        if line_edit_active {
+                            let edit_result = line_editor.process(&data, config.enter_mode);
+                            if !edit_result.display.is_empty() {
+                                output.push_owned(edit_result.display);
+                            }
+
+                            for data in edit_result.writes {
+                                if let Some(ref recorder) = recording_mgr {
+                                    recorder.write_input(&session_id, &data);
+                                }
+                                if let Err(e) = writer.write_all(&data).await {
+                                    write_failed = Some(e);
+                                    break;
+                                }
+                            }
+                        } else {
+                            if backspace_as_bs {
+                                remap_del_to_bs(&mut data);
+                            }
+                            let data = normalize_enter_bytes(&data, config.enter_mode);
+                            if config.local_echo {
+                                let echoed = local_echo_text(&data);
+                                if !echoed.is_empty() {
+                                    output.push_owned(echoed);
+                                }
+                            }
+                            if let Some(ref recorder) = recording_mgr {
+                                recorder.write_input(&session_id, &data);
+                            }
+                            for chunk in split_write_chunks(&data, config.force_character_at_a_time) {
+                                if let Err(e) = writer.write_all(&chunk).await {
+                                    write_failed = Some(e);
+                                    break;
+                                }
                             }
                         }
+
                         if let Some(e) = write_failed {
                             log_rate_limited(StructuredLog {
                                 level: StructuredLogLevel::Warn,

@@ -65,6 +65,8 @@ pub enum ConnectionType {
         #[serde(default, skip_serializing_if = "is_false")]
         local_echo: bool,
         #[serde(default, skip_serializing_if = "is_false")]
+        local_line_edit: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
         force_character_at_a_time: bool,
         #[serde(default = "default_true", skip_serializing_if = "is_true")]
         send_naws: bool,
@@ -460,6 +462,7 @@ mod tests {
             raw_tcp_cli,
             enter_mode,
             local_echo,
+            local_line_edit,
             force_character_at_a_time,
             send_naws,
             send_sga,
@@ -472,6 +475,7 @@ mod tests {
         assert!(!raw_tcp_cli);
         assert_eq!(enter_mode, "cr");
         assert!(!local_echo);
+        assert!(!local_line_edit);
         assert!(!force_character_at_a_time);
         assert!(send_naws);
         assert!(send_sga);
@@ -488,6 +492,7 @@ mod tests {
             "raw_tcp_cli": true,
             "enter_mode": "lf",
             "local_echo": true,
+            "local_line_edit": true,
             "force_character_at_a_time": true,
             "send_naws": false,
             "send_sga": false
@@ -498,6 +503,7 @@ mod tests {
             raw_tcp_cli,
             enter_mode,
             local_echo,
+            local_line_edit,
             force_character_at_a_time,
             send_naws,
             send_sga,
@@ -510,6 +516,7 @@ mod tests {
         assert!(raw_tcp_cli);
         assert_eq!(enter_mode, "lf");
         assert!(local_echo);
+        assert!(local_line_edit);
         assert!(force_character_at_a_time);
         assert!(!send_naws);
         assert!(!send_sga);

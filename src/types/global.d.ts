@@ -217,6 +217,8 @@ export interface SavedConnection {
   enter_mode?: "crlf" | "cr" | "lf";
   /** Telnet-only: locally echo typed input when the remote does not echo. */
   local_echo?: boolean;
+  /** Telnet-only: locally edit a line and send it when Enter is pressed. */
+  local_line_edit?: boolean;
   /** Telnet-only: write each input character to the socket immediately. */
   force_character_at_a_time?: boolean;
   /** Telnet-only: send NAWS resize subnegotiation in standard Telnet mode. */

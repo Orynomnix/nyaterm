@@ -31,6 +31,8 @@ interface TelnetFormProps {
   setEnterMode: (v: TelnetEnterMode) => void;
   localEcho: boolean;
   setLocalEcho: (v: boolean) => void;
+  localLineEdit: boolean;
+  setLocalLineEdit: (v: boolean) => void;
   forceCharacterAtATime: boolean;
   setForceCharacterAtATime: (v: boolean) => void;
   sendNaws: boolean;
@@ -56,6 +58,8 @@ export function TelnetForm({
   setEnterMode,
   localEcho,
   setLocalEcho,
+  localLineEdit,
+  setLocalLineEdit,
   forceCharacterAtATime,
   setForceCharacterAtATime,
   sendNaws,
@@ -144,8 +148,8 @@ export function TelnetForm({
                     {t("dialog.telnetInputBehavior", "Key input")}
                   </div>
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
+                  <div className="min-w-0">
                     <Label className="text-xs font-medium text-foreground/80">
                       {t("dialog.backspaceMode", "Backspace Mode")}
                     </Label>
@@ -163,7 +167,7 @@ export function TelnetForm({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <Label className="text-xs font-medium text-foreground/80">
                       {t("dialog.telnetEnterMode", "Enter sends")}
                     </Label>
@@ -224,6 +228,15 @@ export function TelnetForm({
                       ),
                       localEcho,
                       setLocalEcho,
+                    )}
+                    {renderSwitchRow(
+                      t("dialog.telnetLocalLineEdit", "Local line editing / Send line on Enter"),
+                      t(
+                        "dialog.telnetLocalLineEditDesc",
+                        "Edit input locally and send the full command when Enter is pressed. Useful for debug ports that do not support remote Backspace.",
+                      ),
+                      localLineEdit,
+                      setLocalLineEdit,
                     )}
                     {renderSwitchRow(
                       t("dialog.telnetForceCharAtATime", "Force character-at-a-time"),
