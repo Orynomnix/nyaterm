@@ -220,11 +220,19 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  -webkit-user-select: none;
   user-select: none;
 }
 
-/* Allow text selection inside terminal */
+/* Allow text selection only in intentional text surfaces. */
+input,
+textarea,
+[contenteditable="true"],
+[role="textbox"],
+.select-text,
+[data-allow-text-selection="true"],
 .xterm {
+  -webkit-user-select: text;
   user-select: text;
 }
 

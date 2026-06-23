@@ -15,6 +15,7 @@ import { TransferProvider } from "./context/TransferContext";
 import { useActivityBarController } from "./hooks/useActivityBarController";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useIdleLock } from "./hooks/useIdleLock";
+import { useMacSelectionGuard } from "./hooks/useMacSelectionGuard";
 import { useModalChildWindows } from "./hooks/useModalChildWindows";
 import { resolveDisplayKeys } from "./hooks/useShortcutMap";
 import { useTerminalZoom } from "./hooks/useTerminalZoom";
@@ -181,6 +182,8 @@ function capturePaneReconnectContent(pane: SessionPane) {
 
 /** Root layout: header, activity bars, sidebars, terminal area, dialogs. */
 function App() {
+  useMacSelectionGuard();
+
   const {
     tabs,
     activeTabId,

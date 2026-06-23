@@ -646,6 +646,13 @@ export default function XTerminal({
     let lastSelection = "";
     let primaryMouseDown: { x: number; y: number } | null = null;
 
+    const resetTerminalPointerState = (options: { clearSelection?: boolean } = {}) => {
+      primaryMouseDown = null;
+      if (options.clearSelection && isTerminalAlive()) {
+        terminal.clearSelection();
+      }
+    };
+
     const buildMoveInputCursorData = (currentCursor: number, targetCursor: number) => {
       if (targetCursor === currentCursor) return "";
       return targetCursor > currentCursor
@@ -1803,8 +1810,35 @@ export default function XTerminal({
       }
     };
 
+    const handleTerminalPointerCancel = () => {
+      resetTerminalPointerState({ clearSelection: true });
+    };
+
+    const handleTerminalMouseLeave = () => {
+      resetTerminalPointerState();
+    };
+
+    const handleTerminalDragStart = () => {
+      resetTerminalPointerState();
+    };
+
+    const handleTerminalWindowBlur = () => {
+      resetTerminalPointerState({ clearSelection: true });
+    };
+
+    const handleTerminalVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        resetTerminalPointerState({ clearSelection: true });
+      }
+    };
+
     containerRef.current.addEventListener("mousedown", handleTerminalMouseDown);
     containerRef.current.addEventListener("mouseup", handleTerminalMouseUp);
+    containerRef.current.addEventListener("pointercancel", handleTerminalPointerCancel);
+    containerRef.current.addEventListener("mouseleave", handleTerminalMouseLeave);
+    containerRef.current.addEventListener("dragstart", handleTerminalDragStart);
+    window.addEventListener("blur", handleTerminalWindowBlur);
+    document.addEventListener("visibilitychange", handleTerminalVisibilityChange);
     const containerEl = containerRef.current;
 
     requestAnimationFrame(() => {
@@ -1824,6 +1858,11 @@ export default function XTerminal({
       setTerminalReady(false);
       containerEl.removeEventListener("mousedown", handleTerminalMouseDown);
       containerEl.removeEventListener("mouseup", handleTerminalMouseUp);
+      containerEl.removeEventListener("pointercancel", handleTerminalPointerCancel);
+      containerEl.removeEventListener("mouseleave", handleTerminalMouseLeave);
+      containerEl.removeEventListener("dragstart", handleTerminalDragStart);
+      window.removeEventListener("blur", handleTerminalWindowBlur);
+      document.removeEventListener("visibilitychange", handleTerminalVisibilityChange);
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
       inputStateRef.current = createTerminalInputState();
       clearCredentialPromptInputMode();
