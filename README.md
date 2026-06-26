@@ -328,6 +328,13 @@ Thanks to the following projects and libraries that make NyaTerm possible:
 
 ---
 
+<a name="sponsor"></a>
+# Sponsor
+
+If NyaTerm helps your daily development, operations, or remote terminal workflow, you can support ongoing maintenance from the [Sponsor page](./docs-site/i18n/en/docusaurus-plugin-content-docs/current/sponsor.md).
+
+---
+
 <a name="contributors"></a>
 # Contributors
 

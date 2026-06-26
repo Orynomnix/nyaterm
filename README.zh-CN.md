@@ -329,6 +329,13 @@ pnpm tauri dev
 
 ---
 
+<a name="赞助"></a>
+# 赞助
+
+如果 NyaTerm 对你的日常开发、运维或远程连接工作有所帮助，欢迎通过 [赞助文档](./docs-site/docs/sponsor.md) 支持项目持续维护。
+
+---
+
 <a name="contributors"></a>
 # 贡献者
 
