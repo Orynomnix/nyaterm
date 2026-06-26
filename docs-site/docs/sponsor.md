@@ -13,9 +13,10 @@ title: 赞助
 
 可以通过微信或支付宝赞助项目：
 
-![微信赞助收款码](../static/img/WeChatPay.jpg)
-
-![支付宝赞助收款码](../static/img/AliPay.jpg)
+<p>
+  <img src="https://raw.githubusercontent.com/nyakang/nyaterm/main/docs-site/static/img/WeChatPay.jpg" alt="微信赞助收款码" width="260" />
+  <img src="https://raw.githubusercontent.com/nyakang/nyaterm/main/docs-site/static/img/AliPay.jpg" alt="支付宝赞助收款码" width="260" />
+</p>
 
 ## 其他支持方式
 
