@@ -9,8 +9,8 @@ use crate::core::ssh::{SshConnectionHandles, SshRawHandle};
 use crate::error::{AppError, AppResult};
 use crate::observability::{StructuredLog, StructuredLogLevel, log_event};
 use russh::ChannelMsg;
-use russh_sftp::client::{Config as SftpClientConfig, SftpSession};
-use russh_sftp::protocol::{FileAttributes, FileType};
+use russh_sftp::client::{Config as SftpClientConfig, SftpSession, error::Error as SftpError};
+use russh_sftp::protocol::{FileAttributes, FileType, StatusCode};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -53,6 +53,29 @@ fn sftp_client_config(request_kib: usize, max_concurrent_writes: usize) -> SftpC
         max_packet_len: (request_kib * 1024) as u32,
         max_concurrent_writes,
         ..SftpClientConfig::default()
+    }
+}
+
+fn is_sftp_not_found(error: &SftpError) -> bool {
+    matches!(
+        error,
+        SftpError::Status(status) if status.status_code == StatusCode::NoSuchFile
+    )
+}
+
+fn ignore_sftp_not_found(result: Result<(), SftpError>) -> AppResult<()> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if is_sftp_not_found(&error) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn sftp_remove_error(path: &str, kind: &str, error: SftpError) -> Option<String> {
+    if is_sftp_not_found(&error) {
+        None
+    } else {
+        Some(format!("Failed to remove {kind} '{}': {error}", path))
     }
 }
 
@@ -1461,16 +1484,26 @@ impl RemoteFs for SftpBackend {
 
     async fn remove_file(&self, path: &str) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        let meta = sftp.symlink_metadata(path).await?;
+        let meta = match sftp.symlink_metadata(path).await {
+            Ok(meta) => meta,
+            Err(error) if is_sftp_not_found(&error) => {
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            Err(error) => {
+                let _ = sftp.close().await;
+                return Err(error.into());
+            }
+        };
 
         if sftp_attrs_is_symlink(&meta) {
-            sftp.remove_file(path).await?;
+            ignore_sftp_not_found(sftp.remove_file(path).await)?;
         } else if sftp_attrs_is_dir(&meta) {
             let _ = sftp.close().await;
             self.remove_dir_fast(path).await?;
             return Ok(());
         } else {
-            sftp.remove_file(path).await?;
+            ignore_sftp_not_found(sftp.remove_file(path).await)?;
         }
         let _ = sftp.close().await;
         Ok(())
@@ -2043,7 +2076,16 @@ struct RemoveInventory {
 
 async fn collect_remove_inventory(sftp: &SftpSession, path: &str) -> AppResult<RemoveInventory> {
     let path = normalize_remote_dir_path(path).to_string();
-    let dir = sftp.read_dir(&path).await?;
+    let dir = match sftp.read_dir(&path).await {
+        Ok(dir) => dir,
+        Err(error) if is_sftp_not_found(&error) => {
+            return Ok(RemoveInventory {
+                files: Vec::new(),
+                dirs: Vec::new(),
+            });
+        }
+        Err(error) => return Err(error.into()),
+    };
     let mut files = Vec::new();
     let mut dirs = vec![path.clone()];
 
@@ -2089,9 +2131,11 @@ async fn remove_inventory_concurrent(
                     return Ok(());
                 };
                 let session = pool.session_for(worker_index);
-                session.remove_file(&file).await.map_err(|e| {
-                    AppError::Channel(format!("Failed to remove file '{}': {}", file, e))
-                })?;
+                if let Err(error) = session.remove_file(&file).await {
+                    if let Some(message) = sftp_remove_error(&file, "file", error) {
+                        return Err(AppError::Channel(message));
+                    }
+                }
             }
         });
     }
@@ -2111,7 +2155,9 @@ async fn remove_inventory_concurrent(
     for dir in inventory.dirs {
         let session = pool.session_for(0);
         if let Err(error) = session.remove_dir(&dir).await {
-            errors.push(format!("Failed to remove directory '{}': {}", dir, error));
+            if let Some(message) = sftp_remove_error(&dir, "directory", error) {
+                errors.push(message);
+            }
         }
     }
 
@@ -2152,17 +2198,23 @@ impl SftpBackend {
         let _ = sftp.close().await;
         let inventory = result?;
 
+        if inventory.files.is_empty() && inventory.dirs.is_empty() {
+            return Ok(());
+        }
+
         if inventory.files.is_empty() && inventory.dirs.len() <= 1 {
             let sftp = self.open_sftp().await?;
             let result = sftp.remove_dir(normalize_remote_dir_path(path)).await;
             let _ = sftp.close().await;
-            return result.map_err(|e| {
-                AppError::Channel(format!(
+            return match result {
+                Ok(()) => Ok(()),
+                Err(error) if is_sftp_not_found(&error) => Ok(()),
+                Err(error) => Err(AppError::Channel(format!(
                     "Failed to remove directory '{}': {}",
                     normalize_remote_dir_path(path),
-                    e
-                ))
-            });
+                    error
+                ))),
+            };
         }
 
         let concurrency = sftp_directory_concurrency(max_open_handles);

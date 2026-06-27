@@ -22,6 +22,8 @@ use traits::RemoteFs;
 use crate::core::SessionManager;
 use crate::core::ssh::SshConnectionHandles;
 use crate::error::{AppError, AppResult};
+use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::StatusCode;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -32,6 +34,19 @@ pub(crate) use util::sanitize_download_file_name;
 pub use util::{
     FileEntry, FileProperties, RemoteFileAttributeUpdate, RemoteTextFile, WriteRemoteTextResult,
 };
+
+fn is_remote_delete_not_found(error: &AppError) -> bool {
+    match error {
+        AppError::Sftp(SftpError::Status(status)) => status.status_code == StatusCode::NoSuchFile,
+        AppError::Channel(message) => {
+            let lower = message.to_ascii_lowercase();
+            lower.contains("no such file")
+                || lower.contains("not found")
+                || lower.contains("no such file or directory")
+        }
+        _ => false,
+    }
+}
 
 /// Orchestrator that lazily initialises the best available remote file system
 /// backend and delegates all operations through it.
@@ -273,7 +288,20 @@ pub async fn delete_remote_file(
     let auto_fs = get_or_create_auto_fs(&manager, session_id).await?;
     let guard = auto_fs.backend().await?;
     let fs = guard.as_ref().unwrap();
-    fs.remove_file(path).await?;
+    match fs.remove_file(path).await {
+        Ok(()) => {}
+        Err(error) if is_remote_delete_not_found(&error) => {
+            tracing::debug!(
+                target: "user_action",
+                action = "delete",
+                entity = "remote_entry",
+                session_id = %session_id,
+                remote_path = path,
+                "Remote entry was already absent during delete"
+            );
+        }
+        Err(error) => return Err(error),
+    }
 
     tracing::debug!(
         target: "user_action",
