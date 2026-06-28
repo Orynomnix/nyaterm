@@ -514,6 +514,21 @@ export default function NewSessionPage() {
               };
             })()
           : undefined;
+      const finalGroupKey = finalGroupId || "";
+      const initialGroupKey = initialData?.group_id || "";
+      const siblingConnections = savedConnections.filter(
+        (connection) =>
+          connection.id !== initialData?.id && (connection.group_id || "") === finalGroupKey,
+      );
+      const nextSortOrder =
+        siblingConnections.reduce(
+          (max, connection) => Math.max(max, connection.sort_order ?? 0),
+          -1,
+        ) + 1;
+      const sortOrder =
+        initialData && initialGroupKey === finalGroupKey
+          ? (initialData.sort_order ?? nextSortOrder)
+          : nextSortOrder;
 
       const connection: SavedConnection = {
         id: initialData?.id || "",
@@ -521,6 +536,7 @@ export default function NewSessionPage() {
         type: typeTag as SavedConnection["type"],
         group_id: finalGroupId || undefined,
         description: normalizedDescription || undefined,
+        sort_order: sortOrder,
         icon: iconKey || undefined,
         ...(currentTab === "ssh"
           ? {
