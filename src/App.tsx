@@ -1368,6 +1368,12 @@ function App() {
               error,
             });
           }
+
+          if (appSettings.general.minimize_to_tray) {
+            await invoke<void>("hide_main_window").catch(() => {});
+            return;
+          }
+
           programmaticClose = true;
           await currentWindow.close().catch(() => {
             programmaticClose = false;
@@ -1385,7 +1391,7 @@ function App() {
     return () => {
       unlistenCloseRequested?.();
     };
-  }, [persistWorkspaceLayoutNow, settingsLoaded]);
+  }, [appSettings.general.minimize_to_tray, persistWorkspaceLayoutNow, settingsLoaded]);
 
   const handleRequestQuit = useCallback(() => {
     if (tabs.length > 0 && appSettings.general.confirm_on_close !== false) {

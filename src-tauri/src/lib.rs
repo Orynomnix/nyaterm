@@ -84,6 +84,7 @@ pub fn run() {
         .on_window_event(app::on_window_event)
         .invoke_handler(tauri::generate_handler![
             cmd::app::quit_application,
+            cmd::app::hide_main_window,
             cmd::app::open_download_dir,
             cmd::app::open_log_dir,
             cmd::app::get_app_runtime_info,
