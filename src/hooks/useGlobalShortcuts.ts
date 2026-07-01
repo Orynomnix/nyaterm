@@ -8,6 +8,7 @@ const HOTKEY_OPTIONS = { enableOnFormTags: true, preventDefault: true } as const
 
 export interface ShortcutCallbacks {
   onNewSession: () => void;
+  onTemporarySshLink: () => void;
   onOpenSessionSwitcher: () => void;
   onNewLocalTerminal: () => void;
   onCloseTab: () => void;
@@ -38,6 +39,7 @@ export function useGlobalShortcuts(
   const k = (id: string) => resolveShortcutKeys(id, keybindings);
 
   useHotkeys(k("tab.newSession"), cb.onNewSession, HOTKEY_OPTIONS);
+  useHotkeys(k("tab.temporarySshLink"), cb.onTemporarySshLink, HOTKEY_OPTIONS);
   useHotkeys(k("tab.quickSwitch"), cb.onOpenSessionSwitcher, HOTKEY_OPTIONS);
   useHotkeys(k("tab.newLocalTerminal"), cb.onNewLocalTerminal, HOTKEY_OPTIONS);
   useHotkeys(k("tab.close"), cb.onCloseTab, HOTKEY_OPTIONS);

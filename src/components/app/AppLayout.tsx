@@ -72,9 +72,11 @@ interface AppLayoutProps {
   workspace: WorkspaceProps;
   tabsCount: number;
   emptyWorkspace: {
+    temporarySshShortcut: string;
     openChatShortcut: string;
     showCommandsShortcut: string;
     switchTerminalShortcut: string;
+    onTemporarySshLink: () => void;
     onOpenChat: () => void;
     onShowCommands: () => void;
     onSwitchTerminal: () => void;
@@ -318,9 +320,11 @@ export default function AppLayout({
                 <EmptyWorkspaceState
                   t={t}
                   backgroundEnabled={backgroundEnabled}
+                  temporarySshShortcut={emptyWorkspace.temporarySshShortcut}
                   openChatShortcut={emptyWorkspace.openChatShortcut}
                   showCommandsShortcut={emptyWorkspace.showCommandsShortcut}
                   switchTerminalShortcut={emptyWorkspace.switchTerminalShortcut}
+                  onTemporarySshLink={emptyWorkspace.onTemporarySshLink}
                   onOpenChat={emptyWorkspace.onOpenChat}
                   onShowCommands={emptyWorkspace.onShowCommands}
                   onSwitchTerminal={emptyWorkspace.onSwitchTerminal}
@@ -503,23 +507,32 @@ export default function AppLayout({
 function EmptyWorkspaceState({
   t,
   backgroundEnabled,
+  temporarySshShortcut,
   openChatShortcut,
   showCommandsShortcut,
   switchTerminalShortcut,
+  onTemporarySshLink,
   onOpenChat,
   onShowCommands,
   onSwitchTerminal,
 }: {
   t: TFunction;
   backgroundEnabled: boolean;
+  temporarySshShortcut: string;
   openChatShortcut: string;
   showCommandsShortcut: string;
   switchTerminalShortcut: string;
+  onTemporarySshLink: () => void;
   onOpenChat: () => void;
   onShowCommands: () => void;
   onSwitchTerminal: () => void;
 }) {
   const emptyWorkspaceActions = [
+    {
+      label: t("temporarySsh.title"),
+      shortcut: temporarySshShortcut,
+      onClick: onTemporarySshLink,
+    },
     {
       label: t("app.openChat"),
       shortcut: openChatShortcut,

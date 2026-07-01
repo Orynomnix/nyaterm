@@ -25,6 +25,7 @@ interface AppPanelContentProps {
   aiIntent: AIOpenIntent | null;
   transferHeight: number;
   onTransferResize: (delta: number) => void;
+  onTemporarySshLink: () => void;
   onNewConnection: (parentGroupId?: string) => void;
   onEditConnection: (
     connection: SavedConnection,
@@ -50,6 +51,7 @@ export default function AppPanelContent({
   aiIntent,
   transferHeight,
   onTransferResize,
+  onTemporarySshLink,
   onNewConnection,
   onEditConnection,
   onSessionClick,
@@ -92,7 +94,11 @@ export default function AppPanelContent({
         return <SyncBackupHistoryPanel />;
       case "savedConnections":
         return (
-          <SavedConnections onNewConnection={onNewConnection} onEditConnection={onEditConnection} />
+          <SavedConnections
+            onTemporarySshLink={onTemporarySshLink}
+            onNewConnection={onNewConnection}
+            onEditConnection={onEditConnection}
+          />
         );
       case "activeSessions":
         return (

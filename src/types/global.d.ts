@@ -89,17 +89,25 @@ export interface Tab {
 
 /** SSH connection config for creating a session. */
 export interface SshConfig {
+  connection_id?: string | null;
+  owner_window_label?: string | null;
   name: string;
   host: string;
   port: number;
   username: string;
   auth: SshAuth;
+  backspace_mode?: string;
+  x11_forwarding?: boolean;
+  x11_display?: string;
+  proxy?: ProxySettings | null;
+  proxy_jump?: SshConfig | null;
+  post_login?: { command: string; delay_ms: number } | null;
 }
 
 /** SSH authentication: none, password, or private key (PEM content). */
 export type SshAuth =
   | { type: "none" }
-  | { type: "password"; password: string }
+  | { type: "password"; password?: string | null }
   | { type: "key"; key_data: string; cert_data?: string | null; passphrase?: string };
 
 /** Group for organizing saved connections. Groups form a tree via parent_id. */

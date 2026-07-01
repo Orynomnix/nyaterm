@@ -87,6 +87,12 @@ export const SHORTCUT_REGISTRY: ShortcutDefinition[] = [
     defaultKeys: "ctrl+shift+n, meta+shift+n",
   },
   {
+    id: "tab.temporarySshLink",
+    category: "tab",
+    labelKey: "settings.shortcutLabels.temporarySshLink",
+    defaultKeys: "ctrl+alt+n, meta+alt+n",
+  },
+  {
     id: "tab.quickSwitch",
     category: "tab",
     labelKey: "settings.shortcutLabels.quickSwitch",

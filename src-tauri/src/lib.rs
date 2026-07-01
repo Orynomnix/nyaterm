@@ -121,6 +121,7 @@ pub fn run() {
             cmd::cloud_sync::poll_github_gist_device_flow,
             cmd::cloud_sync::cancel_github_gist_device_flow,
             cmd::session::create_ssh_session,
+            cmd::session::create_temporary_ssh_session,
             cmd::session::create_multiplexed_ssh_session,
             cmd::session::create_local_session,
             cmd::session::create_telnet_session,

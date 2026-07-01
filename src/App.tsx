@@ -8,6 +8,7 @@ import AppPanelContent from "./components/app/AppPanelContent";
 import type { HostKeyVerifyRequest } from "./components/dialog/connections/HostKeyVerifyDialog";
 import type { OtpRequest } from "./components/dialog/connections/OtpDialog";
 import type { SshAuthRequest } from "./components/dialog/connections/SshAuthDialog";
+import TemporarySshLinkDialog from "./components/dialog/connections/TemporarySshLinkDialog";
 import SessionQuickSwitcher, {
   type QuickSwitcherSession,
 } from "./components/dialog/terminal/SessionQuickSwitcherDialog";
@@ -66,6 +67,7 @@ import {
   type TerminalWindowNode,
   updateTerminalWindowSplitRatio,
 } from "./lib/tabWindows";
+import type { TemporarySshLinkConfig } from "./lib/temporarySshLink";
 import {
   captureTerminalReconnectContent,
   preserveTerminalReconnectContent,
@@ -164,6 +166,13 @@ async function createSessionForConnection(
         startupCommand: startupCommand ?? null,
       });
   }
+}
+
+async function createTemporarySshSession(config: TemporarySshLinkConfig, createRequestId?: string) {
+  return invoke<string>("create_temporary_ssh_session", {
+    config,
+    createRequestId,
+  });
 }
 
 function buildStartupCommandPayload(startupCommand?: StartupCommandRequest) {
@@ -280,6 +289,7 @@ function App() {
   const [helpDotVisible, setHelpDotVisible] = useState(false);
   const [sendCommandDraft, setSendCommandDraft] = useState<SendCommandPanelDraft | null>(null);
   const [showSessionQuickSwitcher, setShowSessionQuickSwitcher] = useState(false);
+  const [showTemporarySshLink, setShowTemporarySshLink] = useState(false);
   const handleSendCommandDraftConsumed = useCallback(() => {
     setSendCommandDraft(null);
   }, []);
@@ -2093,9 +2103,47 @@ function App() {
     }
   }, [isLocked]);
 
+  const handleOpenTemporarySshLink = useCallback(() => {
+    if (!isLocked) {
+      setShowTemporarySshLink(true);
+    }
+  }, [isLocked]);
+
+  const handleTemporarySshConnect = useCallback(
+    async (config: TemporarySshLinkConfig) => {
+      const pending = addPendingTab(config.name, "SSH");
+      const { tabId, createRequestId } = pending;
+
+      try {
+        const sessionId = await createTemporarySshSession(config, createRequestId);
+        if (!hasTab(tabId)) {
+          await closeStaleCreatedSession(sessionId);
+          return;
+        }
+        updateTabSession(tabId, sessionId);
+        focusTerminalSession(sessionId);
+      } catch (error) {
+        if (isSessionCreationCancelled(error) || !hasTab(tabId)) {
+          return;
+        }
+        const errorMessage = getErrorMessage(error);
+        logger.error({
+          domain: "session.lifecycle",
+          event: "temporary_ssh.open_failed",
+          message: "Temporary SSH connection failed",
+          error,
+        });
+        markTabConnectionFailed(tabId, errorMessage);
+        toast.error(t("savedConnections.connectionFailed", { error: errorMessage }));
+      }
+    },
+    [addPendingTab, hasTab, markTabConnectionFailed, t, updateTabSession],
+  );
+
   useGlobalShortcuts(
     {
       onNewSession: () => handleNewSession(),
+      onTemporarySshLink: handleOpenTemporarySshLink,
       onOpenSessionSwitcher: handleOpenSessionSwitcher,
       onNewLocalTerminal: handleNewLocalTerminal,
       onCloseTab: handleCloseActiveTab,
@@ -2334,6 +2382,7 @@ function App() {
     : uiConfig.show_quick_cmd_bar
       ? "quickCmdBar"
       : null;
+  const temporarySshShortcut = resolveDisplayKeys("tab.temporarySshLink", appSettings.keybindings);
   const openChatShortcut = resolveDisplayKeys("view.openChat", appSettings.keybindings);
   const showCommandsShortcut = resolveDisplayKeys("view.showAllCommands", appSettings.keybindings);
   const switchTerminalShortcut = resolveDisplayKeys("tab.quickSwitch", appSettings.keybindings);
@@ -2524,6 +2573,7 @@ function App() {
         aiIntent={aiIntent}
         transferHeight={uiConfig.transfer_height || 180}
         onTransferResize={handleTransferResize}
+        onTemporarySshLink={handleOpenTemporarySshLink}
         onNewConnection={handleNewSession}
         onEditConnection={handleEditConnection}
         onSessionClick={handleSessionClick}
@@ -2547,6 +2597,7 @@ function App() {
       handleEditConnection,
       handleHistoryCommand,
       handleNewSession,
+      handleOpenTemporarySshLink,
       handleReconnectSessionById,
       handleSessionClick,
       handleToggleSessionRecording,
@@ -2654,9 +2705,11 @@ function App() {
         }}
         tabsCount={tabs.length}
         emptyWorkspace={{
+          temporarySshShortcut,
           openChatShortcut,
           showCommandsShortcut,
           switchTerminalShortcut,
+          onTemporarySshLink: handleOpenTemporarySshLink,
           onOpenChat: handleOpenChat,
           onShowCommands: handleShowAllCommands,
           onSwitchTerminal: handleOpenSessionSwitcher,
@@ -2712,6 +2765,11 @@ function App() {
         onSelectSession={handleQuickSwitchSession}
         onOpenConnection={handleQuickOpenConnection}
         onNewSshSession={handleQuickSwitcherNewSshSession}
+      />
+      <TemporarySshLinkDialog
+        open={showTemporarySshLink}
+        onOpenChange={setShowTemporarySshLink}
+        onConnect={handleTemporarySshConnect}
       />
     </TransferProvider>
   );

@@ -12,6 +12,7 @@ import {
   MdSort,
   MdSortByAlpha,
 } from "react-icons/md";
+import { TiFlashOutline } from "react-icons/ti";
 import { toast } from "sonner";
 import ClearAllDialog from "@/components/dialog/connections/ClearAllDialog";
 import DeleteConnectionDialog from "@/components/dialog/connections/DeleteConnectionDialog";
@@ -58,6 +59,7 @@ import {
 import GroupNodeItem from "./GroupNodeItem";
 
 interface SavedConnectionsProps {
+  onTemporarySshLink: () => void;
   onNewConnection: (parentGroupId?: string) => void;
   onEditConnection: (
     connection: SavedConnection,
@@ -102,6 +104,7 @@ function HeaderActionButton({ tooltip, children, ...props }: HeaderActionButtonP
 
 /** Grouped saved SSH connections panel. Delegates rendering to sub-components via context. */
 export default function SavedConnections({
+  onTemporarySshLink,
   onNewConnection,
   onEditConnection,
 }: SavedConnectionsProps) {
@@ -1277,6 +1280,17 @@ export default function SavedConnections({
                 className="text-xs"
                 style={{ transform: sortMode === "name-desc" ? "scaleY(-1)" : undefined }}
               />
+            </HeaderActionButton>
+
+            <HeaderActionButton
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 h-6 w-6 rounded-md p-0 transition-colors hover:bg-[var(--df-bg-hover)]"
+              style={{ color: "var(--df-text-muted)" }}
+              tooltip={t("temporarySsh.title")}
+              onClick={onTemporarySshLink}
+            >
+              <TiFlashOutline className="text-[1rem]" />
             </HeaderActionButton>
 
             <HeaderActionButton

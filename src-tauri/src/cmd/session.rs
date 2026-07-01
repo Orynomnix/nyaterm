@@ -68,6 +68,59 @@ pub async fn create_ssh_session(
 }
 
 #[tauri::command]
+pub async fn create_temporary_ssh_session(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<SessionManager>>,
+    recording_state: tauri::State<'_, Arc<RecordingManager>>,
+    config: ssh::SshConfig,
+    create_request_id: Option<String>,
+) -> AppResult<String> {
+    let ssh_config = normalize_temporary_ssh_config(config);
+    let pending_creation = state.begin_session_creation(create_request_id).await;
+    let (guard, cancel_rx) = match pending_creation {
+        Some((guard, cancel_rx)) => (Some(guard), Some(cancel_rx)),
+        None => (None, None),
+    };
+
+    let session_id = ssh::create_ssh_session(
+        app.clone(),
+        state.inner().clone(),
+        ssh_config,
+        None,
+        Some(window.label().to_string()),
+        cancel_rx,
+        None,
+    )
+    .await?;
+    drop(guard);
+    maybe_start_auto_recording(
+        &app,
+        state.inner().as_ref(),
+        recording_state.inner().clone(),
+        &session_id,
+    )
+    .await;
+    Ok(session_id)
+}
+
+fn normalize_temporary_ssh_config(mut config: ssh::SshConfig) -> ssh::SshConfig {
+    config.connection_id = None;
+    config.owner_window_label = None;
+    config.backspace_mode = if config.backspace_mode.trim().is_empty() {
+        "del".to_string()
+    } else {
+        config.backspace_mode
+    };
+    config.x11_forwarding = false;
+    config.x11_display = String::new();
+    config.proxy = None;
+    config.proxy_jump = None;
+    config.post_login = None;
+    config
+}
+
+#[tauri::command]
 pub async fn create_multiplexed_ssh_session(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<SessionManager>>,
@@ -436,7 +489,7 @@ fn safe_recording_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_recording_name;
+    use super::{normalize_temporary_ssh_config, safe_recording_name};
 
     #[test]
     fn safe_recording_name_preserves_readable_parts() {
@@ -444,6 +497,51 @@ mod tests {
         assert_eq!(safe_recording_name("my session!/prod"), "my_session_prod");
         assert_eq!(safe_recording_name("中台 算法库"), "中台_算法库");
         assert_eq!(safe_recording_name("ssh.host_01-prod"), "ssh.host_01-prod");
+    }
+
+    #[test]
+    fn temporary_ssh_config_drops_saved_connection_features() {
+        let config = serde_json::from_value(serde_json::json!({
+            "connection_id": "saved-1",
+            "owner_window_label": "main",
+            "name": "root@example.com:22",
+            "host": "example.com",
+            "port": 22,
+            "username": "root",
+            "auth": { "type": "none" },
+            "backspace_mode": "",
+            "x11_forwarding": true,
+            "x11_display": ":0",
+            "proxy": {
+                "enabled": true,
+                "protocol": "socks5",
+                "host": "127.0.0.1",
+                "port": 1080
+            },
+            "proxy_jump": {
+                "name": "jump",
+                "host": "jump.example.com",
+                "port": 22,
+                "username": "root",
+                "auth": { "type": "none" }
+            },
+            "post_login": {
+                "command": "uptime",
+                "delay_ms": 1000
+            }
+        }))
+        .expect("temporary ssh config");
+
+        let normalized = normalize_temporary_ssh_config(config);
+
+        assert!(normalized.connection_id.is_none());
+        assert!(normalized.owner_window_label.is_none());
+        assert_eq!(normalized.backspace_mode, "del");
+        assert!(!normalized.x11_forwarding);
+        assert!(normalized.x11_display.is_empty());
+        assert!(normalized.proxy.is_none());
+        assert!(normalized.proxy_jump.is_none());
+        assert!(normalized.post_login.is_none());
     }
 }
 
