@@ -186,7 +186,7 @@ pub(super) fn build_client(model: &ResolvedAiModel, settings: &AiSettings) -> Ap
     );
 
     let adapter_kind = adapter_kind(&model.provider_kind);
-    let mapped_model = model.model_name.clone();
+    let mapped_model = genai_model_name(&model.provider_kind, &model.model_name);
     let api_key = model
         .credential
         .as_ref()
@@ -269,6 +269,16 @@ fn adapter_kind(kind: &AiProviderKind) -> AdapterKind {
         | AiProviderKind::Mimo
         | AiProviderKind::Zai => AdapterKind::OpenAI,
     }
+}
+
+fn genai_model_name(provider_kind: &AiProviderKind, model_name: &str) -> String {
+    if matches!(provider_kind, AiProviderKind::Deepseek)
+        && let Some(base_model_name) = model_name.strip_suffix("-none")
+    {
+        return base_model_name.to_string();
+    }
+
+    model_name.to_string()
 }
 
 pub async fn list_model_names(app: &tauri::AppHandle) -> AppResult<Vec<AiModelDiscovery>> {
@@ -515,6 +525,34 @@ mod tests {
             error
                 .to_string()
                 .contains("No API key configured for AI credential")
+        );
+    }
+
+    #[test]
+    fn deepseek_none_reasoning_suffix_is_not_passed_to_genai() {
+        assert_eq!(
+            genai_model_name(&AiProviderKind::Deepseek, "deepseek-v4-flash-none"),
+            "deepseek-v4-flash"
+        );
+        assert_eq!(
+            genai_model_name(&AiProviderKind::Deepseek, "deepseek-v4-pro-none"),
+            "deepseek-v4-pro"
+        );
+    }
+
+    #[test]
+    fn deepseek_supported_reasoning_suffix_stays_available_for_genai() {
+        assert_eq!(
+            genai_model_name(&AiProviderKind::Deepseek, "deepseek-v4-flash-max"),
+            "deepseek-v4-flash-max"
+        );
+    }
+
+    #[test]
+    fn non_deepseek_none_suffix_is_preserved() {
+        assert_eq!(
+            genai_model_name(&AiProviderKind::Openai, "gpt-test-none"),
+            "gpt-test-none"
         );
     }
 }
