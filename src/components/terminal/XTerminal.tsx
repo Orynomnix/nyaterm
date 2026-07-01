@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -533,6 +534,7 @@ export default function XTerminal({
       removePopup: removeLinkPopup,
     } = createTerminalLinkHandlers(terminal, tRef);
     const searchAddon = new SearchAddon({ highlightLimit: TERMINAL_SEARCH_VISIBLE_MATCH_LIMIT });
+    const unicodeGraphemesAddon = new UnicodeGraphemesAddon();
     const zmodemHandler = createZmodemEventHandler(
       terminal,
       sessionId,
@@ -544,6 +546,7 @@ export default function XTerminal({
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
     terminal.loadAddon(searchAddon);
+    terminal.loadAddon(unicodeGraphemesAddon);
     terminal.open(containerRef.current);
 
     const trimDisposable = (
