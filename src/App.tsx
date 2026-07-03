@@ -46,9 +46,10 @@ import {
   buildTerminalCommandInput,
   clearSessionCommandHistory,
   sendSessionInput,
+  sendSessionInputWithSync,
 } from "./lib/sessionInput";
 import { buildSmartSplitLayout, type SmartSplitMode } from "./lib/smartSplit";
-import { purgeSessionFromGroups } from "./lib/syncInputGroups";
+import { getSyncPeers, purgeSessionFromGroups } from "./lib/syncInputGroups";
 import {
   findTerminalWindowLeafById,
   findTerminalWindowLeafByTabId,
@@ -1157,32 +1158,61 @@ function App() {
     [tabs, setActivePane, setActiveTabId],
   );
 
+  const getQuickCommandPeerSessionIds = useCallback(
+    (sessionId: string) => {
+      const peerSessionIds = new Set(getSyncPeers(sessionId, syncGroups));
+
+      if (broadcastToAll) {
+        for (const tab of tabs) {
+          for (const pane of collectSessionPanes(tab.root)) {
+            if (pane.sessionId !== sessionId && hasLiveSession(pane)) {
+              peerSessionIds.add(pane.sessionId);
+            }
+          }
+        }
+      }
+
+      return [...peerSessionIds];
+    },
+    [broadcastToAll, syncGroups, tabs],
+  );
+
   const handleHistoryCommand = useCallback(
     (command: string, execute: boolean = true) => {
-      if (activePane && !activePane.connecting) {
-        if (activePane.connectError) return;
-        const { sessionId } = activePane;
-        void sendSessionInput(sessionId, buildTerminalCommandInput(command, execute), {
-          preview: execute ? { kind: "reset" } : { kind: "data", data: command },
-          registerSubmission: execute ? command : null,
-        }).catch(() => {});
-        import("@tauri-apps/api/event").then(({ emit }) => {
-          emit(`focus-terminal-${sessionId}`);
-        });
-      }
+      if (!hasLiveSession(activePane)) return;
+
+      const { sessionId } = activePane;
+      const data = buildTerminalCommandInput(command, execute);
+      const options = {
+        preview: execute
+          ? ({ kind: "reset" } as const)
+          : ({ kind: "data", data: command } as const),
+        registerSubmission: execute ? command : null,
+      };
+      const peerSessionIds = getQuickCommandPeerSessionIds(sessionId);
+      const sendInput =
+        peerSessionIds.length > 0
+          ? sendSessionInputWithSync(sessionId, data, peerSessionIds, options)
+          : sendSessionInput(sessionId, data, options);
+
+      void sendInput.catch(() => {});
+      import("@tauri-apps/api/event").then(({ emit }) => {
+        emit(`focus-terminal-${sessionId}`);
+      });
     },
-    [activePane],
+    [activePane, getQuickCommandPeerSessionIds],
   );
 
   const handleSendToAllSessions = useCallback(
-    (command: string) => {
+    (command: string, execute: boolean = true) => {
+      const data = buildTerminalCommandInput(command, execute);
       for (const tab of tabs) {
         for (const pane of collectSessionPanes(tab.root)) {
-          if (!hasLiveSession(pane) || pane.type !== "SSH") continue;
+          if (!hasLiveSession(pane) || !isNonSerialSessionType(pane.type)) continue;
           const { sessionId } = pane;
-          void sendSessionInput(sessionId, buildTerminalCommandInput(command), {
-            preview: { kind: "reset" },
-            registerSubmission: command,
+          void sendSessionInput(sessionId, data, {
+            preview: execute ? { kind: "reset" } : { kind: "data", data: command },
+            registerSubmission: execute ? command : null,
           }).catch(() => {});
         }
       }

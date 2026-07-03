@@ -95,7 +95,7 @@ interface AppLayoutProps {
     onQuickCmdResize: (delta: number) => void;
     onSerialSendResize: (delta: number) => void;
     onCommandSend: (command: string, execute?: boolean) => void;
-    onSendToAllSessions: (command: string) => void;
+    onSendToAllSessions: (command: string, execute?: boolean) => void;
   };
   dialogs: {
     aboutOpen: boolean;

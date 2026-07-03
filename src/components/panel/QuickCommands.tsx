@@ -68,7 +68,7 @@ import { QUICK_ICONS } from "../icons";
 
 interface QuickCommandsProps {
   onSend: (command: string, execute?: boolean) => void;
-  onSendToAll?: (command: string) => void;
+  onSendToAll?: (command: string, execute?: boolean) => void;
 }
 
 const COLOR_DOT: Record<string, string> = {
@@ -240,7 +240,7 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
         setPromptVars(vars);
         setPromptSendToAll(true);
       } else {
-        onSendToAll(cmd.command);
+        onSendToAll(cmd.command, cmd.execution_mode !== "append");
       }
     },
     [onSendToAll, incrementUseCount],
@@ -250,7 +250,7 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     (resolvedCommand: string) => {
       if (promptCmd) {
         if (promptSendToAll && onSendToAll) {
-          onSendToAll(resolvedCommand);
+          onSendToAll(resolvedCommand, promptCmd.execution_mode !== "append");
         } else {
           onSend(resolvedCommand, promptCmd.execution_mode !== "append");
         }
