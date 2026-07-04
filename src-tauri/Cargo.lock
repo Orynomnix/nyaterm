@@ -4656,18 +4656,17 @@ dependencies = [
 
 [[package]]
 name = "pageant"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b537f975f6d8dcf48db368d7ec209d583b015713b5df0f5d92d2631e4ff5595"
+version = "0.2.1"
 dependencies = [
+ "base16ct 1.0.0",
  "byteorder",
  "bytes",
  "delegate",
  "futures",
  "log",
- "rand 0.8.5",
- "sha2 0.10.9",
- "thiserror 1.0.69",
+ "rand 0.10.0",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
  "tokio",
  "windows 0.62.2",
  "windows-strings 0.5.1",
@@ -5829,8 +5828,6 @@ dependencies = [
 [[package]]
 name = "russh"
 version = "0.62.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20d2039c3e50abb1ec3bdadea27098679da12a33befa9ab4e62adad9a13ebcb2"
 dependencies = [
  "aes 0.9.1",
  "aws-lc-rs",
@@ -5902,8 +5899,6 @@ dependencies = [
 [[package]]
 name = "russh-cryptovec"
 version = "0.62.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aec6cb630dbe85d72ffd7bcd95f07e1bd69f9f270ee8adfa1afe443a6331438"
 dependencies = [
  "log",
  "nix 0.31.2",
@@ -5932,8 +5927,6 @@ dependencies = [
 [[package]]
 name = "russh-util"
 version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668424a5dde0bcb45b55ba7de8476b93831b4aa2fa6947e145f3b053e22c60b6"
 dependencies = [
  "chrono",
  "tokio",
