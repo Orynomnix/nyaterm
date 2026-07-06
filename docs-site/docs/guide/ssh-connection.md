@@ -220,6 +220,8 @@ NyaTerm 支持导入其他客户端的会话配置，目前可导入：
 - **Xshell**（`.xts`）
 - **MobaXterm**（`.mxtsessions`）
 - **WindTerm**（`.sessions`）
+- **SecureCRT**（`.xml`）
+- **FinalShell**（`conn` 目录）
 - **NyaTerm JSON**（`.json`）
 
 ### 从 NyaTerm JSON 导入

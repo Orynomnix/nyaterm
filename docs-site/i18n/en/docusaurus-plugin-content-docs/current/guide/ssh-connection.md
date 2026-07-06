@@ -222,6 +222,8 @@ NyaTerm can import session definitions from other terminal clients. Current supp
 - **Xshell** (`.xts`)
 - **MobaXterm** (`.mxtsessions`)
 - **WindTerm** (`.sessions`)
+- **SecureCRT** (`.xml`)
+- **FinalShell** (`conn` directory)
 - **NyaTerm JSON** (`.json`)
 
 ### Import from NyaTerm JSON
