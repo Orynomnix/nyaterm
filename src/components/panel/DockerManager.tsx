@@ -57,7 +57,6 @@ const COMPOSE_SERVICE_ROW_HEIGHT = 58;
 const TAB_GAP_PX = 4;
 const TAB_LIST_PADDING_PX = 8;
 const MIN_TAB_WIDTH_PX = 62;
-const DOCKER_RESOURCE_TABS: DockerResourceTab[] = ["images", "volumes", "networks", "compose"];
 const SHELL_SELECTOR =
   "if command -v bash >/dev/null 2>&1; then exec bash; elif command -v zsh >/dev/null 2>&1; then exec zsh; elif command -v fish >/dev/null 2>&1; then exec fish; elif command -v ash >/dev/null 2>&1; then exec ash; else exec sh; fi";
 
@@ -270,24 +269,8 @@ export default function DockerManager({ activeSessionId }: DockerManagerProps) {
   useEffect(() => {
     if (!enabled || !activeSessionId || !overview?.available || !isResourceTab(tab)) return;
     if (tab === "compose" && !overview.compose_available) return;
-    if (!loadedTabs.has(tab) && !loadingTabs.has(tab)) {
+    if (!loadedTabs.has(tab) && !loadingTabs.has(tab) && !failedTabs.has(tab)) {
       void fetchResourceTab(activeSessionId, tab);
-    }
-  }, [activeSessionId, enabled, fetchResourceTab, loadedTabs, loadingTabs, overview, tab]);
-
-  useEffect(() => {
-    if (!enabled || !activeSessionId || !overview?.available) return;
-
-    for (const resourceTab of DOCKER_RESOURCE_TABS) {
-      if (resourceTab === "compose" && !overview.compose_available) continue;
-      if (
-        loadedTabs.has(resourceTab) ||
-        loadingTabs.has(resourceTab) ||
-        failedTabs.has(resourceTab)
-      ) {
-        continue;
-      }
-      void fetchResourceTab(activeSessionId, resourceTab);
     }
   }, [
     activeSessionId,
@@ -296,8 +279,8 @@ export default function DockerManager({ activeSessionId }: DockerManagerProps) {
     fetchResourceTab,
     loadedTabs,
     loadingTabs,
-    overview?.available,
-    overview?.compose_available,
+    overview,
+    tab,
   ]);
 
   useEffect(() => {
