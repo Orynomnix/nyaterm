@@ -78,6 +78,92 @@ mod tests {
 }
 "#;
 
+    const ELECTERM_SAMPLE_JSON: &str = r##"
+{
+  "bookmarkGroups": [
+    {
+      "id": "duQ8j9f",
+      "title": "dev",
+      "bookmarkIds": [
+        "PfSRKWV"
+      ],
+      "color": "#e99695",
+      "level": 1
+    },
+    {
+      "id": "default",
+      "title": "default",
+      "bookmarkIds": [
+        "3czUiXi"
+      ],
+      "bookmarkGroupIds": []
+    }
+  ],
+  "bookmarks": [
+    {
+      "id": "PfSRKWV",
+      "title": "77",
+      "host": "192.168.142.77",
+      "username": "root",
+      "authType": "password",
+      "port": 22,
+      "useSshAgent": true,
+      "sshAgent": "",
+      "runScripts": [
+        {
+          "delay": 500,
+          "script": ""
+        }
+      ],
+      "envLang": "en_US.UTF-8",
+      "encode": "utf-8",
+      "type": "ssh",
+      "enableSsh": true,
+      "enableSftp": true,
+      "term": "xterm-256color",
+      "displayRaw": false,
+      "cipher": [],
+      "compress": [],
+      "serverHostKey": [],
+      "sshTunnels": [],
+      "connectionHoppings": [],
+      "color": "#ffab4a",
+      "quickCommands": []
+    },
+    {
+      "id": "3czUiXi",
+      "title": "56",
+      "host": "192.168.142.56",
+      "username": "root",
+      "authType": "password",
+      "port": 22,
+      "useSshAgent": true,
+      "sshAgent": "",
+      "runScripts": [
+        {
+          "delay": 500,
+          "script": ""
+        }
+      ],
+      "envLang": "en_US.UTF-8",
+      "encode": "utf-8",
+      "type": "ssh",
+      "enableSsh": true,
+      "enableSftp": true,
+      "term": "xterm-256color",
+      "displayRaw": false,
+      "cipher": [],
+      "compress": [],
+      "serverHostKey": [],
+      "sshTunnels": [],
+      "connectionHoppings": [],
+      "color": "#24292e",
+      "quickCommands": []
+    }
+  ]
+}
+"##;
+
     #[test]
     fn windterm_import_splits_user_at_host_targets() {
         let sessions = parse_windterm_content(
@@ -280,7 +366,7 @@ mod tests {
     fn nyaterm_json_sample_import_prepares_supported_shapes() {
         crate::utils::crypto::set_master_password(None);
 
-        let prepared = parse_nyaterm_json_content(SAMPLE_JSON).expect("parse sample");
+        let prepared = parse_json_import_content(SAMPLE_JSON).expect("parse sample");
 
         assert_eq!(prepared.groups.len(), 3);
         assert_eq!(prepared.passwords.len(), 1);
@@ -504,6 +590,125 @@ mod tests {
             &prepared.connections[0].config,
             ConnectionType::Ssh { port: 22123, .. }
         ));
+    }
+
+    #[test]
+    fn electerm_imports_sample_bookmarks_with_groups() {
+        let prepared = parse_json_import_content(ELECTERM_SAMPLE_JSON).expect("parse electerm");
+
+        assert_eq!(prepared.passwords.len(), 0);
+        assert_eq!(prepared.ssh_keys.len(), 0);
+        assert_eq!(prepared.connections.len(), 2);
+        assert_eq!(prepared.groups.len(), 2);
+
+        let first = &prepared.connections[0];
+        assert_eq!(first.name, "77");
+        assert_eq!(first.group_path, Some(vec!["dev".to_string()]));
+        assert!(first.icon.is_none());
+        assert_eq!(first.auth.as_ref().expect("auth").mode, "password");
+        assert!(matches!(
+            &first.config,
+            ConnectionType::Ssh {
+                host,
+                port: 22,
+                username,
+                ..
+            } if host == "192.168.142.77" && username == "root"
+        ));
+
+        let second = &prepared.connections[1];
+        assert_eq!(second.name, "56");
+        assert_eq!(second.group_path, Some(vec!["default".to_string()]));
+        assert!(matches!(
+            &second.config,
+            ConnectionType::Ssh {
+                host,
+                port: 22,
+                username,
+                ..
+            } if host == "192.168.142.56" && username == "root"
+        ));
+    }
+
+    #[test]
+    fn electerm_imports_nested_bookmark_groups() {
+        let json = r#"
+{
+  "bookmarkGroups": [
+    { "id": "prod", "title": "Prod", "bookmarkGroupIds": ["web"] },
+    { "id": "web", "title": "Web", "bookmarkIds": ["host-1"] }
+  ],
+  "bookmarks": [
+    {
+      "id": "host-1",
+      "title": "App",
+      "host": "app.example.com",
+      "username": "deploy",
+      "authType": "password",
+      "port": 2222,
+      "type": "ssh"
+    }
+  ]
+}
+"#;
+
+        let prepared = parse_json_import_content(json).expect("parse electerm");
+
+        assert_eq!(prepared.groups, vec![vec!["Prod".to_string(), "Web".to_string()]]);
+        assert_eq!(
+            prepared.connections[0].group_path,
+            Some(vec!["Prod".to_string(), "Web".to_string()])
+        );
+        assert!(matches!(
+            &prepared.connections[0].config,
+            ConnectionType::Ssh { port: 2222, .. }
+        ));
+    }
+
+    #[test]
+    fn electerm_skips_unsupported_bookmarks_and_defaults_missing_fields() {
+        let json = r#"
+{
+  "bookmarkGroups": [
+    { "id": "default", "title": "default", "bookmarkIds": ["disabled", "non-ssh", "empty", "bad-port", "valid"] }
+  ],
+  "bookmarks": [
+    { "id": "disabled", "title": "Disabled", "host": "disabled.example.com", "type": "ssh", "enableSsh": false },
+    { "id": "non-ssh", "title": "Telnet", "host": "telnet.example.com", "type": "telnet" },
+    { "id": "empty", "title": "Empty", "host": "", "type": "ssh" },
+    { "id": "bad-port", "title": "Bad Port", "host": "bad.example.com", "type": "ssh", "port": 70000 },
+    { "id": "valid", "title": "", "host": "valid.example.com", "type": "ssh", "authType": "publickey" }
+  ]
+}
+"#;
+
+        let prepared = parse_json_import_content(json).expect("parse electerm");
+
+        assert_eq!(prepared.connections.len(), 1);
+        let connection = &prepared.connections[0];
+        assert_eq!(connection.name, "valid.example.com");
+        assert_eq!(connection.group_path, Some(vec!["default".to_string()]));
+        assert_eq!(connection.auth.as_ref().expect("auth").mode, "none");
+        assert!(matches!(
+            &connection.config,
+            ConnectionType::Ssh {
+                host,
+                port: 22,
+                username,
+                ..
+            } if host == "valid.example.com" && username == "root"
+        ));
+    }
+
+    #[test]
+    fn json_import_rejects_unknown_json_shapes() {
+        let error = parse_json_import_content(r#"{"bookmarks":[]}"#).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("Expected NyaTerm JSON or Electerm bookmarks JSON")
+        );
     }
 
     #[test]

@@ -89,6 +89,14 @@ const IMPORT_SOURCES: ImportSource[] = [
     picker: "directory",
   },
   {
+    id: "electerm",
+    name: "Electerm",
+    icon: "/electerm.svg",
+    extensions: ["json"],
+    hint: ".json",
+    type: "sessions",
+  },
+  {
     id: "nyaterm_json",
     name: "JSON",
     icon: MdDataObject,

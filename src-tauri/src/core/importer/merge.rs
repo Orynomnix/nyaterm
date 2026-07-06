@@ -171,6 +171,45 @@ fn import_prepared_nyaterm_json(
     Ok(count)
 }
 
+fn parse_json_import(path: &str) -> AppResult<PreparedJsonImport> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| AppError::Config(format!("Cannot read file: {e}")))?;
+    parse_json_import_content(&content)
+}
+
+fn parse_json_import_content(content: &str) -> AppResult<PreparedJsonImport> {
+    let value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| AppError::Config(format!("Invalid JSON import file: {e}")))?;
+
+    if is_electerm_bookmarks_json(&value) {
+        return parse_electerm_json_content(content);
+    }
+    if is_nyaterm_json_import(&value) {
+        return parse_nyaterm_json_content(content);
+    }
+
+    Err(AppError::Config(
+        "Unsupported JSON import file. Expected NyaTerm JSON or Electerm bookmarks JSON."
+            .to_string(),
+    ))
+}
+
+fn is_electerm_bookmarks_json(value: &serde_json::Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| object.contains_key("bookmarkGroups") && object.contains_key("bookmarks"))
+}
+
+fn is_nyaterm_json_import(value: &serde_json::Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object.contains_key("version")
+            || object.contains_key("passwords")
+            || object.contains_key("ssh_keys")
+            || object.contains_key("groups")
+            || object.contains_key("sessions")
+    })
+}
+
 // ── Tauri Command ───────────────────────────────────────────────────────────
 
 pub fn import_sessions(app: tauri::AppHandle, file_path: String) -> AppResult<usize> {
@@ -193,10 +232,10 @@ pub fn import_sessions(app: tauri::AppHandle, file_path: String) -> AppResult<us
     } else if lower.ends_with(".xml") {
         import_legacy_sessions(&app, parse_securecrt(&file_path)?)?
     } else if lower.ends_with(".json") {
-        import_prepared_nyaterm_json(&app, parse_nyaterm_json(&file_path)?)?
+        import_prepared_nyaterm_json(&app, parse_json_import(&file_path)?)?
     } else {
         return Err(AppError::Config(
-            "Unsupported file format. Please use .xts (Xshell), .mxtsessions (MobaXterm), .sessions (WindTerm), .xml (SecureCRT), .json (NyaTerm JSON), or a FinalShell conn directory."
+            "Unsupported file format. Please use .xts (Xshell), .mxtsessions (MobaXterm), .sessions (WindTerm), .xml (SecureCRT), .json (NyaTerm JSON or Electerm bookmarks), or a FinalShell conn directory."
                 .to_string(),
         ));
     };

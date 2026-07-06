@@ -1,9 +1,3 @@
-fn parse_nyaterm_json(path: &str) -> AppResult<PreparedJsonImport> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| AppError::Config(format!("Cannot read file: {e}")))?;
-    parse_nyaterm_json_content(&content)
-}
-
 fn parse_nyaterm_json_content(content: &str) -> AppResult<PreparedJsonImport> {
     let file: NyatermJsonImportFile = serde_json::from_str(content)
         .map_err(|e| AppError::Config(format!("Invalid NyaTerm JSON: {e}")))?;
