@@ -16,6 +16,7 @@ import {
   MdInfo,
   MdMenu,
   MdMenuBook,
+  MdMerge,
   MdPalette,
   MdRestartAlt,
   MdSearch,
@@ -95,6 +96,7 @@ const iconMap: Record<string, React.ElementType> = {
   file_export: BiExport,
   file_import: BiImport,
   splitscreen: MdSplitscreen,
+  merge: MdMerge,
   dashboard: MdDashboard,
   swap_horiz: MdSwapHoriz,
   swap_vert: MdSwapVert,
@@ -124,6 +126,8 @@ interface HeaderProps {
   activeTab?: Tab | null;
   savedConnections?: SavedConnection[];
   onSmartSplit?: (mode: "auto" | "horizontal" | "vertical") => void;
+  onUnsplit?: () => void;
+  canUnsplit?: boolean;
   onManageSyncGroups?: () => void;
   onBroadcastToAll?: () => void;
   broadcastToAll?: boolean;
@@ -138,6 +142,7 @@ interface MenuItem {
   separator?: boolean;
   submenu?: MenuItem[];
   checked?: boolean;
+  disabled?: boolean;
   icon?: string;
   shortcut?: string;
 }
@@ -155,6 +160,8 @@ export default function Header({
   activeTab,
   savedConnections,
   onSmartSplit,
+  onUnsplit,
+  canUnsplit,
   onManageSyncGroups,
   onBroadcastToAll,
   broadcastToAll,
@@ -330,6 +337,12 @@ export default function Header({
           },
         ],
       },
+      {
+        label: t("menu.unsplit"),
+        icon: "merge",
+        action: () => onUnsplit?.(),
+        disabled: !canUnsplit,
+      },
       { label: "separator", separator: true },
       {
         label: t("menu.syncInput"),
@@ -403,7 +416,7 @@ export default function Header({
     if (item.submenu) {
       return (
         <MenubarSub key={item.label}>
-          <MenubarSubTrigger>
+          <MenubarSubTrigger disabled={item.disabled}>
             {item.icon && (
               <DynamicIcon
                 name={item.icon}
@@ -426,6 +439,7 @@ export default function Header({
         <MenubarCheckboxItem
           key={item.label}
           checked={item.checked}
+          disabled={item.disabled}
           onCheckedChange={() => {
             item.action?.();
           }}
@@ -439,6 +453,7 @@ export default function Header({
     return (
       <MenubarItem
         key={item.label}
+        disabled={item.disabled}
         onClick={() => {
           item.action?.();
         }}

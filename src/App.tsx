@@ -2715,6 +2715,8 @@ function App() {
           activeTab,
           savedConnections,
           onSmartSplit: handleSmartSplit,
+          onUnsplit: handleUnsplit,
+          canUnsplit: terminalWindows?.kind === "split",
           onManageSyncGroups: () => setShowSyncGroupDialog(true),
           onBroadcastToAll: () => setBroadcastToAll((prev) => !prev),
           broadcastToAll,
