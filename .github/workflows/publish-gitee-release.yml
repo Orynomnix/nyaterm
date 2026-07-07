@@ -31,14 +31,8 @@ env:
   GITEE_REPO: ${{ vars.GITEE_REPO }}
   GITEE_API_BASE: ${{ vars.GITEE_API_BASE || 'https://gitee.com/api/v5' }}
   MAX_GITEE_ASSET_MB: ${{ vars.MAX_GITEE_ASSET_MB || '99' }}
-
-  # 只作为兜底。正常上传到 Gitee Release 附件区时，不会在正文展示 R2 链接。
   R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
-
   UPLOAD_SMALL_ASSETS: ${{ inputs.upload_small_assets || 'true' }}
-
-  # false：正文和 Release 创建成功即可，不因单个附件上传失败中断整个发版
-  # true：任意附件上传失败即失败
   FAIL_ON_GITEE_ASSET_UPLOAD_ERROR: "false"
 
 jobs:
@@ -110,6 +104,14 @@ jobs:
 
           echo "GitHub release metadata:"
           jq '{ tagName, name, isPrerelease, isDraft, url, targetCommitish }' github-release.json
+
+      - name: Prepare clean workspace
+        shell: bash
+        run: |
+          rm -rf release-assets
+          rm -f github-release.json
+          rm -rf "$RUNNER_TEMP/gitee-release-venv"
+          mkdir -p release-assets
 
       - name: Download GitHub release assets
         env:
@@ -577,3 +579,11 @@ jobs:
           print(f"Skipped assets: {len(skipped_files)}")
           print(f"Failed assets: {len(failed_files)}")
           PY
+
+      - name: Cleanup release assets
+        if: always()
+        shell: bash
+        run: |
+          rm -rf release-assets
+          rm -f github-release.json
+          rm -rf "$RUNNER_TEMP/gitee-release-venv"
