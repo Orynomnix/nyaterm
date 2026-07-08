@@ -350,7 +350,7 @@ pnpm tauri dev
 感谢所有为 NyaTerm 做出贡献的开发者、设计师、测试人员和社区成员！
 
 <a href="https://github.com/nyakang/nyaterm/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=nyakang/nyaterm" />
+  <img src="https://contrib-wall.coderkang.workers.dev/image?snapshot=wG7-1rsxhbR1IcQQWX8-sNGo&amp;sealed_token=eyJ2IjoxLCJ0eXBlIjoic25hcHNob3QiLCJzbmFwc2hvdCI6IndHNy0xcnN4aGJSMUljUVFXWDgtc05HbyIsImV4cCI6MTgxNTAzNDc4NH0.NxTbzm2trBDHw1YRrA_Npf1Ikf5_lwk6dwQ6BWj2AvY&amp;sealed_github_token=8YR27W8pqbfGje5f.vuGeXuKRgotJYeJS0-r1ZjtIRJY6NyhYeE1A4KeFb2jT5ywm__-05jmjBmDa_4xpVxf60rbzngumBLLs7aMbh1N9WmN6BC3fj657FFCv_ubLx2F4S281sdsiZOXFZOWXkLMRVQJtnP-5QexdJueqgC1GSUQuBhQjRKMnYkAtryYC9tcXYuPxb4gCVt0r0h5ieOhiYDok22hkaJ6eUyq5ZZYp7gRSJlme0Y2XY370Zow" alt="Contributors to nyakang/nyaterm" />
 </a>
 
 ---
