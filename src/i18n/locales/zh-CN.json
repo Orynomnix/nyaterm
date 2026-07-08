@@ -1793,7 +1793,7 @@
     "windowTransparency": "透明度",
     "windowTransparencyBlur": "启用亚克力材料",
     "windowTransparencyBlurDesc": "在透明窗口上叠加系统亚克力模糊材质。",
-    "windowTransparencyDesc": "设置窗口背景不透明度和亚克力材料。仅 Windows 11 支持。",
+    "windowTransparencyDesc": "设置窗口背景不透明度。",
     "windowTransparencyOpacity": "背景不透明度",
     "windowTransparencyOpacityDesc": "100% 为不透明，0% 为完全透明。",
     "wordSeparators": "单词分隔符",

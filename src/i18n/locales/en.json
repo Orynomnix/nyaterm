@@ -1793,7 +1793,7 @@
     "windowTransparency": "Transparency",
     "windowTransparencyBlur": "Enable Acrylic Material",
     "windowTransparencyBlurDesc": "Adds the system Acrylic blur material behind transparent windows.",
-    "windowTransparencyDesc": "Set the window background opacity and acrylic material. Windows 11 only.",
+    "windowTransparencyDesc": "Set the window background opacity.",
     "windowTransparencyOpacity": "Background Opacity",
     "windowTransparencyOpacityDesc": "100% is opaque. 0% is fully transparent.",
     "wordSeparators": "Word Separators",
