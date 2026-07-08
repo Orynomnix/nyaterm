@@ -10,3 +10,6 @@ pub fn install_external_file_drop_bridge(
 ) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
+
+pub mod window_transparency;
+pub use window_transparency::{WindowTransparency, apply_to_all_main_windows, apply_to_window};

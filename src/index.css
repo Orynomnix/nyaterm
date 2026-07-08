@@ -243,6 +243,34 @@ textarea,
   background-color: transparent !important;
 }
 
+/* Native window transparency: make the webview fully transparent
+   so the native window backdrop shows through, independent of background image. */
+.nyaterm-wallpaper-shell[data-window-transparency="true"] {
+  background-color: transparent !important;
+}
+
+html:has(.nyaterm-wallpaper-shell[data-window-transparency="true"]),
+body:has(.nyaterm-wallpaper-shell[data-window-transparency="true"]),
+body:has(.nyaterm-wallpaper-shell[data-window-transparency="true"]) #root {
+  background-color: transparent !important;
+}
+
+.nyaterm-wallpaper-shell[data-window-transparency="true"] .xterm,
+.nyaterm-wallpaper-shell[data-window-transparency="true"] .xterm .xterm-viewport,
+.nyaterm-wallpaper-shell[data-window-transparency="true"] .xterm .xterm-screen,
+.nyaterm-wallpaper-shell[data-window-transparency="true"] .xterm .xterm-screen canvas {
+  background-color: transparent !important;
+}
+
+.nyaterm-wallpaper-shell[data-window-transparency="true"] .nyaterm-wallpaper-card {
+  background-color: var(--df-bg-panel) !important;
+}
+
+.nyaterm-wallpaper-shell[data-window-transparency-blur="true"] .nyaterm-wallpaper-card {
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+}
+
 .nyaterm-wallpaper-shell[data-wallpaper-enabled="true"] .nyaterm-wallpaper-transparent-surface {
   background-color: transparent !important;
 }

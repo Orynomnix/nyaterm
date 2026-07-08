@@ -2,12 +2,14 @@ import type { CSSProperties } from "react";
 import type { AppearanceSettings, BackgroundImageFit } from "@/types/global";
 import { invoke } from "./invoke";
 import { logger } from "./logger";
+import { isWindows } from "./platform";
 import type { TerminalColors, ThemeColors } from "./themes";
 
 export const BACKGROUND_IMAGE_FITS = ["cover", "contain", "stretch", "tile"] as const;
 export const DEFAULT_BACKGROUND_IMAGE_FIT: BackgroundImageFit = "cover";
 export const DEFAULT_BACKGROUND_IMAGE_OPACITY = 0.45;
 export const DEFAULT_BACKGROUND_CONTENT_OPACITY = 0.78;
+export const DEFAULT_WINDOW_TRANSPARENCY_OPACITY = 1;
 
 type CssVars = CSSProperties & Record<`--${string}`, string>;
 
@@ -29,13 +31,36 @@ export function isBackgroundImageEnabled(
 }
 
 export function isTerminalTransparencyEnabled(
-  appearance: Pick<AppearanceSettings, "background_image_path">,
+  appearance: Pick<
+    AppearanceSettings,
+    "background_image_path" | "window_transparency" | "window_transparency_tint"
+  >,
 ) {
-  return isBackgroundImageEnabled(appearance);
+  return isBackgroundImageEnabled(appearance) || isWindowTransparencyEnabled(appearance);
 }
 
 export function shouldSuspendTerminalWebglForBackground(appearance: AppearanceSettings) {
   return isTerminalTransparencyEnabled(appearance);
+}
+
+export function getWindowTransparencyOpacity(
+  appearance: Pick<AppearanceSettings, "window_transparency" | "window_transparency_tint">,
+) {
+  return clampOpacity(appearance.window_transparency_tint, DEFAULT_WINDOW_TRANSPARENCY_OPACITY);
+}
+
+export function windowTransparencyModeForOpacity(opacity: number): "none" | "transparent" {
+  return clampOpacity(opacity, DEFAULT_WINDOW_TRANSPARENCY_OPACITY) >= 1
+    ? "none"
+    : "transparent";
+}
+
+/** Native window transparency makes the window show through to the desktop.
+ * Requires translucent webview surface colors. */
+export function isWindowTransparencyEnabled(
+  appearance: Pick<AppearanceSettings, "window_transparency" | "window_transparency_tint">,
+) {
+  return isWindows && getWindowTransparencyOpacity(appearance) < 1;
 }
 
 function quoteCssUrl(url: string) {
@@ -129,6 +154,32 @@ export function buildSurfaceCssVariables(
   colors: ThemeColors,
   appearance: AppearanceSettings,
 ): CssVars {
+  // Native window transparency uses translucent surfaces so apps behind the
+  // window show through while the terminal remains readable.
+  if (isWindowTransparencyEnabled(appearance)) {
+    const surfaceOpacity = getWindowTransparencyOpacity(appearance);
+    const bg = colorWithAlpha(colors.bg, surfaceOpacity);
+    const bgPanel = colorWithAlpha(colors.bgPanel, surfaceOpacity);
+    const bgTerminal = colorWithAlpha(colors.bgTerminal, surfaceOpacity);
+    const bgHover = colorWithAlpha(colors.bgHover, surfaceOpacity);
+    const bgInput = colorWithAlpha(colors.bgInput, surfaceOpacity);
+    const bgSectionHeader = colorWithAlpha(colors.bgSectionHeader, surfaceOpacity);
+    return {
+      "--df-bg": bg,
+      "--df-bg-panel": bgPanel,
+      "--df-bg-terminal": bgTerminal,
+      "--df-bg-hover": bgHover,
+      "--df-bg-input": bgInput,
+      "--df-bg-section-header": bgSectionHeader,
+      "--background": bg,
+      "--card": bgPanel,
+      "--popover": bgPanel,
+      "--secondary": bgHover,
+      "--muted": bgHover,
+      "--accent": bgHover,
+      "--input": colors.border,
+    };
+  }
   const surfaceOpacity = isBackgroundImageEnabled(appearance)
     ? clampOpacity(appearance.background_opacity)
     : 1;

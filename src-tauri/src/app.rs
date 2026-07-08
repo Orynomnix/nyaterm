@@ -96,6 +96,36 @@ fn install_main_window_bridges(window: &tauri::WebviewWindow) {
             error
         );
     }
+    apply_window_transparency_for_window(window);
+}
+
+/// Read the configured window transparency from settings and apply it to a
+/// single window. Errors loading settings are treated as "no effect".
+pub fn apply_window_transparency_for_window(window: &tauri::WebviewWindow) {
+    let app = window.app_handle();
+    let Ok(settings) = crate::config::load_app_settings(app) else {
+        return;
+    };
+    let appearance = &settings.appearance;
+    let mode = crate::platform::WindowTransparency::from_settings(
+        &appearance.window_transparency,
+        appearance.window_transparency_tint,
+    );
+    crate::platform::apply_to_window(window, mode, appearance.window_transparency_blur);
+}
+
+/// Re-apply the configured window transparency to every main window. Called
+/// after settings change so the user sees the effect immediately.
+pub fn apply_window_transparency_to_all(app: &tauri::AppHandle) {
+    let Ok(settings) = crate::config::load_app_settings(app) else {
+        return;
+    };
+    let appearance = &settings.appearance;
+    let mode = crate::platform::WindowTransparency::from_settings(
+        &appearance.window_transparency,
+        appearance.window_transparency_tint,
+    );
+    crate::platform::apply_to_all_main_windows(app, mode, appearance.window_transparency_blur);
 }
 
 fn create_main_window_with_label(

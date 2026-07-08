@@ -178,6 +178,13 @@ tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38.2"
+# Native Acrylic window material. Pinned to 0.6 to match the version
+# tauri 2.x already pulls in transitively, avoiding duplicate crate versions.
+window-vibrancy = "0.6"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+] }
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

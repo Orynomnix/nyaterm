@@ -38,6 +38,18 @@ pub struct AppearanceSettings {
     pub minimum_contrast_ratio: f64,
     #[serde(default = "default_false")]
     pub panel_multi_open: bool,
+    /// Internal transparency marker retained for persisted settings
+    /// compatibility. The visible UI derives behavior from
+    /// `window_transparency_tint`: 1.0 is opaque, below 1.0 is transparent.
+    #[serde(default)]
+    pub window_transparency: String,
+    /// Opacity for transparent window UI surfaces, 0.0 (fully transparent) to
+    /// 1.0 (fully opaque).
+    #[serde(default = "default_window_transparency_tint")]
+    pub window_transparency_tint: f64,
+    /// Whether native Acrylic material applies blur behind transparent windows.
+    #[serde(default = "default_false")]
+    pub window_transparency_blur: bool,
 }
 
 fn default_app_theme() -> String {
@@ -66,6 +78,9 @@ fn default_background_image_fit() -> String {
 }
 fn default_background_image_opacity() -> f64 {
     0.45
+}
+fn default_window_transparency_tint() -> f64 {
+    1.0
 }
 fn default_cursor_style() -> String {
     "block".to_string()
@@ -96,6 +111,9 @@ impl Default for AppearanceSettings {
             terminal_theme: None,
             minimum_contrast_ratio: default_minimum_contrast_ratio(),
             panel_multi_open: false,
+            window_transparency: String::from("none"),
+            window_transparency_tint: default_window_transparency_tint(),
+            window_transparency_blur: false,
         }
     }
 }
@@ -108,5 +126,80 @@ impl AppearanceSettings {
         }
         self.font_family = normalized;
         true
+    }
+
+    pub fn normalize_window_transparency(&mut self) -> bool {
+        let mut changed = false;
+        let mut opacity = self.window_transparency_tint;
+        if !opacity.is_finite() {
+            opacity = default_window_transparency_tint();
+            changed = true;
+        } else {
+            let clamped = opacity.clamp(0.0, 1.0);
+            if clamped != opacity {
+                opacity = clamped;
+                changed = true;
+            }
+        }
+
+        let legacy_mode = self.window_transparency.trim().to_ascii_lowercase();
+        let next_mode = if opacity >= 1.0 || legacy_mode == "none" {
+            if opacity < 1.0 {
+                opacity = default_window_transparency_tint();
+                changed = true;
+            }
+            "none"
+        } else {
+            "transparent"
+        };
+
+        if self.window_transparency != next_mode {
+            self.window_transparency = next_mode.to_string();
+            changed = true;
+        }
+        if self.window_transparency_tint != opacity {
+            self.window_transparency_tint = opacity;
+            changed = true;
+        }
+
+        changed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialized_default_keeps_acrylic_material_disabled() {
+        let settings: AppearanceSettings = serde_json::from_value(serde_json::json!({})).unwrap();
+
+        assert!(!settings.window_transparency_blur);
+    }
+
+    #[test]
+    fn normalize_window_transparency_keeps_legacy_none_opaque() {
+        let mut settings = AppearanceSettings {
+            window_transparency: "none".to_string(),
+            window_transparency_tint: 0.6,
+            ..Default::default()
+        };
+
+        assert!(settings.normalize_window_transparency());
+        assert_eq!(settings.window_transparency, "none");
+        assert_eq!(settings.window_transparency_tint, 1.0);
+    }
+
+    #[test]
+    fn normalize_window_transparency_keeps_transparent_opacity() {
+        let mut settings = AppearanceSettings {
+            window_transparency: "acrylic".to_string(),
+            window_transparency_tint: 0.35,
+            ..Default::default()
+        };
+
+        assert!(settings.normalize_window_transparency());
+        assert_eq!(settings.window_transparency, "transparent");
+        assert_eq!(settings.window_transparency_tint, 0.35);
     }
 }

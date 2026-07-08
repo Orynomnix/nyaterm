@@ -91,6 +91,7 @@ pub async fn persist_app_settings(
     mut settings: config::AppSettings,
 ) -> AppResult<()> {
     settings.appearance.normalize_terminal_font_family();
+    settings.appearance.normalize_window_transparency();
 
     let existing = match config::load_app_settings(app) {
         Ok(existing) => existing,
@@ -170,6 +171,7 @@ pub async fn persist_app_settings(
 
     manager.replace_settings(merged_cloud_sync).await?;
     schedule_cloud_sync_notify(app.clone());
+    crate::app::apply_window_transparency_to_all(&app);
     let _ = app.emit("settings-changed", ());
     crate::tray::schedule_refresh(app);
 

@@ -683,6 +683,9 @@ export interface GeneralSettings {
 
 export type BackgroundImageFit = "cover" | "contain" | "stretch" | "tile";
 
+/** Internal native transparency marker. Windows 11 only; other platforms no-op. */
+export type WindowTransparency = "none" | "transparent";
+
 export interface AppearanceSettings {
   theme: string;
   font_family: string;
@@ -701,6 +704,12 @@ export interface AppearanceSettings {
   minimum_contrast_ratio: number;
   /** Allow opening multiple side panels at once, stacked vertically. */
   panel_multi_open: boolean;
+  /** Internal native window transparency marker. */
+  window_transparency: WindowTransparency;
+  /** Surface opacity for transparent windows, 0.0 to 1.0. */
+  window_transparency_tint: number;
+  /** Whether native Acrylic material applies blur behind transparent windows. */
+  window_transparency_blur: boolean;
 }
 
 export interface ProxySettings {

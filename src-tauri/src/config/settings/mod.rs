@@ -112,6 +112,9 @@ pub fn load_app_settings(app: &AppHandle) -> AppResult<AppSettings> {
     if settings.appearance.normalize_terminal_font_family() {
         migrated = true;
     }
+    if settings.appearance.normalize_window_transparency() {
+        migrated = true;
+    }
 
     for list in [
         &mut settings.ui.activity_bar_layout.left_top,

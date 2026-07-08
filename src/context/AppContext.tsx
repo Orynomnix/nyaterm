@@ -207,6 +207,9 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     terminal_theme: null,
     minimum_contrast_ratio: 1,
     panel_multi_open: false,
+    window_transparency: "none",
+    window_transparency_tint: 1,
+    window_transparency_blur: false,
   },
   proxy: {
     enabled: false,

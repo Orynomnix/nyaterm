@@ -26,6 +26,7 @@ import { useTheme } from "@/context/ThemeContext";
 import {
   buildBackgroundImageLayerStyle,
   buildSurfaceCssVariables,
+  isWindowTransparencyEnabled,
   loadBackgroundImageDataUrl,
 } from "@/lib/backgroundImage";
 import { isMacOS } from "@/lib/platform";
@@ -182,7 +183,11 @@ export default function AppLayout({
   const shellStyle = useMemo(
     () => ({
       ...buildSurfaceCssVariables(theme.colors, effectiveAppearance),
-      backgroundColor: theme.colors.bg,
+      // When native window transparency is on, the shell background must be
+      // transparent so the native backdrop is visible through the webview.
+      backgroundColor: isWindowTransparencyEnabled(effectiveAppearance)
+        ? "transparent"
+        : theme.colors.bg,
       color: "var(--df-text)",
     }),
     [effectiveAppearance, theme.colors],
@@ -218,6 +223,15 @@ export default function AppLayout({
     <div
       className="nyaterm-wallpaper-shell font-display relative h-full min-h-0 overflow-hidden"
       data-wallpaper-enabled={backgroundEnabled ? "true" : "false"}
+      data-window-transparency={
+        isWindowTransparencyEnabled(effectiveAppearance) ? "true" : "false"
+      }
+      data-window-transparency-blur={
+        isWindowTransparencyEnabled(effectiveAppearance) &&
+        effectiveAppearance.window_transparency_blur
+          ? "true"
+          : "false"
+      }
       style={shellStyle}
     >
       {backgroundEnabled && (
