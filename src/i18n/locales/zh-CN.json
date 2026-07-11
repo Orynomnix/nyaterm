@@ -888,6 +888,7 @@
     "hotpHint": "按需生成验证码，每次生成都会推进计数器。",
     "loadingCode": "正在加载验证码",
     "sendToInput": "发送到输入框",
+    "sendToTerminal": "发送到终端",
     "submit": "验证",
     "title": "身份验证提示",
     "titleWithRound": "身份验证提示 {{round}}"
@@ -903,6 +904,7 @@
     "hide": "隐藏",
     "hideCodes": "隐藏验证码",
     "issuerPlaceholder": "发行方（如 GitHub）",
+    "noActiveTerminal": "没有活动终端",
     "noEntries": "暂无 OTP 条目",
     "period": "时间间隔（秒）",
     "qrImportFailed": "从二维码导入失败",
@@ -911,6 +913,7 @@
     "secretPlaceholder": "密钥（Base32 编码）",
     "secretUnchanged": "密钥未更改",
     "selectQrImage": "选择二维码图片",
+    "sendToTerminalFailed": "发送验证码到终端失败",
     "showCodes": "显示验证码",
     "title": "OTP 条目",
     "usernamePlaceholder": "用户名（如 user@example.com）",

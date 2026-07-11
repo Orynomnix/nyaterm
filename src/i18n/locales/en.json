@@ -888,6 +888,7 @@
     "hotpHint": "Generate on demand. The counter advances each time.",
     "loadingCode": "Loading",
     "sendToInput": "Send",
+    "sendToTerminal": "Send to terminal",
     "submit": "Verify",
     "title": "Authentication Prompt",
     "titleWithRound": "Authentication Prompt {{round}}"
@@ -903,6 +904,7 @@
     "hide": "Hide",
     "hideCodes": "Hide Codes",
     "issuerPlaceholder": "Issuer, e.g. GitHub",
+    "noActiveTerminal": "No active terminal",
     "noEntries": "No OTP entries",
     "period": "Period (s)",
     "qrImportFailed": "QR import failed",
@@ -911,6 +913,7 @@
     "secretPlaceholder": "Secret (Base32)",
     "secretUnchanged": "Secret unchanged",
     "selectQrImage": "Select QR Image",
+    "sendToTerminalFailed": "Failed to send code to terminal",
     "showCodes": "Show Codes",
     "title": "OTP",
     "usernamePlaceholder": "Username, e.g. user@example.com",
