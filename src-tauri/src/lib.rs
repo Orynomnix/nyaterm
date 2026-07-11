@@ -205,6 +205,7 @@ pub fn run() {
             cmd::credential::get_saved_credential_password,
             cmd::credential::save_credential,
             cmd::credential::delete_credential,
+            cmd::credential::reorder_credentials,
             cmd::settings::get_app_settings,
             cmd::settings::save_app_settings,
             cmd::settings::import_keyword_highlight_rules,

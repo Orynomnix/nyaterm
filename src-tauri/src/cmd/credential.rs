@@ -45,3 +45,26 @@ pub fn delete_credential(app: tauri::AppHandle, id: String) -> AppResult<()> {
     schedule_cloud_sync_notify(app.clone());
     Ok(())
 }
+
+#[derive(serde::Deserialize)]
+pub struct CredentialSortOrderUpdate {
+    pub id: String,
+    pub sort_order: i32,
+}
+
+#[tauri::command]
+pub fn reorder_credentials(
+    app: tauri::AppHandle,
+    updates: Vec<CredentialSortOrderUpdate>,
+) -> AppResult<()> {
+    let mut cfg = config::load_credentials(&app)?;
+    let updates = updates
+        .into_iter()
+        .map(|update| (update.id, update.sort_order))
+        .collect::<Vec<_>>();
+    config::reorder_credentials(&mut cfg, &updates);
+    config::save_credentials(&app, &cfg)?;
+    let _ = app.emit("credentials-changed", ());
+    schedule_cloud_sync_notify(app.clone());
+    Ok(())
+}

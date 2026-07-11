@@ -153,6 +153,7 @@ export interface SavedPassword {
 /** Terminal credential entry used for prompt-based autofill. */
 export interface SavedCredential {
   id: string;
+  sort_order: number;
   name: string;
   username: string;
   /** Plaintext password (only sent when creating/updating). */

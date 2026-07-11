@@ -32,8 +32,8 @@ pub use connection::{
 };
 #[allow(unused_imports)]
 pub use credential::{
-    CredentialsConfig, SavedCredential, load_credential_by_id, load_credentials, save_credentials,
-    upsert_credential,
+    CredentialsConfig, SavedCredential, load_credential_by_id, load_credentials,
+    reorder_credentials, save_credentials, upsert_credential,
 };
 #[allow(unused_imports)]
 pub use key::{

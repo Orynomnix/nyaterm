@@ -14,6 +14,8 @@ fn default_enabled() -> bool {
 pub struct SavedCredential {
     #[serde(default = "uuid_v4")]
     pub id: String,
+    #[serde(default)]
+    pub sort_order: i32,
     pub name: String,
     pub username: String,
     /// Encrypted password on disk; plaintext only after explicit decryption.
@@ -41,6 +43,7 @@ pub fn load_credentials(app: &AppHandle) -> AppResult<CredentialsConfig> {
     let mut config = CredentialsConfig {
         credentials: storage::list_credentials()?,
     };
+    sort_credentials(&mut config.credentials);
     for credential in &mut config.credentials {
         credential.has_password = credential.password.is_some();
     }
@@ -78,11 +81,21 @@ pub fn upsert_credential(
         .credentials
         .iter()
         .find(|credential| credential.id == target_id);
+    let existing_sort_order = existing.map(|credential| credential.sort_order);
 
     entry.password = match entry.password.as_deref() {
         Some(plain) if !plain.is_empty() => Some(crypto::encrypt(plain)?),
         _ => existing.and_then(|credential| credential.password.clone()),
     };
+    entry.sort_order = existing_sort_order.unwrap_or_else(|| {
+        config
+            .credentials
+            .iter()
+            .map(|credential| credential.sort_order)
+            .max()
+            .unwrap_or(-1)
+            + 1
+    });
 
     if let Some(existing_entry) = config
         .credentials
@@ -95,6 +108,27 @@ pub fn upsert_credential(
     }
 
     Ok(target_id)
+}
+
+pub fn sort_credentials(credentials: &mut [SavedCredential]) {
+    credentials.sort_by(|left, right| {
+        left.sort_order
+            .cmp(&right.sort_order)
+            .then(left.id.cmp(&right.id))
+    });
+}
+
+pub fn reorder_credentials(config: &mut CredentialsConfig, updates: &[(String, i32)]) {
+    for (id, sort_order) in updates {
+        if let Some(credential) = config
+            .credentials
+            .iter_mut()
+            .find(|credential| credential.id == *id)
+        {
+            credential.sort_order = *sort_order;
+        }
+    }
+    sort_credentials(&mut config.credentials);
 }
 
 #[cfg(test)]
@@ -124,6 +158,7 @@ mod tests {
             &mut config,
             SavedCredential {
                 id: String::new(),
+                sort_order: 0,
                 name: "Git".to_string(),
                 username: "nyakang".to_string(),
                 password: Some("secret".to_string()),
@@ -143,6 +178,7 @@ mod tests {
             &mut config,
             SavedCredential {
                 id: id.clone(),
+                sort_order: 99,
                 name: "GitLab".to_string(),
                 username: "nyakang".to_string(),
                 password: None,
@@ -156,6 +192,7 @@ mod tests {
 
         assert_eq!(updated_id, id);
         assert_eq!(config.credentials[0].name, "GitLab");
+        assert_eq!(config.credentials[0].sort_order, 0);
         assert_eq!(config.credentials[0].password, encrypted);
         let decrypted = config.credentials[0]
             .password
@@ -167,5 +204,166 @@ mod tests {
         assert!(config.credentials.is_empty());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn upsert_appends_new_credentials_to_end() {
+        let mut config = CredentialsConfig {
+            credentials: vec![
+                SavedCredential {
+                    id: "alpha".to_string(),
+                    sort_order: 3,
+                    name: "Alpha".to_string(),
+                    username: String::new(),
+                    password: None,
+                    username_prompt_regex: None,
+                    password_prompt_regex: None,
+                    enabled: true,
+                    has_password: false,
+                },
+                SavedCredential {
+                    id: "beta".to_string(),
+                    sort_order: 7,
+                    name: "Beta".to_string(),
+                    username: String::new(),
+                    password: None,
+                    username_prompt_regex: None,
+                    password_prompt_regex: None,
+                    enabled: true,
+                    has_password: false,
+                },
+            ],
+        };
+
+        let id = upsert_credential(
+            &mut config,
+            SavedCredential {
+                id: String::new(),
+                sort_order: 0,
+                name: "Gamma".to_string(),
+                username: String::new(),
+                password: None,
+                username_prompt_regex: None,
+                password_prompt_regex: None,
+                enabled: true,
+                has_password: false,
+            },
+        )
+        .expect("append credential");
+
+        let appended = config
+            .credentials
+            .iter()
+            .find(|credential| credential.id == id)
+            .expect("new credential");
+        assert_eq!(appended.sort_order, 8);
+    }
+
+    #[test]
+    fn sort_credentials_orders_by_sort_order_then_id() {
+        let mut credentials = vec![
+            SavedCredential {
+                id: "b".to_string(),
+                sort_order: 1,
+                name: "B".to_string(),
+                username: String::new(),
+                password: None,
+                username_prompt_regex: None,
+                password_prompt_regex: None,
+                enabled: true,
+                has_password: false,
+            },
+            SavedCredential {
+                id: "a".to_string(),
+                sort_order: 1,
+                name: "A".to_string(),
+                username: String::new(),
+                password: None,
+                username_prompt_regex: None,
+                password_prompt_regex: None,
+                enabled: true,
+                has_password: false,
+            },
+            SavedCredential {
+                id: "c".to_string(),
+                sort_order: 0,
+                name: "C".to_string(),
+                username: String::new(),
+                password: None,
+                username_prompt_regex: None,
+                password_prompt_regex: None,
+                enabled: true,
+                has_password: false,
+            },
+        ];
+
+        sort_credentials(&mut credentials);
+
+        assert_eq!(
+            credentials
+                .iter()
+                .map(|credential| credential.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["c", "a", "b"]
+        );
+    }
+
+    #[test]
+    fn reorder_credentials_updates_and_sorts_config() {
+        let mut config = CredentialsConfig {
+            credentials: vec![
+                SavedCredential {
+                    id: "first".to_string(),
+                    sort_order: 0,
+                    name: "First".to_string(),
+                    username: String::new(),
+                    password: None,
+                    username_prompt_regex: None,
+                    password_prompt_regex: None,
+                    enabled: true,
+                    has_password: false,
+                },
+                SavedCredential {
+                    id: "second".to_string(),
+                    sort_order: 1,
+                    name: "Second".to_string(),
+                    username: String::new(),
+                    password: None,
+                    username_prompt_regex: None,
+                    password_prompt_regex: None,
+                    enabled: true,
+                    has_password: false,
+                },
+                SavedCredential {
+                    id: "third".to_string(),
+                    sort_order: 2,
+                    name: "Third".to_string(),
+                    username: String::new(),
+                    password: None,
+                    username_prompt_regex: None,
+                    password_prompt_regex: None,
+                    enabled: true,
+                    has_password: false,
+                },
+            ],
+        };
+
+        reorder_credentials(
+            &mut config,
+            &[
+                ("third".to_string(), 0),
+                ("first".to_string(), 1),
+                ("second".to_string(), 2),
+            ],
+        );
+
+        assert_eq!(
+            config
+                .credentials
+                .iter()
+                .map(|credential| (credential.id.as_str(), credential.sort_order))
+                .collect::<Vec<_>>(),
+            vec![("third", 0), ("first", 1), ("second", 2)]
+        );
     }
 }
