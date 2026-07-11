@@ -24,7 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { invoke } from "@/lib/invoke";
 import { logger } from "@/lib/logger";
-import type { SshKey } from "@/types/global";
+import type { SavedPassword, SshKey } from "@/types/global";
 
 export type SshAuthPromptReason =
   | "missing_password"
@@ -55,6 +55,7 @@ export interface SshAuthRequest {
 
 type SaveMode = "none" | "connection" | "saved_password" | "key_passphrase";
 type AuthMethod = "password" | "key";
+type PasswordSource = "manual" | "saved";
 
 interface SshAuthDialogProps {
   request: SshAuthRequest | null;
@@ -73,10 +74,14 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
   const [saveMode, setSaveMode] = useState<SaveMode>("none");
   const [saveName, setSaveName] = useState("");
   const [authMethod, setAuthMethod] = useState<AuthMethod>("password");
+  const [passwordSource, setPasswordSource] = useState<PasswordSource>("manual");
   const [sshKeys, setSshKeys] = useState<SshKey[]>([]);
+  const [savedPasswords, setSavedPasswords] = useState<SavedPassword[]>([]);
   const [selectedKeyId, setSelectedKeyId] = useState("");
+  const [selectedPasswordId, setSelectedPasswordId] = useState("");
   const [keyManagementOpen, setKeyManagementOpen] = useState(false);
   const [loadingKeys, setLoadingKeys] = useState(false);
+  const [loadingPasswords, setLoadingPasswords] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const isPassphrase = request?.promptKind === "passphrase";
@@ -92,6 +97,10 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
     availableMethods.includes("publickey");
   const showMethodTabs = !isPassphrase && passwordAvailable && publickeyAvailable;
   const keyOptions = useMemo(() => sshKeys.filter((key) => key.has_key_data !== false), [sshKeys]);
+  const passwordOptions = useMemo(
+    () => savedPasswords.filter((password) => password.has_password !== false),
+    [savedPasswords],
+  );
 
   const loadSshKeys = useCallback(async () => {
     setLoadingKeys(true);
@@ -117,22 +126,64 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
     }
   }, [request]);
 
+  const loadSavedPasswords = useCallback(async () => {
+    setLoadingPasswords(true);
+    try {
+      const passwords = await invoke<SavedPassword[]>("get_saved_passwords");
+      const usablePasswords = passwords.filter((password) => password.has_password !== false);
+      setSavedPasswords(passwords);
+      setSelectedPasswordId((current) => {
+        if (current && usablePasswords.some((password) => password.id === current)) return current;
+        if (
+          request?.passwordId &&
+          usablePasswords.some((password) => password.id === request.passwordId)
+        ) {
+          return request.passwordId;
+        }
+        return usablePasswords[0]?.id || "";
+      });
+    } catch (error) {
+      logger.error({
+        domain: "security.flow",
+        event: "ssh_auth.passwords_load_failed",
+        message: "Failed to load saved passwords for runtime auth",
+        ids: request ? { request_id: request.requestId } : undefined,
+        error,
+      });
+      setSavedPasswords([]);
+      setSelectedPasswordId("");
+    } finally {
+      setLoadingPasswords(false);
+    }
+  }, [request]);
+
   useEffect(() => {
     if (!request) return;
     setSecret("");
     setShowSecret(false);
     setSaveMode(defaultSaveMode(request));
     setSaveName(`${request.connectionName} ${t("dialog.password")}`);
+    setPasswordSource("manual");
     const nextMethod = publickeyAvailable && !passwordAvailable ? "key" : "password";
     setAuthMethod(nextMethod);
     setSelectedKeyId("");
+    setSelectedPasswordId("");
     setSubmitting(false);
     if (publickeyAvailable) void loadSshKeys();
+    if (passwordAvailable && !isPassphrase) void loadSavedPasswords();
     const timer = window.setTimeout(() => {
       if (nextMethod === "password" || isPassphrase) inputRef.current?.focus();
     }, 100);
     return () => window.clearTimeout(timer);
-  }, [isPassphrase, loadSshKeys, passwordAvailable, publickeyAvailable, request, t]);
+  }, [
+    isPassphrase,
+    loadSavedPasswords,
+    loadSshKeys,
+    passwordAvailable,
+    publickeyAvailable,
+    request,
+    t,
+  ]);
 
   const reasonText = useMemo(() => {
     if (!request) return "";
@@ -146,10 +197,16 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
   }, [request, t]);
 
   const activeMethod = isPassphrase ? "password" : authMethod;
+  const usingSavedPassword =
+    !isPassphrase && activeMethod === "password" && passwordSource === "saved";
   const canSubmit =
     !!request &&
     !submitting &&
-    (isPassphrase || activeMethod === "password" ? !!secret : !!selectedKeyId);
+    (activeMethod === "key"
+      ? !!selectedKeyId
+      : usingSavedPassword
+        ? !!selectedPasswordId
+        : !!secret);
 
   const handleSubmit = async () => {
     if (!request || !canSubmit) return;
@@ -158,26 +215,35 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
       const save =
         activeMethod === "key" || saveMode === "none"
           ? null
-          : saveMode === "connection"
+          : usingSavedPassword
             ? { kind: "connection" }
-            : saveMode === "key_passphrase"
-              ? { kind: "key_passphrase" }
-              : {
-                  kind: "saved_password",
-                  name: saveName.trim() || `${request.connectionName} ${t("dialog.password")}`,
-                  passwordId: request.passwordId || undefined,
-                };
-
-      await invoke("submit_ssh_auth_response", {
-        requestId: request.requestId,
-        response:
-          activeMethod === "key"
-            ? { method: "key", keyId: selectedKeyId }
+            : saveMode === "connection"
+              ? { kind: "connection" }
+              : saveMode === "key_passphrase"
+                ? { kind: "key_passphrase" }
+                : {
+                    kind: "saved_password",
+                    name: saveName.trim() || `${request.connectionName} ${t("dialog.password")}`,
+                    passwordId: request.passwordId || undefined,
+                  };
+      const response =
+        activeMethod === "key"
+          ? { method: "key", keyId: selectedKeyId }
+          : usingSavedPassword
+            ? {
+                method: "saved_password",
+                passwordId: selectedPasswordId,
+                save,
+              }
             : {
                 method: isPassphrase ? "passphrase" : "password",
                 secret,
                 save,
-              },
+              };
+
+      await invoke("submit_ssh_auth_response", {
+        requestId: request.requestId,
+        response,
       });
       logger.info({
         domain: "security.flow",
@@ -186,7 +252,7 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
         ids: { request_id: request.requestId },
         data: {
           prompt_kind: request.promptKind,
-          method: activeMethod,
+          method: usingSavedPassword ? "saved_password" : activeMethod,
           save_mode: activeMethod === "key" ? "none" : saveMode,
         },
       });
@@ -270,13 +336,26 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="password" className="mt-3">
-                  <SecretInput
+                  <PasswordAuthInput
                     inputRef={inputRef}
-                    label={t("dialog.password")}
-                    value={secret}
-                    showValue={showSecret}
-                    onChange={setSecret}
+                    source={passwordSource}
+                    onSourceChange={(source) => {
+                      setPasswordSource(source);
+                      setSaveMode("none");
+                      if (source === "saved") {
+                        setSecret("");
+                        setShowSecret(false);
+                      }
+                    }}
+                    secret={secret}
+                    showSecret={showSecret}
+                    onSecretChange={setSecret}
                     onToggleShow={() => setShowSecret((value) => !value)}
+                    passwords={passwordOptions}
+                    selectedPasswordId={selectedPasswordId}
+                    loadingPasswords={loadingPasswords}
+                    onPasswordChange={setSelectedPasswordId}
+                    onRefreshPasswords={loadSavedPasswords}
                   />
                 </TabsContent>
                 <TabsContent value="key" className="mt-3">
@@ -300,13 +379,26 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
                 onAddKey={() => setKeyManagementOpen(true)}
               />
             ) : (
-              <SecretInput
+              <PasswordAuthInput
                 inputRef={inputRef}
-                label={t("dialog.password")}
-                value={secret}
-                showValue={showSecret}
-                onChange={setSecret}
+                source={passwordSource}
+                onSourceChange={(source) => {
+                  setPasswordSource(source);
+                  setSaveMode("none");
+                  if (source === "saved") {
+                    setSecret("");
+                    setShowSecret(false);
+                  }
+                }}
+                secret={secret}
+                showSecret={showSecret}
+                onSecretChange={setSecret}
                 onToggleShow={() => setShowSecret((value) => !value)}
+                passwords={passwordOptions}
+                selectedPasswordId={selectedPasswordId}
+                loadingPasswords={loadingPasswords}
+                onPasswordChange={setSelectedPasswordId}
+                onRefreshPasswords={loadSavedPasswords}
               />
             )}
 
@@ -320,16 +412,18 @@ export function SshAuthDialog({ request, onDone }: SshAuthDialogProps) {
                         checked
                           ? isPassphrase
                             ? "key_passphrase"
-                            : request.passwordId
-                              ? "saved_password"
-                              : "connection"
+                            : usingSavedPassword
+                              ? "connection"
+                              : request.passwordId
+                                ? "saved_password"
+                                : "connection"
                           : "none",
                       );
                     }}
                   />
                   <span className="text-xs">{t("sshAuth.rememberCredential")}</span>
                 </div>
-                {saveMode !== "none" && !isPassphrase && (
+                {saveMode !== "none" && !isPassphrase && !usingSavedPassword && (
                   <div className="space-y-2">
                     <Select
                       value={saveMode}
@@ -413,6 +507,69 @@ interface SecretInputProps {
   onToggleShow: () => void;
 }
 
+interface PasswordAuthInputProps {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  source: PasswordSource;
+  onSourceChange: (value: PasswordSource) => void;
+  secret: string;
+  showSecret: boolean;
+  onSecretChange: (value: string) => void;
+  onToggleShow: () => void;
+  passwords: SavedPassword[];
+  selectedPasswordId: string;
+  loadingPasswords: boolean;
+  onPasswordChange: (value: string) => void;
+  onRefreshPasswords: () => void;
+}
+
+function PasswordAuthInput({
+  inputRef,
+  source,
+  onSourceChange,
+  secret,
+  showSecret,
+  onSecretChange,
+  onToggleShow,
+  passwords,
+  selectedPasswordId,
+  loadingPasswords,
+  onPasswordChange,
+  onRefreshPasswords,
+}: PasswordAuthInputProps) {
+  const { t } = useTranslation();
+  return (
+    <Tabs value={source} onValueChange={(value) => onSourceChange(value as PasswordSource)}>
+      <TabsList className="grid h-8 w-full grid-cols-2">
+        <TabsTrigger value="manual" className="text-xs">
+          {t("dialog.directPassword")}
+        </TabsTrigger>
+        <TabsTrigger value="saved" className="text-xs">
+          {t("dialog.savedPassword")}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="manual" className="mt-3">
+        <SecretInput
+          inputRef={inputRef}
+          label={t("dialog.password")}
+          value={secret}
+          showValue={showSecret}
+          onChange={onSecretChange}
+          onToggleShow={onToggleShow}
+        />
+      </TabsContent>
+      <TabsContent value="saved" className="mt-3">
+        <PasswordSelector
+          passwords={passwords}
+          value={selectedPasswordId}
+          loading={loadingPasswords}
+          onChange={onPasswordChange}
+          onRefresh={onRefreshPasswords}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 function SecretInput({
   inputRef,
   label,
@@ -445,6 +602,62 @@ function SecretInput({
           {showValue ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
+    </div>
+  );
+}
+
+interface PasswordSelectorProps {
+  passwords: SavedPassword[];
+  value: string;
+  loading: boolean;
+  onChange: (value: string) => void;
+  onRefresh: () => void;
+}
+
+function PasswordSelector({
+  passwords,
+  value,
+  loading,
+  onChange,
+  onRefresh,
+}: PasswordSelectorProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs">{t("dialog.savedPassword")}</Label>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => void onRefresh()}
+          disabled={loading}
+          title={t("sshAuth.refreshPasswords")}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      {passwords.length > 0 ? (
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="h-9 text-xs">
+            <SelectValue placeholder={t("dialog.selectPassword")} />
+          </SelectTrigger>
+          <SelectContent>
+            {passwords.map((password) => (
+              <SelectItem key={password.id} value={password.id}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{password.name}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          {loading ? t("sshAuth.loadingPasswords") : t("dialog.noPasswords")}
+        </div>
+      )}
     </div>
   );
 }

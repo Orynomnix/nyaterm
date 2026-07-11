@@ -74,6 +74,8 @@ pub struct SshAuthResponse {
     #[serde(default)]
     pub key_id: Option<String>,
     #[serde(default)]
+    pub password_id: Option<String>,
+    #[serde(default)]
     pub save: Option<SshAuthSaveRequest>,
 }
 
@@ -172,6 +174,7 @@ struct RuntimeKeyPassphrase {
 enum RuntimeSecretSave {
     ConnectionInline,
     SavedPassword { id: Option<String>, name: String },
+    SavedPasswordReference { id: String },
     KeyPassphrase,
 }
 
@@ -726,7 +729,7 @@ async fn request_runtime_secret(
 
     Ok(RuntimeSecret {
         value: secret,
-        save: parse_runtime_secret_save(response.save, reason, can_save),
+        save: parse_runtime_secret_save(response.save, reason, can_save, None),
     })
 }
 
@@ -797,7 +800,31 @@ async fn request_runtime_auth_selection(
             }
             Ok(RuntimeAuthSelection::Password(RuntimeSecret {
                 value: secret,
-                save: parse_runtime_secret_save(response.save, reason, can_save),
+                save: parse_runtime_secret_save(response.save, reason, can_save, None),
+            }))
+        }
+        "saved_password" => {
+            let password_id = response
+                .password_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| AppError::Auth("No saved password was selected".to_string()))?;
+            let password = crate::config::load_password_by_id(app, &password_id)?
+                .password
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    AppError::Auth("Selected saved password has no password data".to_string())
+                })?;
+            Ok(RuntimeAuthSelection::Password(RuntimeSecret {
+                value: password,
+                save: parse_runtime_secret_save(
+                    response.save,
+                    reason,
+                    can_save,
+                    Some(&password_id),
+                ),
             }))
         }
         "key" | "publickey" => response
@@ -889,6 +916,7 @@ fn parse_runtime_secret_save(
     save: Option<SshAuthSaveRequest>,
     reason: SshAuthPromptReason,
     can_save: bool,
+    selected_password_id: Option<&str>,
 ) -> Option<RuntimeSecretSave> {
     if !can_save {
         return None;
@@ -896,7 +924,13 @@ fn parse_runtime_secret_save(
     let save = save?;
     match (reason.prompt_kind(), save.kind.as_str()) {
         ("passphrase", "key_passphrase") => Some(RuntimeSecretSave::KeyPassphrase),
-        ("password", "connection") => Some(RuntimeSecretSave::ConnectionInline),
+        ("password", "connection") => {
+            if let Some(id) = selected_password_id {
+                Some(RuntimeSecretSave::SavedPasswordReference { id: id.to_string() })
+            } else {
+                Some(RuntimeSecretSave::ConnectionInline)
+            }
+        }
         ("password", "saved_password") => {
             let name = save
                 .name
@@ -1412,6 +1446,22 @@ fn persist_runtime_password(
                 let auth = conn.auth.get_or_insert_with(Default::default);
                 auth.mode = "password".to_string();
                 auth.password_id = Some(password_id);
+                auth.password = None;
+                auth.has_password = false;
+                crate::config::save_config(app, &sessions)?;
+                emit_config_changed(app);
+            }
+        }
+        RuntimeSecretSave::SavedPasswordReference { id } => {
+            let mut sessions = crate::config::load_config(app)?;
+            if let Some(conn) = sessions
+                .connections
+                .iter_mut()
+                .find(|candidate| candidate.id == connection_id)
+            {
+                let auth = conn.auth.get_or_insert_with(Default::default);
+                auth.mode = "password".to_string();
+                auth.password_id = Some(id.clone());
                 auth.password = None;
                 auth.has_password = false;
                 crate::config::save_config(app, &sessions)?;
