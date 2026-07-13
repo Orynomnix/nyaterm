@@ -20,6 +20,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "release": "node scripts/sync-version.mjs --commit && tsc && vite build && tauri build",
+    "build:unlock-rescue": "powershell -ExecutionPolicy Bypass -File scripts/build-unlock-rescue.ps1",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "node scripts/check-no-console.mjs && biome check src/",
