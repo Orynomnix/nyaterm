@@ -96,7 +96,7 @@ tokio = { version = "1", features = [
     "fs",
     "process",
 ] }
-russh = { path = "vendor/russh/russh", features = ["des", "dsa"] }
+russh = { path = "vendor/russh/russh", default-features = false, features = ["des", "dsa", "flate2", "ring", "rsa"] }
 russh-sftp = { path = "vendor/russh-sftp" }
 ssh-key = { version = "0.6", features = ["std"] }
 portable-pty = "0.8"
