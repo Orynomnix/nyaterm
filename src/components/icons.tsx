@@ -313,6 +313,18 @@ function normalizeRemoteSystemText(system: Pick<RemoteStatsSystem, "os" | "arch"
     .toLowerCase();
 }
 
+function hasRemoteSystemToken(text: string, token: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, "i").test(text);
+}
+
+function hasRemoteSystemDistroMatch(text: string, needle: string): boolean {
+  if (/^[a-z0-9]+$/i.test(needle)) {
+    return hasRemoteSystemToken(text, needle);
+  }
+
+  return text.includes(needle);
+}
+
 export function inferConnectionIconKeyFromRemoteSystem(
   system: Pick<RemoteStatsSystem, "os" | "arch"> | null | undefined,
 ): string | null {
@@ -330,7 +342,7 @@ export function inferConnectionIconKeyFromRemoteSystem(
     [["alma linux", "almalinux"], "alma"],
     [["alpine"], "alpine"],
     [["anolis"], "anolis"],
-    [["arch"], "arch"],
+    [["arch linux", "arch-linux", "archlinux", "arch"], "arch"],
     [["centos", "cent os"], "centos"],
     [["debian"], "debian"],
     [["deepin"], "deepin"],
@@ -349,7 +361,7 @@ export function inferConnectionIconKeyFromRemoteSystem(
   ];
 
   for (const [needles, iconKey] of distroMatches) {
-    if (needles.some((needle) => text.includes(needle))) {
+    if (needles.some((needle) => hasRemoteSystemDistroMatch(text, needle))) {
       return iconKey;
     }
   }
