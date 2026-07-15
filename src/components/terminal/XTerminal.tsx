@@ -924,6 +924,49 @@ export default function XTerminal({
       return true;
     };
 
+    const isCredentialPanelActive = () =>
+      credentialShowPanelRef.current && credentialMatchesRef.current.length > 0;
+
+    const moveCommandSuggestionSelection = (direction: 1 | -1) => {
+      if (!showSuggestionsRef.current || suggestionsRef.current.length === 0) {
+        return false;
+      }
+
+      const cur = selectedIndexRef.current;
+      const len = suggestionsRef.current.length;
+      const next =
+        direction > 0
+          ? cur === -1
+            ? 0
+            : cur >= len - 1
+              ? -1
+              : cur + 1
+          : cur === -1
+            ? len - 1
+            : cur <= 0
+              ? -1
+              : cur - 1;
+
+      selectedIndexRef.current = next;
+      setSelectedIndex(next);
+      return true;
+    };
+
+    const acceptCommandSuggestion = (execute: boolean) => {
+      if (!showSuggestionsRef.current || suggestionsRef.current.length === 0) {
+        return false;
+      }
+
+      const selected = suggestionsRef.current[selectedIndexRef.current];
+      if (!selected) {
+        return false;
+      }
+
+      applySuggestion(selected.command, execute);
+      dismissSuggestions();
+      return true;
+    };
+
     const moveInputCursorAfterSelection = (
       selectedInputRange: InputSelectionRange,
       targetCursor: number,
@@ -973,6 +1016,40 @@ export default function XTerminal({
       ) {
         e.preventDefault();
         return false;
+      }
+
+      if (
+        !isCredentialPanelActive() &&
+        showSuggestionsRef.current &&
+        suggestionsRef.current.length > 0 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          moveCommandSuggestionSelection(-1);
+          return false;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          moveCommandSuggestionSelection(1);
+          return false;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          dismissSuggestions();
+          return false;
+        }
+        if (e.key === "Enter" && acceptCommandSuggestion(true)) {
+          e.preventDefault();
+          return false;
+        }
+        if (e.key === "Tab" && acceptCommandSuggestion(false)) {
+          e.preventDefault();
+          return false;
+        }
       }
 
       if (isLocalBackspaceEvent(e, sessionTypeRef.current)) {
@@ -1973,28 +2050,17 @@ export default function XTerminal({
         showSuggestionsRef.current &&
         suggestionsRef.current.length > 0
       ) {
-        if (data === "\t" && selectedIndexRef.current >= 0) {
-          const selected = suggestionsRef.current[selectedIndexRef.current];
-          if (selected) {
-            applySuggestion(selected.command, false);
-            dismissSuggestions();
-          }
+        if (data === "\t" && acceptCommandSuggestion(false)) {
           return;
         }
 
-        if (data === "\x1b[A") {
-          const cur = selectedIndexRef.current;
-          const newIdx = cur === -1 ? suggestionsRef.current.length - 1 : cur === 0 ? -1 : cur - 1;
-          selectedIndexRef.current = newIdx;
-          setSelectedIndex(newIdx);
+        if (data === "\x1b[A" || data === "\x1bOA") {
+          moveCommandSuggestionSelection(-1);
           return;
         }
 
-        if (data === "\x1b[B") {
-          const cur = selectedIndexRef.current;
-          const newIdx = cur === -1 ? 0 : cur === suggestionsRef.current.length - 1 ? -1 : cur + 1;
-          selectedIndexRef.current = newIdx;
-          setSelectedIndex(newIdx);
+        if (data === "\x1b[B" || data === "\x1bOB") {
+          moveCommandSuggestionSelection(1);
           return;
         }
 
@@ -2003,12 +2069,7 @@ export default function XTerminal({
           return;
         }
 
-        if (data === "\r" && selectedIndexRef.current >= 0) {
-          const selected = suggestionsRef.current[selectedIndexRef.current];
-          if (selected) {
-            applySuggestion(selected.command, true);
-            dismissSuggestions();
-          }
+        if (data === "\r" && acceptCommandSuggestion(true)) {
           return;
         }
       }
