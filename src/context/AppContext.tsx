@@ -12,6 +12,7 @@ import {
 import { useAppLockState } from "@/hooks/useAppLockState";
 import { DEFAULT_AI_SETTINGS } from "@/lib/aiSettings";
 import { DEFAULT_CLOUD_SYNC_SETTINGS } from "@/lib/cloudSync";
+import { updateConnectionAutoIconAfterSessionStart } from "@/lib/connectionAutoIcon";
 import { DEFAULT_TERMINAL_FONT_FAMILY, getDefaultUiFontFamily } from "@/lib/defaultFonts";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -275,7 +276,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     duplicate_session_command_delay_ms: 1000,
     word_separators: " ()[]{}\"':=,;|&<>",
     alt_as_meta: false,
-    mac_ime_compatibility: false,
+    ime_compatibility: false,
     default_encoding: "UTF-8",
     tab_double_click_action: DEFAULT_TAB_DOUBLE_CLICK_ACTION,
     tab_middle_click_action: DEFAULT_TAB_MIDDLE_CLICK_ACTION,
@@ -328,10 +329,13 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     serial_send_height: 180,
     zoom_level: 1.0,
     language: "en",
+    header_status_mode: "session",
     show_remote_stats: true,
     remote_stats_interval: 3,
     show_gpu_monitor: false,
     gpu_monitor_interval: 3,
+    show_ascend_npu_monitor: false,
+    ascend_npu_monitor_interval: 3,
     show_process_manager: false,
     process_manager_interval: 5,
     show_docker_manager: false,
@@ -353,6 +357,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
         "commandHistory",
         "resourceMonitor",
         "gpuMonitor",
+        "ascendNpuMonitor",
         "processManager",
         "dockerManager",
       ],
@@ -1071,12 +1076,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleRestoredSessionCreated = useCallback(
-    async (tabId: string, paneId: string, sessionId: string) => {
+    async (tabId: string, paneId: string, sessionId: string, connectionId?: string) => {
       if (!hasPane(tabId, paneId)) {
         await closeStaleCreatedSession(sessionId);
         return;
       }
       updatePaneSession(tabId, paneId, sessionId);
+      if (connectionId) {
+        void updateConnectionAutoIconAfterSessionStart({
+          connectionId,
+          sessionId,
+          remoteStatsEnabled: appSettingsRef.current.ui.show_remote_stats ?? true,
+        });
+      }
     },
     [closeStaleCreatedSession, hasPane, updatePaneSession],
   );
@@ -1150,7 +1162,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 connectionId: cid,
                 createRequestId: pane.createRequestId,
               })
-                .then((sessionId) => handleRestoredSessionCreated(tab.id, pane.id, sessionId))
+                .then((sessionId) =>
+                  handleRestoredSessionCreated(tab.id, pane.id, sessionId, cid),
+                )
                 .catch((e) =>
                   handleRestoredSessionFailed(tab.id, pane.id, "SSH", pane.connectionId, e),
                 );

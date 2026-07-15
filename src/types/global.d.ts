@@ -373,6 +373,7 @@ export type RightPanelId =
   | "commandHistory"
   | "resourceMonitor"
   | "gpuMonitor"
+  | "ascendNpuMonitor"
   | "processManager"
   | "dockerManager"
   | "recording"
@@ -392,6 +393,7 @@ export interface ActivityBarLayout {
 /** Layout preferences: panel widths, active panels, theme. */
 export type QuickCommandViewMode = "list" | "compact" | "tile";
 export type QuickCommandSortMode = "created" | "name" | "useCount";
+export type HeaderStatusMode = "session" | "resources" | "host";
 
 export type RestorableTerminalWindowNode =
   | {
@@ -432,10 +434,13 @@ export interface UiConfig {
   serial_send_height: number;
   zoom_level: number;
   language?: string;
+  header_status_mode?: HeaderStatusMode;
   show_remote_stats: boolean;
   remote_stats_interval: number;
   show_gpu_monitor: boolean;
   gpu_monitor_interval: number;
+  show_ascend_npu_monitor: boolean;
+  ascend_npu_monitor_interval: number;
   show_process_manager: boolean;
   process_manager_interval: number;
   show_docker_manager: boolean;
@@ -484,6 +489,11 @@ export interface RemoteStatsNetwork {
   tx_bytes_per_sec: number;
 }
 
+export interface RemoteStatsNetworkSummary {
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+}
+
 export interface RemoteStatsDisk {
   device: string;
   mount: string;
@@ -498,6 +508,7 @@ export interface RemoteStats {
   cpu: RemoteStatsCpu;
   memory: RemoteStatsMemory;
   networks: RemoteStatsNetwork[];
+  network_summary: RemoteStatsNetworkSummary;
   disks: RemoteStatsDisk[];
 }
 
@@ -646,6 +657,43 @@ export interface RemoteGpuOverview {
   cuda_version: string;
   gpus: RemoteGpu[];
   processes: RemoteGpuProcess[];
+}
+
+export interface RemoteNpu {
+  index: number;
+  chip_id: number;
+  physical_id?: number | null;
+  device_key: string;
+  name: string;
+  health: string;
+  bus_id: string;
+  temperature_c?: number | null;
+  utilization_aicore_percent?: number | null;
+  utilization_memory_percent?: number | null;
+  memory_total_mb: number;
+  memory_used_mb: number;
+  memory_free_mb: number;
+  memory_kind: string;
+  hbm_total_mb?: number | null;
+  hbm_used_mb?: number | null;
+  power_draw_w?: number | null;
+}
+
+export interface RemoteNpuProcess {
+  npu_index: number;
+  chip_id: number;
+  device_key: string;
+  pid: number;
+  process_name: string;
+  used_memory_mb: number;
+}
+
+export interface RemoteNpuOverview {
+  available: boolean;
+  driver_version: string;
+  cann_version: string;
+  npus: RemoteNpu[];
+  processes: RemoteNpuProcess[];
 }
 
 /** Labeled command shortcut for quick execution. */
@@ -1099,7 +1147,7 @@ export interface InteractionSettings {
   duplicate_session_command_delay_ms: number;
   word_separators: string;
   alt_as_meta: boolean;
-  mac_ime_compatibility: boolean;
+  ime_compatibility: boolean;
   default_encoding: string;
   tab_double_click_action: import("@/lib/interactionSettings").TabMouseAction;
   tab_middle_click_action: import("@/lib/interactionSettings").TabMouseAction;
