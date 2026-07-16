@@ -8,6 +8,7 @@ use super::util::*;
 use crate::core::ssh::SshConnectionHandles;
 use crate::error::{AppError, AppResult};
 use crate::observability::{StructuredLog, StructuredLogLevel, log_event};
+use encoding_rs::{Encoding, UTF_8};
 use russh::{ChannelMsg, ChannelOpenFailure};
 use russh_sftp::client::{Config as SftpClientConfig, SftpSession, error::Error as SftpError};
 use russh_sftp::protocol::{FileAttributes, FileType, StatusCode};
@@ -69,6 +70,7 @@ fn is_sftp_not_found(error: &SftpError) -> bool {
     )
 }
 
+#[allow(dead_code)]
 fn ignore_sftp_not_found(result: Result<(), SftpError>) -> AppResult<()> {
     match result {
         Ok(()) => Ok(()),
@@ -86,6 +88,7 @@ fn is_retryable_sftp_channel_open_error(error: &russh::Error) -> bool {
     )
 }
 
+#[allow(dead_code)]
 fn sftp_remove_error(path: &str, kind: &str, error: SftpError) -> Option<String> {
     if is_sftp_not_found(&error) {
         None
@@ -293,6 +296,11 @@ fn log_transfer_performance(
 pub(crate) struct SftpBackend {
     ssh_handle: Arc<SshConnectionHandles>,
     identity_cache: Arc<RwLock<RemoteIdentityCache>>,
+    /// Cache mapping decoded paths to their raw byte representations.
+    /// Used to preserve original encoding for non-UTF-8 file names.
+    path_cache: Arc<RwLock<HashMap<String, Vec<u8>>>>,
+    /// Encoding for this connection (e.g., "UTF-8", "GBK")
+    encoding: String,
 }
 
 #[derive(Default)]
@@ -310,11 +318,50 @@ struct ExecResult {
 }
 
 impl SftpBackend {
-    pub(crate) fn new(ssh_handle: Arc<SshConnectionHandles>) -> Self {
+    pub(crate) fn new(ssh_handle: Arc<SshConnectionHandles>, encoding: &str) -> Self {
         Self {
             ssh_handle,
             identity_cache: Arc::new(RwLock::new(RemoteIdentityCache::default())),
+            path_cache: Arc::new(RwLock::new(HashMap::new())),
+            encoding: encoding.to_string(),
         }
+    }
+
+    /// Get the encoding setting for this connection
+    pub(crate) fn encoding(&self) -> &str {
+        &self.encoding
+    }
+
+    /// Convert UTF-8 path to raw bytes for SFTP operations.
+    /// Uses the connection's encoding setting.
+    fn encode_path_for_sftp(&self, path: &str) -> Vec<u8> {
+        let encoding = Encoding::for_label(self.encoding.trim().as_bytes()).unwrap_or(UTF_8);
+        if encoding == UTF_8 || path.bytes().all(|b| b < 128) {
+            return path.as_bytes().to_vec();
+        }
+
+        let (encoded, _, _) = encoding.encode(path);
+        encoded.into_owned()
+    }
+
+    /// Decode raw bytes to string using the connection's encoding.
+    fn decode_path_from_sftp(&self, bytes: &[u8]) -> String {
+        let encoding = Encoding::for_label(self.encoding.trim().as_bytes()).unwrap_or(UTF_8);
+        if encoding == UTF_8 {
+            return String::from_utf8_lossy(bytes).into_owned();
+        }
+        let (decoded, _, had_errors) = encoding.decode(bytes);
+        if had_errors {
+            String::from_utf8_lossy(bytes).into_owned()
+        } else {
+            decoded.into_owned()
+        }
+    }
+
+    fn remote_path_bytes(&self, path: &RemotePathRef) -> Vec<u8> {
+        path.raw_path()
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| self.encode_path_for_sftp(path.display_path()))
     }
 
     /// Attempt to open a throwaway SFTP session to verify subsystem availability.
@@ -629,6 +676,23 @@ fn normalize_remote_dir_path(path: &str) -> &str {
     }
 }
 
+fn normalize_remote_dir_path_bytes(path: &[u8]) -> Vec<u8> {
+    if path == b"/" {
+        return b"/".to_vec();
+    }
+
+    let trimmed = path
+        .iter()
+        .rposition(|byte| *byte != b'/')
+        .map(|index| &path[..=index])
+        .unwrap_or(path);
+    if trimmed.is_empty() {
+        path.to_vec()
+    } else {
+        trimmed.to_vec()
+    }
+}
+
 fn join_remote_child(parent: &str, name: &str) -> String {
     if parent == "/" {
         format!("/{name}")
@@ -637,6 +701,20 @@ fn join_remote_child(parent: &str, name: &str) -> String {
     }
 }
 
+fn join_remote_child_bytes(parent: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut path = Vec::with_capacity(parent.len() + name.len() + 1);
+    if parent == b"/" {
+        path.push(b'/');
+        path.extend_from_slice(name);
+    } else {
+        path.extend_from_slice(parent);
+        path.push(b'/');
+        path.extend_from_slice(name);
+    }
+    path
+}
+
+#[allow(dead_code)]
 fn is_safe_recursive_remove_target(path: &str) -> bool {
     let trimmed = path.trim();
     if trimmed.is_empty() || matches!(trimmed, "/" | "." | "..") {
@@ -647,6 +725,17 @@ fn is_safe_recursive_remove_target(path: &str) -> bool {
     !normalized.is_empty()
         && !matches!(normalized, "/" | "." | "..")
         && !normalized.split('/').any(|part| part == "..")
+}
+
+fn is_safe_recursive_remove_target_bytes(path: &[u8]) -> bool {
+    let normalized = normalize_remote_dir_path_bytes(path);
+    if normalized.is_empty() || normalized == b"/" || normalized == b"." || normalized == b".." {
+        return false;
+    }
+
+    !normalized
+        .split(|byte| *byte == b'/')
+        .any(|part| part == b"..")
 }
 
 async fn resolve_remote_path(
@@ -753,33 +842,40 @@ async fn ensure_remote_upload_target_allowed(
     }
 }
 
-async fn apply_remote_mode(sftp: &SftpSession, path: &str, requested_mode: u32) -> AppResult<()> {
-    let original_attrs = sftp.metadata(path).await?;
+async fn apply_remote_mode_bytes(
+    sftp: &SftpSession,
+    display_path: &str,
+    path_bytes: Vec<u8>,
+    requested_mode: u32,
+) -> AppResult<()> {
+    let original_attrs = sftp.metadata_bytes(path_bytes.clone()).await?;
     let original_permissions = original_attrs.permissions;
     let requested_permissions = requested_mode & POSIX_MODE_MASK;
 
     let mut attrs = FileAttributes::empty();
     attrs.permissions = Some(requested_permissions);
-    sftp.set_metadata(path, attrs).await.map_err(|error| {
-        tracing::warn!(
-            remote_path = path,
-            original_permissions = %describe_permissions(original_permissions),
-            requested_permissions = format!("{requested_permissions:#06o}"),
-            error = %error,
-            "Failed to update remote permissions with a permissions-only SETSTAT payload"
-        );
-        AppError::from(error)
-    })?;
+    sftp.set_metadata_bytes(path_bytes.clone(), attrs)
+        .await
+        .map_err(|error| {
+            tracing::warn!(
+                remote_path = display_path,
+                original_permissions = %describe_permissions(original_permissions),
+                requested_permissions = format!("{requested_permissions:#06o}"),
+                error = %error,
+                "Failed to update remote permissions with a permissions-only SETSTAT payload"
+            );
+            AppError::from(error)
+        })?;
 
     let actual_permissions = sftp
-        .metadata(path)
+        .metadata_bytes(path_bytes)
         .await
         .ok()
         .and_then(|attrs| attrs.permissions);
     tracing::debug!(
         target: "user_action",
         action = "chmod",
-        remote_path = path,
+        remote_path = display_path,
         original_permissions = %describe_permissions(original_permissions),
         requested_permissions = format!("{requested_permissions:#06o}"),
         actual_permissions = %describe_permissions(actual_permissions),
@@ -789,14 +885,15 @@ async fn apply_remote_mode(sftp: &SftpSession, path: &str, requested_mode: u32) 
     Ok(())
 }
 
-async fn apply_remote_attrs(
+async fn apply_remote_attrs_bytes(
     sftp: &SftpSession,
-    path: &str,
+    display_path: &str,
+    path_bytes: Vec<u8>,
     mode: Option<u32>,
     uid: Option<u32>,
     gid: Option<u32>,
 ) -> AppResult<()> {
-    let original_attrs = sftp.symlink_metadata(path).await?;
+    let original_attrs = sftp.symlink_metadata_bytes(path_bytes.clone()).await?;
     let mut attrs = FileAttributes::empty();
     if let Some(mode) = mode {
         let type_bits = original_attrs.permissions.unwrap_or(0) & SFTP_FILE_TYPE_MASK;
@@ -822,56 +919,69 @@ async fn apply_remote_attrs(
         return Ok(());
     }
 
-    sftp.set_metadata(path, attrs).await.map_err(|error| {
-        tracing::warn!(
-            remote_path = path,
-            requested_mode = ?mode,
-            requested_uid = ?uid,
-            requested_gid = ?gid,
-            error = %error,
-            "Failed to update remote file attributes"
-        );
-        AppError::from(error)
-    })?;
+    sftp.set_metadata_bytes(path_bytes, attrs)
+        .await
+        .map_err(|error| {
+            tracing::warn!(
+                remote_path = display_path,
+                requested_mode = ?mode,
+                requested_uid = ?uid,
+                requested_gid = ?gid,
+                error = %error,
+                "Failed to update remote file attributes"
+            );
+            AppError::from(error)
+        })?;
 
     Ok(())
 }
 
-async fn apply_remote_attrs_recursive(
+async fn apply_remote_attrs_recursive_bytes(
     sftp: &SftpSession,
-    path: &str,
+    display_path: &str,
+    path_bytes: Vec<u8>,
     mode: Option<u32>,
     uid: Option<u32>,
     gid: Option<u32>,
 ) -> AppResult<()> {
-    let path = normalize_remote_dir_path(path);
-    let meta = sftp.symlink_metadata(path).await?;
+    let path_bytes = normalize_remote_dir_path_bytes(&path_bytes);
+    let meta = sftp.symlink_metadata_bytes(path_bytes.clone()).await?;
     let is_dir = sftp_attrs_is_dir(&meta);
     let is_symlink = sftp_attrs_is_symlink(&meta);
 
-    apply_remote_attrs(sftp, path, mode, uid, gid).await?;
+    apply_remote_attrs_bytes(sftp, display_path, path_bytes.clone(), mode, uid, gid).await?;
 
     if !is_dir || is_symlink {
         return Ok(());
     }
 
-    let dir = sftp.read_dir(path).await?;
+    let dir = sftp.read_dir_bytes(path_bytes.clone()).await?;
     let mut errors: Vec<String> = Vec::new();
     for entry in dir {
         let name = entry.file_name();
         if name == "." || name == ".." {
             continue;
         }
-        let child = join_remote_child(path, &name);
+        let child_bytes = join_remote_child_bytes(&path_bytes, entry.file_name_bytes());
+        let child_display = join_remote_child(display_path, &name);
         let attrs = entry.metadata();
         if sftp_attrs_is_dir(&attrs) && !sftp_attrs_is_symlink(&attrs) {
-            if let Err(error) =
-                Box::pin(apply_remote_attrs_recursive(sftp, &child, mode, uid, gid)).await
+            if let Err(error) = Box::pin(apply_remote_attrs_recursive_bytes(
+                sftp,
+                &child_display,
+                child_bytes,
+                mode,
+                uid,
+                gid,
+            ))
+            .await
             {
                 errors.push(error.to_string());
             }
-        } else if let Err(error) = apply_remote_attrs(sftp, &child, mode, uid, gid).await {
-            errors.push(format!("'{}': {}", child, error));
+        } else if let Err(error) =
+            apply_remote_attrs_bytes(sftp, &child_display, child_bytes, mode, uid, gid).await
+        {
+            errors.push(format!("'{}': {}", child_display, error));
         }
     }
 
@@ -886,20 +996,21 @@ async fn apply_remote_attrs_recursive(
     }
 }
 
-async fn apply_remote_mode_after_create(
+async fn apply_remote_mode_after_create_bytes(
     sftp: &SftpSession,
-    path: &str,
+    display_path: &str,
+    path_bytes: Vec<u8>,
     mode: &str,
     item_kind: &str,
 ) -> AppResult<()> {
     let requested_mode = parse_octal_mode(mode)?;
 
-    match apply_remote_mode(sftp, path, requested_mode).await {
+    match apply_remote_mode_bytes(sftp, display_path, path_bytes.clone(), requested_mode).await {
         Ok(()) => Ok(()),
         Err(error) => {
-            if sftp.metadata(path).await.is_ok() {
+            if sftp.metadata_bytes(path_bytes).await.is_ok() {
                 tracing::warn!(
-                    remote_path = path,
+                    remote_path = display_path,
                     requested_mode = mode,
                     item_kind = %item_kind,
                     error = %error,
@@ -979,6 +1090,7 @@ async fn download_known_size_to_local_file<F, G>(
     max_pipeline_depth: usize,
     controller: &Arc<TransferController>,
     parent_controller: Option<&Arc<TransferController>>,
+    path_cache: &RwLock<HashMap<String, Vec<u8>>>,
     mut on_bytes: F,
     mut on_progress_interval: G,
 ) -> AppResult<u64>
@@ -1008,13 +1120,22 @@ where
         .min(max_pipeline_depth.max(1))
         .min(num_chunks);
 
+    // Look up raw bytes path from cache for non-UTF-8 file names
+    let cache = path_cache.read().await;
+    let raw_path = cache.get(remote_path).cloned();
+    drop(cache);
+
     let mut handle_pool: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(concurrency);
     for _ in 0..concurrency {
-        handle_pool.push(
+        handle_pool.push(if let Some(ref bytes) = raw_path {
+            sftp.open_bytes(bytes.clone())
+                .await
+                .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?
+        } else {
             sftp.open(remote_path)
                 .await
-                .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?,
-        );
+                .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?
+        });
     }
 
     type Task = AppResult<(u64, Vec<u8>, bool, russh_sftp::client::fs::File)>;
@@ -1167,6 +1288,7 @@ async fn download_remote_file_inner_with_controller(
                 pipeline_depth,
                 &controller,
                 parent_controller.as_ref(),
+                &backend.path_cache,
                 |current, _delta| {
                     controller.update_progress(current, total_size);
                 },
@@ -1181,11 +1303,21 @@ async fn download_remote_file_inner_with_controller(
             )
             .await?;
         } else {
+            // Look up raw bytes path from cache for non-UTF-8 file names
+            let cache = backend.path_cache.read().await;
+            let raw_path = cache.get(remote_path).cloned();
+            drop(cache);
+
             let mut last_progress = Instant::now();
-            let mut remote_file = sftp
-                .open(remote_path)
-                .await
-                .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?;
+            let mut remote_file = if let Some(ref bytes) = raw_path {
+                sftp.open_bytes(bytes.clone())
+                    .await
+                    .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?
+            } else {
+                sftp.open(remote_path)
+                    .await
+                    .map_err(|e| AppError::Channel(format!("Failed to open remote file: {}", e)))?
+            };
 
             let seq_chunk = (chunk_size as usize).max(64 * 1024);
             let mut buf = vec![0u8; seq_chunk];
@@ -1323,10 +1455,20 @@ async fn upload_local_file_inner_with_controller(
         let mut local_file = tokio::fs::File::open(local_path)
             .await
             .map_err(|e| AppError::Channel(format!("Failed to open local file: {}", e)))?;
-        let mut remote_file = sftp
-            .create(remote_path)
+        let mut remote_file = if backend.encoding() != "UTF-8" {
+            let path_bytes = backend.encode_path_for_sftp(remote_path);
+            use russh_sftp::protocol::OpenFlags;
+            sftp.open_with_flags_bytes(
+                path_bytes,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            )
             .await
-            .map_err(|e| AppError::Channel(format!("Failed to create remote file: {}", e)))?;
+            .map_err(|e| AppError::Channel(format!("Failed to create remote file: {}", e)))?
+        } else {
+            sftp.create(remote_path)
+                .await
+                .map_err(|e| AppError::Channel(format!("Failed to create remote file: {}", e)))?
+        };
 
         if total_size > 0 {
             let mut buf = vec![0u8; chunk_size];
@@ -1448,23 +1590,55 @@ impl RemoteFs for SftpBackend {
     }
 
     async fn list_dir(&self, path: &str) -> AppResult<Vec<FileEntry>> {
+        let path_ref = RemotePathRef::new(path, None)?;
+        self.list_dir_ref(&path_ref).await
+    }
+
+    async fn list_dir_ref(&self, path: &RemotePathRef) -> AppResult<Vec<FileEntry>> {
         let sftp = self.open_sftp().await?;
-        let dir = sftp.read_dir(path).await?;
+
+        let path_bytes = normalize_remote_dir_path_bytes(&self.remote_path_bytes(path));
+        if path.raw_path().is_some() {
+            self.path_cache
+                .write()
+                .await
+                .insert(path.display_path().to_string(), path_bytes.clone());
+        }
+        let dir = sftp.read_dir_bytes(path_bytes.clone()).await?;
 
         let mut pending = Vec::new();
         let mut uid_set = HashSet::new();
         let mut gid_set = HashSet::new();
+        let normalized_path = normalize_remote_dir_path(path.display_path());
+
         for entry in dir {
-            let name = entry.file_name();
-            if name == "." || name == ".." {
+            let name_from_entry = entry.file_name();
+            if name_from_entry == "." || name_from_entry == ".." {
                 continue;
             }
+
+            // Get raw bytes for the file name to preserve original encoding
+            let name_bytes = entry.file_name_bytes().to_vec();
+
+            // Decode using the connection's encoding setting
+            let name = self.decode_path_from_sftp(&name_bytes);
+
+            let full_path = join_remote_child(&normalized_path, &name);
+
+            let full_path_bytes = join_remote_child_bytes(&path_bytes, &name_bytes);
+            let raw_path_token = raw_path_token(&full_path_bytes);
+            self.path_cache
+                .write()
+                .await
+                .insert(full_path.clone(), full_path_bytes.clone());
+
             let file_type = entry.file_type();
             let is_symlink = file_type == FileType::Symlink;
-            let full_path = join_remote_child(normalize_remote_dir_path(path), &name);
+
+            // Use raw bytes for metadata operation to handle non-UTF-8 paths
             let is_symlink_to_dir = is_symlink
                 && sftp
-                    .metadata(&full_path)
+                    .metadata_bytes(full_path_bytes.clone())
                     .await
                     .ok()
                     .as_ref()
@@ -1503,7 +1677,16 @@ impl RemoteFs for SftpBackend {
                 }
             }
 
-            pending.push((name, is_dir, is_symlink, size, permissions, attrs, mtime));
+            pending.push((
+                name,
+                is_dir,
+                is_symlink,
+                size,
+                permissions,
+                attrs,
+                mtime,
+                raw_path_token,
+            ));
         }
 
         let _ = sftp.close().await;
@@ -1512,21 +1695,24 @@ impl RemoteFs for SftpBackend {
         let entries = pending
             .into_iter()
             .map(
-                |(name, is_dir, is_symlink, size, permissions, attrs, mtime)| FileEntry {
-                    name,
-                    is_dir,
-                    is_symlink,
-                    size,
-                    permissions,
-                    owner: attrs
-                        .uid
-                        .and_then(|uid| user_names.get(&uid).cloned())
-                        .unwrap_or_else(|| owner_or_id(&attrs.user, attrs.uid)),
-                    group: attrs
-                        .gid
-                        .and_then(|gid| group_names.get(&gid).cloned())
-                        .unwrap_or_else(|| group_or_id(&attrs.group, attrs.gid)),
-                    mtime,
+                |(name, is_dir, is_symlink, size, permissions, attrs, mtime, raw_path_token)| {
+                    FileEntry {
+                        name,
+                        is_dir,
+                        is_symlink,
+                        size,
+                        permissions,
+                        owner: attrs
+                            .uid
+                            .and_then(|uid| user_names.get(&uid).cloned())
+                            .unwrap_or_else(|| owner_or_id(&attrs.user, attrs.uid)),
+                        group: attrs
+                            .gid
+                            .and_then(|gid| group_names.get(&gid).cloned())
+                            .unwrap_or_else(|| group_or_id(&attrs.group, attrs.gid)),
+                        mtime,
+                        raw_path_token: Some(raw_path_token),
+                    }
                 },
             )
             .collect();
@@ -1534,11 +1720,17 @@ impl RemoteFs for SftpBackend {
     }
 
     async fn stat(&self, path: &str) -> AppResult<FileProperties> {
+        let path_ref = RemotePathRef::new(path, None)?;
+        self.stat_ref(&path_ref).await
+    }
+
+    async fn stat_ref(&self, path: &RemotePathRef) -> AppResult<FileProperties> {
         let sftp = self.open_sftp().await?;
-        let attrs = sftp.symlink_metadata(path).await?;
+        let raw_path = self.remote_path_bytes(path);
+        let attrs = sftp.symlink_metadata_bytes(raw_path.clone()).await?;
         let is_symlink = sftp_attrs_is_symlink(&attrs);
         let target_attrs = if is_symlink {
-            sftp.metadata(path).await.ok()
+            sftp.metadata_bytes(raw_path).await.ok()
         } else {
             None
         };
@@ -1555,7 +1747,12 @@ impl RemoteFs for SftpBackend {
             '-'
         };
         let permissions = permissions_to_string(perms, type_char);
-        let name = path.split('/').last().unwrap_or(path).to_string();
+        let name = path
+            .display_path()
+            .split('/')
+            .last()
+            .unwrap_or(path.display_path())
+            .to_string();
         let owner = if let Some(uid) = attrs.uid {
             self.resolve_uid_names(HashSet::from([uid]))
                 .await
@@ -1592,17 +1789,25 @@ impl RemoteFs for SftpBackend {
 
     async fn mkdir(&self, path: &str, mode: Option<String>) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        sftp.create_dir(path).await?;
+        let path_bytes = self.encode_path_for_sftp(path);
+        sftp.create_dir_bytes(path_bytes.clone()).await?;
         if let Some(ref m) = mode {
-            apply_remote_mode_after_create(&sftp, path, m, "directory").await?;
+            apply_remote_mode_after_create_bytes(&sftp, path, path_bytes, m, "directory").await?;
         }
         let _ = sftp.close().await;
         Ok(())
     }
 
     async fn remove_file(&self, path: &str) -> AppResult<()> {
+        let path_ref = RemotePathRef::new(path, None)?;
+        self.remove_file_ref(&path_ref).await
+    }
+
+    async fn remove_file_ref(&self, path: &RemotePathRef) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        let meta = match sftp.symlink_metadata(path).await {
+        let raw_path = self.remote_path_bytes(path);
+
+        let meta = match sftp.symlink_metadata_bytes(raw_path.clone()).await {
             Ok(meta) => meta,
             Err(error) if is_sftp_not_found(&error) => {
                 let _ = sftp.close().await;
@@ -1615,34 +1820,72 @@ impl RemoteFs for SftpBackend {
         };
 
         if sftp_attrs_is_symlink(&meta) {
-            ignore_sftp_not_found(sftp.remove_file(path).await)?;
+            ignore_sftp_not_found(sftp.remove_file_bytes(raw_path).await)?;
         } else if sftp_attrs_is_dir(&meta) {
             let _ = sftp.close().await;
-            self.remove_dir_fast(path).await?;
+            self.remove_dir_fast_ref(path).await?;
             return Ok(());
         } else {
-            ignore_sftp_not_found(sftp.remove_file(path).await)?;
+            ignore_sftp_not_found(sftp.remove_file_bytes(raw_path).await)?;
         }
         let _ = sftp.close().await;
         Ok(())
     }
 
     async fn rename(&self, old_path: &str, new_path: &str) -> AppResult<()> {
+        let old_ref = RemotePathRef::new(old_path, None)?;
+        let new_ref = RemotePathRef::new(new_path, None)?;
+        self.rename_ref(&old_ref, &new_ref).await
+    }
+
+    async fn rename_ref(
+        &self,
+        old_path: &RemotePathRef,
+        new_path: &RemotePathRef,
+    ) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        sftp.rename(old_path, new_path).await?;
+        sftp.rename_bytes(
+            self.remote_path_bytes(old_path),
+            self.remote_path_bytes(new_path),
+        )
+        .await?;
         let _ = sftp.close().await;
         Ok(())
     }
 
     async fn create_file(&self, path: &str, mode: Option<String>) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
-        let file = sftp.create(path).await?;
-        drop(file);
-        if let Some(ref m) = mode {
-            apply_remote_mode_after_create(&sftp, path, m, "file").await?;
+
+        // For non-UTF-8 encodings, encode the path in the target encoding
+        // and use open_bytes with WRITE flag to create the file
+        let result = if self.encoding != "UTF-8" {
+            let path_bytes = self.encode_path_for_sftp(path);
+            use russh_sftp::protocol::OpenFlags;
+            sftp.open_with_flags_bytes(
+                path_bytes,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            )
+            .await
+        } else {
+            sftp.create(path).await
+        };
+
+        match result {
+            Ok(file) => {
+                drop(file);
+                if let Some(ref m) = mode {
+                    let path_bytes = self.encode_path_for_sftp(path);
+                    apply_remote_mode_after_create_bytes(&sftp, path, path_bytes, m, "file")
+                        .await?;
+                }
+                let _ = sftp.close().await;
+                Ok(())
+            }
+            Err(error) => {
+                let _ = sftp.close().await;
+                Err(error.into())
+            }
         }
-        let _ = sftp.close().await;
-        Ok(())
     }
 
     async fn create_symlink(&self, link_path: &str, target_path: &str) -> AppResult<()> {
@@ -1653,6 +1896,15 @@ impl RemoteFs for SftpBackend {
     }
 
     async fn update_attrs(&self, path: &str, update: &RemoteFileAttributeUpdate) -> AppResult<()> {
+        let path_ref = RemotePathRef::new(path, None)?;
+        self.update_attrs_ref(&path_ref, update).await
+    }
+
+    async fn update_attrs_ref(
+        &self,
+        path: &RemotePathRef,
+        update: &RemoteFileAttributeUpdate,
+    ) -> AppResult<()> {
         let mode = update
             .mode
             .as_deref()
@@ -1685,10 +1937,20 @@ impl RemoteFs for SftpBackend {
         }
 
         let sftp = self.open_sftp().await?;
+        let path_bytes = self.remote_path_bytes(path);
         if update.recursive {
-            apply_remote_attrs_recursive(&sftp, path, mode, uid, gid).await?;
+            apply_remote_attrs_recursive_bytes(
+                &sftp,
+                path.display_path(),
+                path_bytes,
+                mode,
+                uid,
+                gid,
+            )
+            .await?;
         } else {
-            apply_remote_attrs(&sftp, path, mode, uid, gid).await?;
+            apply_remote_attrs_bytes(&sftp, path.display_path(), path_bytes, mode, uid, gid)
+                .await?;
         }
         let _ = sftp.close().await;
         Ok(())
@@ -2187,14 +2449,28 @@ struct DirectoryTransferSummary {
     small_file_concurrency: usize,
 }
 
-struct RemoveInventory {
-    files: Vec<String>,
-    dirs: Vec<String>,
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct RemoteRemoveEntry {
+    display_path: String,
+    raw_path: Vec<u8>,
 }
 
-async fn collect_remove_inventory(sftp: &SftpSession, path: &str) -> AppResult<RemoveInventory> {
-    let path = normalize_remote_dir_path(path).to_string();
-    let dir = match sftp.read_dir(&path).await {
+#[allow(dead_code)]
+struct RemoveInventory {
+    files: Vec<RemoteRemoveEntry>,
+    dirs: Vec<RemoteRemoveEntry>,
+}
+
+#[allow(dead_code)]
+async fn collect_remove_inventory(
+    sftp: &SftpSession,
+    display_path: &str,
+    path_bytes: Vec<u8>,
+) -> AppResult<RemoveInventory> {
+    let display_path = normalize_remote_dir_path(display_path).to_string();
+    let path_bytes = normalize_remote_dir_path_bytes(&path_bytes);
+    let dir = match sftp.read_dir_bytes(path_bytes.clone()).await {
         Ok(dir) => dir,
         Err(error) if is_sftp_not_found(&error) => {
             return Ok(RemoveInventory {
@@ -2205,26 +2481,35 @@ async fn collect_remove_inventory(sftp: &SftpSession, path: &str) -> AppResult<R
         Err(error) => return Err(error.into()),
     };
     let mut files = Vec::new();
-    let mut dirs = vec![path.clone()];
+    let mut dirs = vec![RemoteRemoveEntry {
+        display_path: display_path.clone(),
+        raw_path: path_bytes.clone(),
+    }];
 
     for entry in dir {
         let name = entry.file_name();
         if name == "." || name == ".." {
             continue;
         }
-        let child = join_remote_child(&path, &name);
+        let child_display = join_remote_child(&display_path, &name);
+        let child_bytes = join_remote_child_bytes(&path_bytes, entry.file_name_bytes());
         if entry.file_type() == FileType::Dir {
-            let child_inventory = Box::pin(collect_remove_inventory(sftp, &child)).await?;
+            let child_inventory =
+                Box::pin(collect_remove_inventory(sftp, &child_display, child_bytes)).await?;
             files.extend(child_inventory.files);
             dirs.extend(child_inventory.dirs);
         } else {
-            files.push(child);
+            files.push(RemoteRemoveEntry {
+                display_path: child_display,
+                raw_path: child_bytes,
+            });
         }
     }
 
     Ok(RemoveInventory { files, dirs })
 }
 
+#[allow(dead_code)]
 async fn remove_inventory_concurrent(
     pool: SftpSessionPool,
     mut inventory: RemoveInventory,
@@ -2249,8 +2534,8 @@ async fn remove_inventory_concurrent(
                     return Ok(());
                 };
                 let session = pool.session_for(worker_index);
-                if let Err(error) = session.remove_file(&file).await {
-                    if let Some(message) = sftp_remove_error(&file, "file", error) {
+                if let Err(error) = session.remove_file_bytes(file.raw_path.clone()).await {
+                    if let Some(message) = sftp_remove_error(&file.display_path, "file", error) {
                         return Err(AppError::Channel(message));
                     }
                 }
@@ -2269,11 +2554,11 @@ async fn remove_inventory_concurrent(
 
     inventory
         .dirs
-        .sort_by_key(|dir| std::cmp::Reverse(dir.matches('/').count()));
+        .sort_by_key(|dir| std::cmp::Reverse(dir.raw_path.iter().filter(|b| **b == b'/').count()));
     for dir in inventory.dirs {
         let session = pool.session_for(0);
-        if let Err(error) = session.remove_dir(&dir).await {
-            if let Some(message) = sftp_remove_error(&dir, "directory", error) {
+        if let Err(error) = session.remove_dir_bytes(dir.raw_path).await {
+            if let Some(message) = sftp_remove_error(&dir.display_path, "directory", error) {
                 errors.push(message);
             }
         }
@@ -2291,14 +2576,28 @@ async fn remove_inventory_concurrent(
 }
 
 impl SftpBackend {
+    #[allow(dead_code)]
     async fn remove_dir_fast(&self, path: &str) -> AppResult<()> {
-        if is_safe_recursive_remove_target(path) {
-            let command = format!("rm -rf -- {}", sh_quote(normalize_remote_dir_path(path)));
+        let path_ref = RemotePathRef::new(path, None)?;
+        self.remove_dir_fast_ref(&path_ref).await
+    }
+
+    async fn remove_dir_fast_ref(&self, path: &RemotePathRef) -> AppResult<()> {
+        let is_utf8_sftp_encoding =
+            Encoding::for_label(self.encoding.trim().as_bytes()).unwrap_or(UTF_8) == UTF_8;
+        if is_utf8_sftp_encoding
+            && path.raw_path().is_none()
+            && is_safe_recursive_remove_target(path.display_path())
+        {
+            let command = format!(
+                "rm -rf -- {}",
+                sh_quote(normalize_remote_dir_path(path.display_path()))
+            );
             match self.exec_ok(&command).await {
                 Ok(_) => return Ok(()),
                 Err(error) => {
                     tracing::warn!(
-                        remote_path = path,
+                        remote_path = path.display_path(),
                         error = %error,
                         "Remote rm -rf fast path failed, falling back to SFTP recursive delete"
                     );
@@ -2306,13 +2605,23 @@ impl SftpBackend {
             }
         }
 
-        self.remove_dir_concurrent_sftp(path).await
+        let raw_path = self.remote_path_bytes(path);
+        if !is_safe_recursive_remove_target_bytes(&raw_path) {
+            return Err(AppError::Channel(format!(
+                "Refusing to recursively delete unsafe remote path '{}'",
+                path.display_path()
+            )));
+        }
+
+        self.remove_dir_concurrent_sftp(path.display_path(), raw_path)
+            .await
     }
 
-    async fn remove_dir_concurrent_sftp(&self, path: &str) -> AppResult<()> {
+    #[allow(dead_code)]
+    async fn remove_dir_concurrent_sftp(&self, path: &str, path_bytes: Vec<u8>) -> AppResult<()> {
         let sftp = self.open_sftp().await?;
         let max_open_handles = sftp.max_open_handles();
-        let result = collect_remove_inventory(&sftp, path).await;
+        let result = collect_remove_inventory(&sftp, path, path_bytes.clone()).await;
         let _ = sftp.close().await;
         let inventory = result?;
 
@@ -2322,7 +2631,9 @@ impl SftpBackend {
 
         if inventory.files.is_empty() && inventory.dirs.len() <= 1 {
             let sftp = self.open_sftp().await?;
-            let result = sftp.remove_dir(normalize_remote_dir_path(path)).await;
+            let result = sftp
+                .remove_dir_bytes(normalize_remote_dir_path_bytes(&path_bytes))
+                .await;
             let _ = sftp.close().await;
             return match result {
                 Ok(()) => Ok(()),
@@ -2566,6 +2877,7 @@ impl SftpBackend {
             directory_controller,
             transfer_settings,
             concurrency,
+            self.path_cache.clone(),
         )
         .await;
         pool.close_all().await;
@@ -2635,6 +2947,7 @@ async fn run_download_directory_workers(
     directory_controller: Arc<TransferController>,
     transfer_settings: &crate::config::TransferSettings,
     concurrency: SftpDirectoryConcurrency,
+    path_cache: Arc<RwLock<HashMap<String, Vec<u8>>>>,
 ) -> AppResult<DirectoryTransferSummary> {
     let worker_count = sftp_directory_file_concurrency(inventory.files.len(), concurrency);
     let total_files = inventory.total_files;
@@ -2654,6 +2967,7 @@ async fn run_download_directory_workers(
         let completed_bytes = completed_bytes.clone();
         let large_lane = large_lane.clone();
         let transfer_settings = transfer_settings.clone();
+        let path_cache = path_cache.clone();
         join_set.spawn(async move {
             loop {
                 wait_for_transfer_ready(&directory_controller).await?;
@@ -2681,6 +2995,7 @@ async fn run_download_directory_workers(
                     &completed_bytes,
                     total_size,
                     concurrency.small_file_concurrency,
+                    &path_cache,
                 )
                 .await?;
                 let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
@@ -2834,6 +3149,7 @@ async fn download_directory_file_with_session(
     completed_bytes: &Arc<AtomicU64>,
     total_size: u64,
     max_pipeline_depth: usize,
+    path_cache: &RwLock<HashMap<String, Vec<u8>>>,
 ) -> AppResult<u64> {
     use tokio::io::AsyncWriteExt;
 
@@ -2872,6 +3188,7 @@ async fn download_directory_file_with_session(
             max_pipeline_depth,
             directory_controller,
             None,
+            path_cache,
             |_current, delta| {
                 add_directory_transferred_bytes(
                     directory_controller,
@@ -3223,5 +3540,16 @@ mod tests {
         assert!(is_safe_recursive_remove_target("/tmp/uploads"));
         assert!(is_safe_recursive_remove_target("relative/uploads"));
         assert!(is_safe_recursive_remove_target("/home/user/data/"));
+    }
+
+    #[test]
+    fn raw_child_path_is_joined_from_parent_bytes() {
+        let parent = b"/remote/\x80parent".to_vec();
+        let child = b"\x81child".to_vec();
+
+        assert_eq!(
+            join_remote_child_bytes(&parent, &child),
+            b"/remote/\x80parent/\x81child"
+        );
     }
 }
