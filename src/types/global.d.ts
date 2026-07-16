@@ -108,6 +108,7 @@ export interface SshConfig {
   post_login?: { command: string; delay_ms: number } | null;
   ssh_algorithms?: SshAlgorithmPreferences | null;
   sftp?: SftpSettings;
+  encoding?: string;
 }
 
 /** SSH authentication: none, password, or private key (PEM content). */
@@ -221,6 +222,7 @@ export type SftpCwdFollowMode = "off" | "shell_integration" | "rc_file";
 export interface SftpSettings {
   enabled: boolean;
   cwd_follow_mode: SftpCwdFollowMode;
+  filename_encoding?: string;
 }
 
 export type AlgorithmRisk = "modern" | "legacy" | "insecure";
@@ -299,6 +301,8 @@ export interface SavedConnection {
   auto_login?: TelnetAutoLoginConfig;
   /** SSH-only: enables X11 forwarding for remote graphical applications. */
   x11_forwarding?: boolean;
+  /** Per-connection encoding override. Empty string means follow global setting. */
+  encoding?: string;
 }
 
 /** Stored OTP entry for two-factor authentication. */
@@ -370,6 +374,7 @@ export type RightPanelId =
   | "commandHistory"
   | "resourceMonitor"
   | "gpuMonitor"
+  | "ascendNpuMonitor"
   | "processManager"
   | "dockerManager"
   | "recording"
@@ -435,6 +440,8 @@ export interface UiConfig {
   remote_stats_interval: number;
   show_gpu_monitor: boolean;
   gpu_monitor_interval: number;
+  show_ascend_npu_monitor: boolean;
+  ascend_npu_monitor_interval: number;
   show_process_manager: boolean;
   process_manager_interval: number;
   show_docker_manager: boolean;
@@ -651,6 +658,43 @@ export interface RemoteGpuOverview {
   cuda_version: string;
   gpus: RemoteGpu[];
   processes: RemoteGpuProcess[];
+}
+
+export interface RemoteNpu {
+  index: number;
+  chip_id: number;
+  physical_id?: number | null;
+  device_key: string;
+  name: string;
+  health: string;
+  bus_id: string;
+  temperature_c?: number | null;
+  utilization_aicore_percent?: number | null;
+  utilization_memory_percent?: number | null;
+  memory_total_mb: number;
+  memory_used_mb: number;
+  memory_free_mb: number;
+  memory_kind: string;
+  hbm_total_mb?: number | null;
+  hbm_used_mb?: number | null;
+  power_draw_w?: number | null;
+}
+
+export interface RemoteNpuProcess {
+  npu_index: number;
+  chip_id: number;
+  device_key: string;
+  pid: number;
+  process_name: string;
+  used_memory_mb: number;
+}
+
+export interface RemoteNpuOverview {
+  available: boolean;
+  driver_version: string;
+  cann_version: string;
+  npus: RemoteNpu[];
+  processes: RemoteNpuProcess[];
 }
 
 /** Labeled command shortcut for quick execution. */
@@ -1137,6 +1181,7 @@ export interface FileEntry {
   owner: string;
   group: string;
   mtime: number;
+  raw_path_token?: string;
 }
 
 export interface FileProperties {
