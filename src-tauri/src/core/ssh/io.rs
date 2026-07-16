@@ -3,6 +3,7 @@ use crate::config::SftpCwdFollowMode;
 use crate::core::capture::OutputCaptureProcessor;
 use crate::core::input::remap_del_to_bs;
 use crate::core::ssh::osc::{self, OscStripper, ShellKind};
+use crate::core::terminal_session::{TerminalOutputDecoder, encode_terminal_input};
 use crate::core::zmodem::{
     ZmodemAction, ZmodemDetectResult, ZmodemDetector, ZmodemDirection, ZmodemDownloadOoDrain,
     ZmodemEvent, ZmodemTransfer, ZmodemUploadDrain, start_zmodem_transfer,
@@ -553,6 +554,7 @@ pub(super) async fn ssh_io_loop(
     startup_command: Option<SshStartupCommand>,
     backspace_mode: String,
     initial_notice: Option<String>,
+    encoding: String,
 ) {
     let backspace_as_bs = backspace_mode == "ctrl_h";
     let output_event = format!("terminal-output-{}", session_id);
@@ -564,6 +566,7 @@ pub(super) async fn ssh_io_loop(
         .map(|state| state.inner().clone());
     let output =
         SessionOutputCoalescer::for_app(app.clone(), output_event.clone(), output_control_tx);
+    let mut output_decoder = TerminalOutputDecoder::new(&encoding);
     if let Some(notice) = initial_notice {
         output.push_owned(notice);
     }
@@ -633,7 +636,8 @@ pub(super) async fn ssh_io_loop(
                         if let Some(ref recorder) = recording_mgr {
                             recorder.write_input(&session_id, &data);
                         }
-                        let _ = channel.data(&data[..]).await;
+                        let send_data = encode_terminal_input(&data, &encoding);
+                        let _ = channel.data(&send_data[..]).await;
                     }
                     Some(SessionCommand::Resize { cols, rows }) => {
                         let _ = channel.window_change(cols, rows, 0, 0).await;
@@ -649,7 +653,8 @@ pub(super) async fn ssh_io_loop(
                     }
                     Some(SessionCommand::CaptureExec { marker_id, wrapped_command, result_tx }) => {
                         capture_processor.register(marker_id, result_tx);
-                        let _ = channel.data(&wrapped_command[..]).await;
+                        let send_command = encode_terminal_input(&wrapped_command, &encoding);
+                        let _ = channel.data(&send_command[..]).await;
                     }
                     Some(SessionCommand::CancelCapture { marker_id }) => {
                         capture_processor.cancel(&marker_id);
@@ -732,7 +737,7 @@ pub(super) async fn ssh_io_loop(
                                 ZmodemDetectResult::Detected { direction, passthrough, initial_bytes } => {
                                     // Forward any pre-header bytes to the terminal.
                                     if !passthrough.is_empty() {
-                                        let pre = String::from_utf8_lossy(&passthrough).to_string();
+                                        let pre = output_decoder.decode(&passthrough);
                                         if !pre.is_empty() {
                                             output.push_owned(pre);
                                         }
@@ -764,7 +769,7 @@ pub(super) async fn ssh_io_loop(
                                     continue;
                                 }
                                 ZmodemDetectResult::NoMatch { passthrough } => {
-                                    let text = String::from_utf8_lossy(&passthrough).to_string();
+                                    let text = output_decoder.decode(&passthrough);
                                     let mut result = stripper.push(&text);
 
                                     if capture_processor.has_active() {
@@ -797,7 +802,7 @@ pub(super) async fn ssh_io_loop(
                             }
                     }
                     Some(ChannelMsg::ExtendedData { ref data, .. }) => {
-                        let text = String::from_utf8_lossy(data).to_string();
+                        let text = output_decoder.decode(data);
                         if let Some(ref recorder) = recording_mgr {
                             recorder.write_output(&session_id, &text);
                         }

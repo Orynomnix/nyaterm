@@ -51,6 +51,14 @@ pub async fn create_local_session(
     let sid = session_id.clone();
     let mgr = manager.clone();
     let rt_handle = tokio::runtime::Handle::current();
+    let encoding = config
+        .as_ref()
+        .map(|c| c.encoding.clone())
+        .unwrap_or_else(|| {
+            crate::config::load_app_settings(&app)
+                .map(|settings| settings.interaction.default_encoding)
+                .unwrap_or_else(|_| "UTF-8".to_string())
+        });
 
     std::thread::spawn(move || {
         pty_session_thread(
@@ -64,6 +72,7 @@ pub async fn create_local_session(
             config,
             startup_script.script,
             ready_marker,
+            encoding,
         );
     });
 
@@ -81,6 +90,7 @@ fn pty_session_thread(
     config: Option<LocalSessionConfig>,
     startup_script: Option<String>,
     ready_marker: String,
+    encoding: String,
 ) {
     let pty_system = native_pty_system();
     let pair = match pty_system.openpty(PtySize {
@@ -229,12 +239,14 @@ fn pty_session_thread(
     let output_reader = output.clone();
     let manager_reader = manager.clone();
     let suppress_startup_output = startup_script.is_some();
+    let encoding_for_reader = encoding.clone();
     let (reader_done_tx, reader_done_rx) = std_mpsc::channel::<()>();
     std::thread::spawn(move || {
         let mut raw_buf = [0u8; 4096];
         let mut stripper = OscStripper::new(&ready_marker);
         let mut suppress_visible = suppress_startup_output;
         let mut zmodem_detector = ZmodemDetector::new();
+        let mut output_decoder = TerminalOutputDecoder::new(&encoding_for_reader);
         loop {
             {
                 let (lock, cvar) = &*output_pause_reader;
@@ -280,7 +292,7 @@ fn pty_session_thread(
                                 initial_bytes,
                             } => {
                                 if !passthrough.is_empty() {
-                                    let pre = String::from_utf8_lossy(&passthrough).to_string();
+                                    let pre = output_decoder.decode(&passthrough);
                                     if !pre.is_empty() {
                                         output_reader.push_owned(pre);
                                     }
@@ -325,7 +337,7 @@ fn pty_session_thread(
                         raw.to_vec()
                     };
 
-                    let text = String::from_utf8_lossy(&process_raw).to_string();
+                    let text = output_decoder.decode(&process_raw);
                     let mut result = stripper.push(&text);
 
                     for path in &result.cwd_paths {
@@ -422,10 +434,11 @@ fn pty_session_thread(
                 if zmodem_state.lock().unwrap().is_some() {
                     continue;
                 }
+                let send_data = encode_terminal_input(&data, &encoding);
                 if let Some(ref rec) = recording_mgr {
                     rec.write_input(&session_id, &data);
                 }
-                if let Err(error) = write_to_pty(&mut *writer, &data) {
+                if let Err(error) = write_to_pty(&mut *writer, &send_data) {
                     tracing::warn!(
                         session_id = %session_id,
                         error = %error,
@@ -441,7 +454,8 @@ fn pty_session_thread(
                 if let Ok(mut proc) = capture_processor.lock() {
                     proc.register(marker_id, result_tx);
                 }
-                if let Err(error) = write_to_pty(&mut *writer, &wrapped_command) {
+                let send_command = encode_terminal_input(&wrapped_command, &encoding);
+                if let Err(error) = write_to_pty(&mut *writer, &send_command) {
                     tracing::warn!(
                         session_id = %session_id,
                         error = %error,

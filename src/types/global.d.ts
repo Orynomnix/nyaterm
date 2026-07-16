@@ -108,6 +108,7 @@ export interface SshConfig {
   post_login?: { command: string; delay_ms: number } | null;
   ssh_algorithms?: SshAlgorithmPreferences | null;
   sftp?: SftpSettings;
+  encoding?: string;
 }
 
 /** SSH authentication: none, password, or private key (PEM content). */
@@ -221,6 +222,7 @@ export type SftpCwdFollowMode = "off" | "shell_integration" | "rc_file";
 export interface SftpSettings {
   enabled: boolean;
   cwd_follow_mode: SftpCwdFollowMode;
+  filename_encoding?: string;
 }
 
 export type AlgorithmRisk = "modern" | "legacy" | "insecure";
@@ -299,6 +301,8 @@ export interface SavedConnection {
   auto_login?: TelnetAutoLoginConfig;
   /** SSH-only: enables X11 forwarding for remote graphical applications. */
   x11_forwarding?: boolean;
+  /** Per-connection encoding override. Empty string means follow global setting. */
+  encoding?: string;
 }
 
 /** Stored OTP entry for two-factor authentication. */
@@ -1177,6 +1181,7 @@ export interface FileEntry {
   owner: string;
   group: string;
   mtime: number;
+  raw_path_token?: string;
 }
 
 export interface FileProperties {
