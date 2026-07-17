@@ -20,9 +20,25 @@ export function useTerminalSettings(
   sessionId?: string,
 ) {
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  const webglTerminalRef = useRef<Terminal | null>(null);
   const webglFailedRef = useRef(false);
   const textureRefreshFrameRef = useRef<number | null>(null);
   const terminalTransparencyEnabled = isTerminalTransparencyEnabled(appearance);
+
+  const cancelTextureRefresh = useCallback(() => {
+    if (textureRefreshFrameRef.current !== null) {
+      cancelAnimationFrame(textureRefreshFrameRef.current);
+      textureRefreshFrameRef.current = null;
+    }
+  }, []);
+
+  const disposeWebgl = useCallback(() => {
+    if (webglAddonRef.current) {
+      webglAddonRef.current.dispose();
+      webglAddonRef.current = null;
+    }
+    webglTerminalRef.current = null;
+  }, []);
 
   const scheduleTextureRefresh = useCallback(() => {
     if (textureRefreshFrameRef.current !== null) return;
@@ -35,53 +51,58 @@ export function useTerminalSettings(
     });
   }, [terminalRef]);
 
-  // React to hardware acceleration settings changes
   useEffect(() => {
-    if (!terminalRef.current) return;
+    return () => {
+      cancelTextureRefresh();
+      disposeWebgl();
+    };
+  }, [cancelTextureRefresh, disposeWebgl]);
 
-    if (
-      terminalSettings.hardware_acceleration &&
-      rendererVisible &&
-      !terminalTransparencyEnabled &&
-      !webglFailedRef.current
-    ) {
-      if (!webglAddonRef.current) {
-        try {
-          const webgl = new WebglAddon();
-          webgl.onContextLoss(() => {
-            webgl.dispose();
-            webglAddonRef.current = null;
-            webglFailedRef.current = true;
-          });
-          terminalRef.current.loadAddon(webgl);
-          webglAddonRef.current = webgl;
-        } catch {
-          // Fallback to DOM renderer if WebGL initialization fails
-          webglFailedRef.current = true;
-        }
-      }
-    } else {
-      if (webglAddonRef.current) {
-        webglAddonRef.current.dispose();
-        webglAddonRef.current = null;
-      }
+  // React to hardware acceleration settings changes.
+  useEffect(() => {
+    const terminal = terminalInstance ?? terminalRef.current;
+    if (!terminal) return;
+
+    if (webglAddonRef.current && webglTerminalRef.current !== terminal) {
+      disposeWebgl();
     }
 
-    return () => {
-      if (textureRefreshFrameRef.current !== null) {
-        cancelAnimationFrame(textureRefreshFrameRef.current);
-        textureRefreshFrameRef.current = null;
+    const shouldUseWebgl =
+      terminalSettings.hardware_acceleration &&
+      !terminalTransparencyEnabled &&
+      !webglFailedRef.current;
+
+    if (!shouldUseWebgl) {
+      disposeWebgl();
+      return;
+    }
+
+    if (!rendererVisible) return;
+
+    if (!webglAddonRef.current) {
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          webgl.dispose();
+          webglAddonRef.current = null;
+          webglTerminalRef.current = null;
+          webglFailedRef.current = true;
+        });
+        terminal.loadAddon(webgl);
+        webglAddonRef.current = webgl;
+        webglTerminalRef.current = terminal;
+      } catch {
+        // Fallback to DOM renderer if WebGL initialization fails
+        webglFailedRef.current = true;
       }
-      if (webglAddonRef.current) {
-        webglAddonRef.current.dispose();
-        webglAddonRef.current = null;
-      }
-    };
+    }
   }, [
     terminalSettings.hardware_acceleration,
     terminalTransparencyEnabled,
     rendererVisible,
     terminalRef,
+    terminalInstance,
+    disposeWebgl,
   ]);
   // React to terminal theme changes: update terminal colors dynamically
   useEffect(() => {
