@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { SavedConnection } from "@/types/global";
 import { resolveConnectionIcon } from "../../icons";
 import { useSavedConnectionsContext } from "./context";
+import { MoveToGroupContextMenu } from "./MoveToGroupMenu";
 
 const TOOLTIP_OPEN_DELAY_MS = 350;
 
@@ -220,10 +221,12 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
     dragTarget,
     selectedConnectionIds,
     savedConnections,
+    savedGroups,
     handleConnect,
     handleConnectOnly,
     handleConnectSelected,
     handleCopyConnection,
+    requestMoveConnectionToGroup,
     handleConnectionSelectionStart,
     handleConnectionContextMenu,
     onEditConnection,
@@ -509,6 +512,14 @@ export default function ConnectionItem({ conn, indented, depth = 0 }: Connection
           <MdContentCopy className="text-[0.875rem] text-muted-foreground mr-2" />
           {t("savedConnections.copy")}
         </ContextMenuItem>
+        <MoveToGroupContextMenu
+          groups={savedGroups}
+          onMove={(groupId) => {
+            closeAndSuppressDetails();
+            requestMoveConnectionToGroup(conn, groupId);
+          }}
+          t={t}
+        />
         <ContextMenuSeparator />
         <ContextMenuItem
           className="text-red-400"
