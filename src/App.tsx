@@ -1345,29 +1345,39 @@ function App() {
     void handleCloseWorkspaceTab(activeTab);
   }, [activeTab, handleCloseWorkspaceTab, notifyLockedTabCloseBlocked]);
 
+  const getActiveLeafTabIds = useCallback(() => {
+    const leaf =
+      terminalWindows && activeTabId
+        ? findTerminalWindowLeafByTabId(terminalWindows, activeTabId)
+        : null;
+    return leaf?.tabIds ?? tabs.map((tab) => tab.id);
+  }, [activeTabId, tabs, terminalWindows]);
+
   const handleNextTab = useCallback(() => {
-    if (tabs.length < 2 || !activeTabId) return;
-    const idx = tabs.findIndex((t) => t.id === activeTabId);
-    setActiveTabId(tabs[(idx + 1) % tabs.length].id);
-  }, [tabs, activeTabId, setActiveTabId]);
+    if (!activeTabId) return;
+    const tabIds = getActiveLeafTabIds();
+    if (tabIds.length < 2) return;
+    const idx = tabIds.indexOf(activeTabId);
+    if (idx === -1) return;
+    setActiveTabId(tabIds[(idx + 1) % tabIds.length]);
+  }, [activeTabId, getActiveLeafTabIds, setActiveTabId]);
 
   const handlePrevTab = useCallback(() => {
-    if (tabs.length < 2 || !activeTabId) return;
-    const idx = tabs.findIndex((t) => t.id === activeTabId);
-    setActiveTabId(tabs[(idx - 1 + tabs.length) % tabs.length].id);
-  }, [tabs, activeTabId, setActiveTabId]);
+    if (!activeTabId) return;
+    const tabIds = getActiveLeafTabIds();
+    if (tabIds.length < 2) return;
+    const idx = tabIds.indexOf(activeTabId);
+    if (idx === -1) return;
+    setActiveTabId(tabIds[(idx - 1 + tabIds.length) % tabIds.length]);
+  }, [activeTabId, getActiveLeafTabIds, setActiveTabId]);
 
   const handleSwitchTab = useCallback(
     (index: number) => {
-      const leaf =
-        terminalWindows && activeTabId
-          ? findTerminalWindowLeafByTabId(terminalWindows, activeTabId)
-          : null;
-      const tabIds = leaf?.tabIds ?? tabs.map((tab) => tab.id);
+      const tabIds = getActiveLeafTabIds();
       const targetTabId = index === -1 ? tabIds[tabIds.length - 1] : tabIds[index];
       if (targetTabId) setActiveTabId(targetTabId);
     },
-    [activeTabId, setActiveTabId, tabs, terminalWindows],
+    [getActiveLeafTabIds, setActiveTabId],
   );
 
   const handleToggleLeftSidebar = useCallback(() => {
