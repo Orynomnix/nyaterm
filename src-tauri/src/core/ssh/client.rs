@@ -909,20 +909,43 @@ pub(super) fn build_client_config(
 
     if let Ok(app_settings) = crate::config::load_app_settings(app) {
         let interval = app_settings.terminal.keep_alive_interval;
-        if interval > 0 {
-            client_cfg.keepalive_interval = Some(std::time::Duration::from_secs(interval as u64));
-        }
+        let mode = app_settings.terminal.keep_alive_mode.as_str();
+        apply_keepalive_settings(&mut client_cfg, mode, interval);
+        tracing::debug!(
+            keep_alive_mode = %mode,
+            keep_alive_interval = interval,
+            keepalive_max = client_cfg.keepalive_max,
+            "Configured SSH keepalive"
+        );
     }
 
     Ok(client_cfg)
 }
 
+fn resolve_keepalive_mode(value: &str) -> client::KeepaliveMode {
+    match value {
+        "strict" => client::KeepaliveMode::Strict,
+        _ => client::KeepaliveMode::Compatible,
+    }
+}
+
+fn apply_keepalive_settings(client_cfg: &mut client::Config, mode: &str, interval: u32) {
+    client_cfg.keepalive_mode = resolve_keepalive_mode(mode);
+
+    if mode == "disabled" || interval == 0 {
+        client_cfg.keepalive_interval = None;
+        return;
+    }
+
+    client_cfg.keepalive_interval = Some(std::time::Duration::from_secs(interval as u64));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        KnownHostCheck, SftpChannelLimiter, check_known_host_entry, compatible_algorithms,
-        expand_proxy_command, get_supported_ssh_algorithms, resolve_preferred_algorithms,
-        secure_algorithms, shell_quote,
+        KnownHostCheck, SftpChannelLimiter, apply_keepalive_settings, check_known_host_entry,
+        compatible_algorithms, expand_proxy_command, get_supported_ssh_algorithms,
+        resolve_keepalive_mode, resolve_preferred_algorithms, secure_algorithms, shell_quote,
     };
     use crate::config::{SshAlgorithmMode, SshAlgorithmPreferences};
     use russh::keys::{Algorithm, EcdsaCurve};
@@ -1028,6 +1051,49 @@ example.com ssh-rsa AAAARSA
 
         assert!(preferred.cipher.contains(&cipher::TRIPLE_DES_CBC));
         assert!(preferred.kex.contains(&kex::DH_G1_SHA1));
+    }
+
+    #[test]
+    fn keepalive_mode_parser_defaults_unknown_values_to_compatible() {
+        assert_eq!(
+            resolve_keepalive_mode("compatible"),
+            russh::client::KeepaliveMode::Compatible
+        );
+        assert_eq!(
+            resolve_keepalive_mode("unknown"),
+            russh::client::KeepaliveMode::Compatible
+        );
+        assert_eq!(
+            resolve_keepalive_mode("strict"),
+            russh::client::KeepaliveMode::Strict
+        );
+    }
+
+    #[test]
+    fn keepalive_settings_disable_timer_for_disabled_or_zero_interval() {
+        let mut disabled = russh::client::Config::default();
+        apply_keepalive_settings(&mut disabled, "disabled", 60);
+        assert_eq!(disabled.keepalive_interval, None);
+
+        let mut zero_interval = russh::client::Config::default();
+        apply_keepalive_settings(&mut zero_interval, "strict", 0);
+        assert_eq!(zero_interval.keepalive_interval, None);
+    }
+
+    #[test]
+    fn keepalive_settings_apply_strict_and_compatible_modes() {
+        let mut strict = russh::client::Config::default();
+        apply_keepalive_settings(&mut strict, "strict", 60);
+        assert_eq!(strict.keepalive_interval, Some(Duration::from_secs(60)));
+        assert_eq!(strict.keepalive_mode, russh::client::KeepaliveMode::Strict);
+
+        let mut compatible = russh::client::Config::default();
+        apply_keepalive_settings(&mut compatible, "compatible", 45);
+        assert_eq!(compatible.keepalive_interval, Some(Duration::from_secs(45)));
+        assert_eq!(
+            compatible.keepalive_mode,
+            russh::client::KeepaliveMode::Compatible
+        );
     }
 
     #[test]
