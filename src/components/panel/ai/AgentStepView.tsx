@@ -87,6 +87,11 @@ export function AgentStepView({
         >
           <div className="flex items-center gap-1.5 border-b border-border/40 px-2.5 py-1 text-[0.625rem] text-muted-foreground">
             <span className="font-medium uppercase tracking-wider">shell</span>
+            {step.action.target ? (
+              <span className="min-w-0 truncate">
+                {t("ai.commandTargetLabel", { target: step.action.target.label })}
+              </span>
+            ) : null}
             {riskLevel ? (
               <span
                 className={`ml-auto rounded-full border px-1.5 py-0.5 font-medium ${riskColorClass[riskLevel]}`}

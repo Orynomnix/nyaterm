@@ -1,7 +1,7 @@
 use crate::core::SessionManager;
 use crate::core::ai::{
-    self, AgentApprovalManager, AiAuditLog, AiChatRequest, AiMessage, AiSession, AiStreamStart,
-    AppendAiAuditRequest,
+    self, AgentApprovalManager, AiAuditLog, AiChatRequest, AiMessage, AiSession, AiSessionScope,
+    AiStreamStart, AppendAiAuditRequest,
 };
 use crate::error::AppResult;
 use std::sync::Arc;
@@ -55,6 +55,15 @@ pub fn clear_ai_history(app: tauri::AppHandle) -> AppResult<()> {
 #[tauri::command]
 pub fn delete_ai_session(app: tauri::AppHandle, session_id: String) -> AppResult<()> {
     ai::delete_ai_session(&app, session_id)
+}
+
+#[tauri::command]
+pub fn rebind_ai_session(
+    app: tauri::AppHandle,
+    session_id: String,
+    owner_scope: AiSessionScope,
+) -> AppResult<AiSession> {
+    ai::rebind_ai_session(&app, session_id, owner_scope)
 }
 
 #[tauri::command]

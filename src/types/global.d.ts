@@ -1108,6 +1108,31 @@ export interface AICommandCard {
   rollback?: string | null;
   category?: string | null;
   references?: string[];
+  targetTerminalSessionId?: string | null;
+  target?: AITerminalTarget | null;
+}
+
+export type AIScopeType = "terminal" | "workspace" | "global" | "unbound";
+
+export interface AISessionScope {
+  type: AIScopeType;
+  targetId?: string | null;
+  connectionIds?: string[];
+  label?: string | null;
+}
+
+export interface AITerminalTarget {
+  terminalSessionId: string;
+  connectionId?: string | null;
+  label: string;
+  host?: string | null;
+  username?: string | null;
+  sessionType: string;
+}
+
+export interface AITargetContext {
+  target?: AITerminalTarget | null;
+  context: AIContext;
 }
 
 export interface AIMessage {
@@ -1122,6 +1147,7 @@ export interface AIMessage {
 
 export interface AISession {
   id: string;
+  scope?: AISessionScope;
   connectionId?: string | null;
   title: string;
   createdAt: string;
@@ -1151,6 +1177,7 @@ export type AgentStepStatus = "running" | "completed" | "needs_approval" | "reje
 export interface AgentStepAction {
   kind: AgentActionKind;
   command?: string | null;
+  target?: AITerminalTarget | null;
   riskLevel?: RiskLevel | null;
   modelRiskLevel?: RiskLevel | null;
   localRiskLevel?: RiskLevel | null;

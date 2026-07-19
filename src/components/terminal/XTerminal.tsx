@@ -1972,6 +1972,9 @@ export default function XTerminal({
           const payload = event.payload;
           if (payload.type === "commandStart") {
             aiCapturingRef.current = true;
+            inputStateRef.current = createTerminalInputState();
+            clearCredentialPromptInputMode();
+            dismissSuggestions();
             if (isTerminalAlive()) {
               terminal.write(renderAiCommandStart(payload));
             }

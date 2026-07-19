@@ -211,6 +211,60 @@ fn resolve_prompt_language(language: &str) -> PromptLanguage {
     }
 }
 
+fn user_input_with_target_contexts(request: &AiChatRequest) -> String {
+    if request.targets.is_empty() && request.target_contexts.is_empty() {
+        return request.user_input.clone();
+    }
+
+    let mut result = request.user_input.clone();
+    result.push_str("\n\nAvailable terminal targets:\n");
+    for target in &request.targets {
+        result.push_str(&format!(
+            "- {}: {}{}{}\n",
+            target.terminal_session_id,
+            target.label,
+            target
+                .host
+                .as_deref()
+                .map(|host| format!(" host={host}"))
+                .unwrap_or_default(),
+            target
+                .username
+                .as_deref()
+                .map(|username| format!(" user={username}"))
+                .unwrap_or_default()
+        ));
+    }
+
+    if request.targets.len() > 1 {
+        result.push_str(
+            "\nEvery executable command card or agent execute_command call must include a valid targetTerminalSessionId from the list above. If no target is clear, do not execute.\n",
+        );
+    }
+
+    if !request.target_contexts.is_empty() {
+        result.push_str("\nTerminal target context snapshots:\n");
+        for item in &request.target_contexts {
+            let target_label = item
+                .target
+                .as_ref()
+                .map(|target| format!("{} ({})", target.label, target.terminal_session_id))
+                .unwrap_or_else(|| "unknown".to_string());
+            let ctx = &item.context;
+            result.push_str(&format!(
+                "\n[{}]\n- cwd: {}\n- input: {}\n- selected text:\n{}\n- recent output:\n{}\n",
+                target_label,
+                ctx.cwd.as_deref().unwrap_or("-"),
+                ctx.input_buffer,
+                ctx.selected_text,
+                ctx.recent_output
+            ));
+        }
+    }
+
+    result
+}
+
 pub(super) fn system_prompt(language: &str) -> &'static str {
     match resolve_prompt_language(language) {
         PromptLanguage::ZhHans => SYSTEM_PROMPT_ZH,
@@ -231,6 +285,7 @@ pub(super) fn agent_system_prompt(language: &str) -> &'static str {
 
 pub(super) fn build_agent_prompt(request: &AiChatRequest, settings: &AiSettings) -> String {
     let ctx = &request.context;
+    let user_input = user_input_with_target_contexts(request);
     match resolve_prompt_language(&request.options.language) {
         PromptLanguage::ZhHans => format!(
             r#"用户任务：
@@ -252,7 +307,7 @@ pub(super) fn build_agent_prompt(request: &AiChatRequest, settings: &AiSettings)
 - 命令、路径、文件名、配置键名保持原样，不要翻译
 
 请开始执行任务。每轮调用且只调用一个工具。"#,
-            user_input = request.user_input,
+            user_input = user_input,
             connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
             host = ctx.host.as_deref().unwrap_or("-"),
             username = ctx.username.as_deref().unwrap_or("-"),
@@ -283,7 +338,7 @@ pub(super) fn build_agent_prompt(request: &AiChatRequest, settings: &AiSettings)
 - 命令、路徑、檔名、設定鍵名保持原樣，不要翻譯
 
 請開始執行任務。每輪呼叫且只呼叫一個工具。"#,
-            user_input = request.user_input,
+            user_input = user_input,
             connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
             host = ctx.host.as_deref().unwrap_or("-"),
             username = ctx.username.as_deref().unwrap_or("-"),
@@ -314,7 +369,7 @@ pub(super) fn build_agent_prompt(request: &AiChatRequest, settings: &AiSettings)
 - 명령, 경로, 파일 이름, 구성 키는 변경하지 말고 번역하지 마세요.
 
 지금 작업을 시작하세요. 각 턴에서 정확히 하나의 도구만 호출하세요."#,
-            user_input = request.user_input,
+            user_input = user_input,
             connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
             host = ctx.host.as_deref().unwrap_or("-"),
             username = ctx.username.as_deref().unwrap_or("-"),
@@ -346,7 +401,7 @@ Requirements:
 - Keep commands, paths, file names, and configuration keys unchanged.
 
 Start the task now. Call exactly one tool per turn."#,
-            user_input = request.user_input,
+            user_input = user_input,
             connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
             host = ctx.host.as_deref().unwrap_or("-"),
             username = ctx.username.as_deref().unwrap_or("-"),
@@ -489,6 +544,7 @@ pub(super) fn agent_max_steps_message(language: &str) -> &'static str {
 
 pub(super) fn build_prompt(request: &AiChatRequest, settings: &AiSettings) -> String {
     let ctx = &request.context;
+    let user_input = user_input_with_target_contexts(request);
     match resolve_prompt_language(&request.options.language) {
         PromptLanguage::ZhHans => {
             let action = match request.action {
@@ -529,7 +585,7 @@ pub(super) fn build_prompt(request: &AiChatRequest, settings: &AiSettings) -> St
 - 优先生成只读诊断命令
 - 如果信息不足，请给出验证命令
 - 必须返回 JSON 对象，不要返回 Markdown"#,
-                user_input = request.user_input,
+                user_input = user_input,
                 connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
                 host = ctx.host.as_deref().unwrap_or("-"),
                 port = ctx
@@ -588,7 +644,7 @@ pub(super) fn build_prompt(request: &AiChatRequest, settings: &AiSettings) -> St
 - 優先產生唯讀診斷命令
 - 如果資訊不足，請提供驗證命令
 - 必須回傳 JSON 物件，不要回傳 Markdown"#,
-                user_input = request.user_input,
+                user_input = user_input,
                 connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
                 host = ctx.host.as_deref().unwrap_or("-"),
                 port = ctx
@@ -650,7 +706,7 @@ pub(super) fn build_prompt(request: &AiChatRequest, settings: &AiSettings) -> St
 - 읽기 전용 진단 명령을 먼저 우선하세요.
 - 정보가 부족하면 확인 명령을 제공하세요.
 - JSON 객체만 반환하세요. Markdown을 반환하지 마세요."#,
-                user_input = request.user_input,
+                user_input = user_input,
                 connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
                 host = ctx.host.as_deref().unwrap_or("-"),
                 port = ctx
@@ -724,7 +780,7 @@ Requirements:
 - Prefer read-only diagnostic commands first.
 - If information is insufficient, provide verification commands.
 - Return a JSON object only. Do not return Markdown."#,
-                user_input = request.user_input,
+                user_input = user_input,
                 connection_name = ctx.connection_name.as_deref().unwrap_or("-"),
                 host = ctx.host.as_deref().unwrap_or("-"),
                 port = ctx
@@ -760,6 +816,9 @@ mod tests {
             session_id: None,
             connection_id: None,
             terminal_session_id: None,
+            owner_scope: Default::default(),
+            targets: vec![],
+            target_contexts: vec![],
             mode: AiMode::Ask,
             model_id: None,
             model_name: None,
