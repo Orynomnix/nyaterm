@@ -57,6 +57,7 @@ import type {
   AIContext,
   AIMessage,
   AIMode,
+  AIModelConfigItem,
   AISession,
   AISessionScope,
   AIStreamEventPayload,
@@ -88,6 +89,7 @@ interface AIDraft {
 }
 
 type AIPanelView = { mode: "draft" } | { mode: "session"; sessionId: string };
+type AIRunMode = "ask" | "nyaterm_agent" | "codex_agent";
 
 interface AIStreamRuntime {
   streamId: string;
@@ -96,6 +98,19 @@ interface AIStreamRuntime {
 }
 
 const EMPTY_DRAFT: AIDraft = { text: "", quotedText: null, targetPaneIds: [] };
+
+function isCodexModel(model: AIModelConfigItem | null | undefined) {
+  return model?.backend === "codex";
+}
+
+function isGenaiModel(model: AIModelConfigItem | null | undefined) {
+  return (model?.backend ?? "genai") === "genai";
+}
+
+function resolveRunMode(mode: AIMode, selectedModel: AIModelConfigItem | null): AIRunMode {
+  if (mode !== "agent") return "ask";
+  return isCodexModel(selectedModel) ? "codex_agent" : "nyaterm_agent";
+}
 
 function buildAIScopeKey(pane: SessionPane | null) {
   return pane ? `terminal:${pane.sessionId}` : "unbound:";
@@ -159,6 +174,15 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
   const selectedModel = useMemo(() => selectDefaultAIModel(aiSettings), [aiSettings]);
   const prismStyle = useMemo(() => buildPrismThemeFromColors(theme.colors), [theme.colors]);
   const mode = aiSettings.default_mode ?? "ask";
+  const runMode = resolveRunMode(mode, selectedModel);
+  const codexModels = useMemo(
+    () => enabledModels.filter((model) => isCodexModel(model)),
+    [enabledModels],
+  );
+  const genaiModels = useMemo(
+    () => enabledModels.filter((model) => isGenaiModel(model)),
+    [enabledModels],
+  );
   const agentExecutionMode = aiSettings.agent_command_execution_mode ?? "confirm_each";
   const agentBackgroundExecutionEnabled = aiSettings.agent_background_execution_enabled ?? false;
   const scopeKey = useMemo(() => buildAIScopeKey(activePane), [activePane]);
@@ -365,6 +389,45 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
       }).catch(() => {});
     },
     [activeConnection?.id],
+  );
+
+  const selectRunMode = useCallback(
+    (nextMode: AIRunMode) => {
+      if (nextMode === "ask") {
+        updateAppSettings({ ai: { ...aiSettings, default_mode: "ask" } });
+        return;
+      }
+
+      if (nextMode === "nyaterm_agent") {
+        const nextModel = isGenaiModel(selectedModel) ? selectedModel : genaiModels[0];
+        if (!nextModel) {
+          toast.error(t("ai.noGenaiAgentModel"));
+          return;
+        }
+        updateAppSettings({
+          ai: { ...aiSettings, default_mode: "agent", default_model_id: nextModel.id },
+        });
+        return;
+      }
+
+      const configuredModel = aiSettings.codex?.default_model ?? null;
+      const nextModel =
+        (isCodexModel(selectedModel) ? selectedModel : null) ??
+        codexModels.find(
+          (model) => model.id === configuredModel || model.name === configuredModel,
+        ) ??
+        codexModels[0];
+
+      if (!nextModel) {
+        toast.error(t("ai.noCodexAgentModel"));
+        return;
+      }
+
+      updateAppSettings({
+        ai: { ...aiSettings, default_mode: "agent", default_model_id: nextModel.id },
+      });
+    },
+    [aiSettings, codexModels, genaiModels, selectedModel, t, updateAppSettings],
   );
 
   const buildMergedContext = useCallback(
@@ -1695,19 +1758,16 @@ function AIAssistantPanel({ activePane, activeConnection, intent }: AIAssistantP
               <div className="flex flex-1 min-w-0 items-center gap-2">
                 <div className="w-1/3 min-w-0">
                   <Select
-                    value={mode}
-                    onValueChange={(default_mode) =>
-                      updateAppSettings({
-                        ai: { ...aiSettings, default_mode: default_mode as AIMode },
-                      })
-                    }
+                    value={runMode}
+                    onValueChange={(value) => selectRunMode(value as AIRunMode)}
                   >
                     <SelectTrigger size="sm" className="w-full text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent position="popper">
                       <SelectItem value="ask">{t("ai.modeAsk")}</SelectItem>
-                      <SelectItem value="agent">{t("ai.modeAgent")}</SelectItem>
+                      <SelectItem value="nyaterm_agent">{t("ai.modeNyatermAgent")}</SelectItem>
+                      <SelectItem value="codex_agent">{t("ai.modeCodexAgent")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

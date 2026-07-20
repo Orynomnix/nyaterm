@@ -1,7 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -9,6 +12,7 @@ use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{Mutex, RwLock, oneshot};
+use tokio::time::timeout;
 
 use crate::config::{AiBackendKind, AiMode, AiModelSource, AiSettings, CodexThreadMode};
 use crate::core::SessionManager;
@@ -46,6 +50,10 @@ pub struct CodexCliStatus {
     pub version: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub checked_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -118,26 +126,41 @@ impl CodexAppServerManager {
     }
 
     pub async fn detect_cli(path: Option<String>) -> CodexCliStatus {
-        let executable = codex_executable(path.as_deref());
-        match Command::new(&executable).arg("--version").output().await {
-            Ok(output) if output.status.success() => CodexCliStatus {
-                installed: true,
-                path: Some(executable),
-                version: Some(String::from_utf8_lossy(&output.stdout).trim().to_string()),
-                error: None,
-            },
-            Ok(output) => CodexCliStatus {
-                installed: false,
-                path: Some(executable),
-                version: None,
-                error: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
-            },
-            Err(error) => CodexCliStatus {
-                installed: false,
-                path: Some(executable),
-                version: None,
-                error: Some(error.to_string()),
-            },
+        let candidates = discover_codex_candidates(path.as_deref()).await;
+        let checked_paths = candidates
+            .iter()
+            .map(|candidate| candidate.executable.clone())
+            .collect::<Vec<_>>();
+        let mut errors = Vec::new();
+
+        for candidate in &candidates {
+            match probe_codex_cli(&candidate.executable).await {
+                Ok(version) => {
+                    return CodexCliStatus {
+                        installed: true,
+                        path: Some(candidate.executable.clone()),
+                        version: Some(version),
+                        error: None,
+                        source: Some(candidate.source.to_string()),
+                        checked_paths,
+                    };
+                }
+                Err(error) => {
+                    errors.push(format!("{}: {error}", candidate.executable));
+                }
+            }
+        }
+
+        CodexCliStatus {
+            installed: false,
+            path: path
+                .as_deref()
+                .map(|value| codex_executable(Some(value)))
+                .or_else(|| Some("codex".to_string())),
+            version: None,
+            error: Some(detect_error_message(&errors)),
+            source: None,
+            checked_paths,
         }
     }
 
@@ -891,11 +914,195 @@ async fn wait_until_turn_removed(manager: Arc<CodexAppServerManager>, turn_id: S
     }
 }
 
+const CODEX_DETECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Clone)]
+struct CodexCliCandidate {
+    executable: String,
+    source: &'static str,
+}
+
 fn codex_executable(path: Option<&str>) -> String {
     path.map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("codex")
         .to_string()
+}
+
+async fn discover_codex_candidates(path: Option<&str>) -> Vec<CodexCliCandidate> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+        add_codex_candidate(&mut candidates, &mut seen, path, "configured");
+    }
+    add_codex_candidate(&mut candidates, &mut seen, "codex", "path");
+    add_common_codex_candidates(&mut candidates, &mut seen);
+    for discovered in discover_codex_with_path_command().await {
+        add_codex_candidate(&mut candidates, &mut seen, discovered, "path_lookup");
+    }
+
+    candidates
+}
+
+fn add_codex_candidate(
+    candidates: &mut Vec<CodexCliCandidate>,
+    seen: &mut HashSet<String>,
+    executable: impl AsRef<str>,
+    source: &'static str,
+) {
+    let executable = executable.as_ref().trim();
+    if executable.is_empty() {
+        return;
+    }
+    let key = codex_candidate_key(executable);
+    if seen.insert(key) {
+        candidates.push(CodexCliCandidate {
+            executable: executable.to_string(),
+            source,
+        });
+    }
+}
+
+fn add_existing_codex_candidate(
+    candidates: &mut Vec<CodexCliCandidate>,
+    seen: &mut HashSet<String>,
+    path: PathBuf,
+    source: &'static str,
+) {
+    if path.exists() {
+        add_codex_candidate(candidates, seen, path.to_string_lossy(), source);
+    }
+}
+
+fn codex_candidate_key(executable: &str) -> String {
+    #[cfg(windows)]
+    {
+        executable.to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        executable.to_string()
+    }
+}
+
+fn add_common_codex_candidates(
+    candidates: &mut Vec<CodexCliCandidate>,
+    seen: &mut HashSet<String>,
+) {
+    #[cfg(windows)]
+    {
+        if let Ok(appdata) = env::var("APPDATA") {
+            let npm = Path::new(&appdata).join("npm");
+            for name in ["codex.cmd", "codex.exe", "codex"] {
+                add_existing_codex_candidate(candidates, seen, npm.join(name), "common");
+            }
+        }
+        if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+            let pnpm = Path::new(&local_appdata).join("pnpm");
+            for name in ["codex.cmd", "codex.exe", "codex"] {
+                add_existing_codex_candidate(candidates, seen, pnpm.join(name), "common");
+            }
+        }
+        if let Ok(userprofile) = env::var("USERPROFILE") {
+            let home = Path::new(&userprofile);
+            for dir in [
+                home.join("scoop").join("shims"),
+                home.join(".bun").join("bin"),
+            ] {
+                for name in ["codex.cmd", "codex.exe", "codex"] {
+                    add_existing_codex_candidate(candidates, seen, dir.join(name), "common");
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        if let Ok(home) = env::var("HOME") {
+            let home = Path::new(&home);
+            for path in [
+                home.join(".local").join("bin").join("codex"),
+                home.join(".npm-global").join("bin").join("codex"),
+                home.join(".bun").join("bin").join("codex"),
+                home.join(".cargo").join("bin").join("codex"),
+            ] {
+                add_existing_codex_candidate(candidates, seen, path, "common");
+            }
+        }
+        for path in [
+            PathBuf::from("/opt/homebrew/bin/codex"),
+            PathBuf::from("/usr/local/bin/codex"),
+            PathBuf::from("/usr/bin/codex"),
+        ] {
+            add_existing_codex_candidate(candidates, seen, path, "common");
+        }
+    }
+}
+
+async fn discover_codex_with_path_command() -> Vec<String> {
+    let output = if cfg!(windows) {
+        Command::new("where.exe").arg("codex").output().await
+    } else {
+        Command::new("which").args(["-a", "codex"]).output().await
+    };
+
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+async fn probe_codex_cli(executable: &str) -> Result<String, String> {
+    let output = timeout(
+        CODEX_DETECT_TIMEOUT,
+        Command::new(executable).arg("--version").output(),
+    )
+    .await
+    .map_err(|_| "timed out while running --version".to_string())?
+    .map_err(|error| error.to_string())?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Ok(if stdout.is_empty() { stderr } else { stdout });
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let details = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        output.status.to_string()
+    };
+    Err(details)
+}
+
+fn detect_error_message(errors: &[String]) -> String {
+    if errors.is_empty() {
+        return "Codex CLI was not found in PATH or common install locations".to_string();
+    }
+
+    let mut message = "Codex CLI was not detected".to_string();
+    for error in errors.iter().take(4) {
+        message.push_str("; ");
+        message.push_str(error);
+    }
+    if errors.len() > 4 {
+        message.push_str(&format!("; {} more candidates failed", errors.len() - 4));
+    }
+    message
 }
 
 fn parse_account_status(value: &Value) -> CodexAccountStatus {

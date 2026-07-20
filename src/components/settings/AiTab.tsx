@@ -100,6 +100,8 @@ interface CodexCliStatus {
   path?: string | null;
   version?: string | null;
   error?: string | null;
+  source?: string | null;
+  checkedPaths?: string[];
 }
 
 interface CodexAccountStatus {
@@ -274,7 +276,12 @@ export function AiAgentsTab() {
       try {
         const status = await invoke<CodexCliStatus>("detect_codex_cli");
         setCliStatus(status);
-        if (status.installed && status.path && !codex.executable_path) {
+        if (
+          status.installed &&
+          status.path &&
+          status.path !== codex.executable_path &&
+          (!codex.executable_path || !options?.silent)
+        ) {
           update({ executable_path: status.path });
         }
         if (!options?.silent) {
