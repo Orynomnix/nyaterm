@@ -2000,6 +2000,46 @@ impl RemoteFs for SftpBackend {
         })
     }
 
+    async fn read_file_bytes(&self, path: &str, max_bytes: u64) -> AppResult<RemoteBinaryFile> {
+        use tokio::io::AsyncReadExt;
+
+        let sftp = self.open_sftp().await?;
+        let attrs = sftp.metadata(path).await?;
+        let size = attrs.size.unwrap_or(0);
+        let mtime = u64::from(attrs.mtime.unwrap_or(0));
+        let type_bits = attrs.permissions.unwrap_or(0) & SFTP_FILE_TYPE_MASK;
+        if type_bits == 0o040000 {
+            let _ = sftp.close().await;
+            return Err(AppError::Config(
+                "Directories cannot be previewed".to_string(),
+            ));
+        }
+        if size > max_bytes {
+            let _ = sftp.close().await;
+            return Err(AppError::Config(format!(
+                "File is too large to preview ({} bytes > {} bytes)",
+                size, max_bytes
+            )));
+        }
+
+        let mut file = sftp
+            .open(path)
+            .await
+            .map_err(|error| AppError::Channel(format!("Failed to open remote file: {error}")))?;
+        let mut bytes = Vec::with_capacity(size as usize);
+        file.read_to_end(&mut bytes)
+            .await
+            .map_err(|error| AppError::Channel(format!("Failed to read remote file: {error}")))?;
+        let _ = sftp.close().await;
+
+        Ok(RemoteBinaryFile {
+            path: path.to_string(),
+            content_bytes: bytes,
+            size,
+            mtime,
+        })
+    }
+
     async fn write_file_text(
         &self,
         path: &str,

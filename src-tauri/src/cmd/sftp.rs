@@ -138,6 +138,16 @@ pub async fn read_remote_file_text(
 }
 
 #[tauri::command]
+pub async fn read_remote_file_bytes(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    path: String,
+    max_bytes: u64,
+) -> AppResult<sftp::RemoteBinaryFile> {
+    sftp::read_remote_file_bytes(state.inner().clone(), &session_id, &path, max_bytes).await
+}
+
+#[tauri::command]
 pub async fn write_remote_file_text(
     state: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,

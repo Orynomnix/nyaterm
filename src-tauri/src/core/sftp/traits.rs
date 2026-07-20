@@ -1,8 +1,8 @@
 //! Unified `RemoteFs` trait that all remote file system backends implement.
 
 use super::util::{
-    FileEntry, FileProperties, RemoteFileAttributeUpdate, RemotePathRef, RemoteTextFile,
-    WriteRemoteTextResult,
+    FileEntry, FileProperties, RemoteBinaryFile, RemoteFileAttributeUpdate, RemotePathRef,
+    RemoteTextFile, WriteRemoteTextResult,
 };
 use crate::error::AppResult;
 
@@ -48,6 +48,7 @@ pub(crate) trait RemoteFs: Send + Sync {
         self.update_attrs(path.display_path(), update).await
     }
     async fn read_file_text(&self, path: &str, max_bytes: u64) -> AppResult<RemoteTextFile>;
+    async fn read_file_bytes(&self, path: &str, max_bytes: u64) -> AppResult<RemoteBinaryFile>;
     async fn write_file_text(
         &self,
         path: &str,

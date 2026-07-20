@@ -33,7 +33,8 @@ pub use transfer::{cancel_transfer, pause_transfer, resume_transfer};
 pub(crate) use util::RemotePathRef;
 pub(crate) use util::sanitize_download_file_name;
 pub use util::{
-    FileEntry, FileProperties, RemoteFileAttributeUpdate, RemoteTextFile, WriteRemoteTextResult,
+    FileEntry, FileProperties, RemoteBinaryFile, RemoteFileAttributeUpdate, RemoteTextFile,
+    WriteRemoteTextResult,
 };
 
 fn is_remote_delete_not_found(error: &AppError) -> bool {
@@ -488,6 +489,18 @@ pub async fn read_remote_file_text(
     let guard = auto_fs.backend().await?;
     let fs = guard.as_ref().unwrap();
     fs.read_file_text(path, max_bytes).await
+}
+
+pub async fn read_remote_file_bytes(
+    manager: Arc<SessionManager>,
+    session_id: &str,
+    path: &str,
+    max_bytes: u64,
+) -> AppResult<RemoteBinaryFile> {
+    let auto_fs = get_or_create_auto_fs(&manager, session_id).await?;
+    let guard = auto_fs.backend().await?;
+    let fs = guard.as_ref().unwrap();
+    fs.read_file_bytes(path, max_bytes).await
 }
 
 pub async fn write_remote_file_text(

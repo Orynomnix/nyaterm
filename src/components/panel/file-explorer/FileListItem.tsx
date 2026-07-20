@@ -19,6 +19,7 @@ import {
   MdOpenInNew,
   MdRefresh,
   MdUpload,
+  MdVisibility,
 } from "react-icons/md";
 import { getFileIcon } from "@/components/icons";
 import { formatSize } from "@/lib/utils";
@@ -49,6 +50,7 @@ interface FileListItemProps {
   onContextMenuSelect: (entry: FileEntry, event: React.MouseEvent) => void;
   onItemClick: (entry: FileEntry) => void;
   onOpenDefault: (entry: FileEntry) => void;
+  onPreview: (entry: FileEntry) => void;
   onOpenInternal: (entry: FileEntry) => void;
   onOpenExternal: (entry: FileEntry) => void;
   onRefresh: () => void;
@@ -100,6 +102,7 @@ export function FileListItem({
   onContextMenuSelect,
   onItemClick,
   onOpenDefault,
+  onPreview,
   onOpenInternal,
   onOpenExternal,
   onRefresh,
@@ -371,6 +374,12 @@ export function FileListItem({
               <MdFileOpen className="text-[0.875rem] text-muted-foreground mr-2" />
               {t("fileExplorer.cmOpen")}
             </ContextMenuItem>
+            {isFile && (
+              <ContextMenuItem onClick={() => onPreview(entry)}>
+                <MdVisibility className="text-[0.875rem] text-muted-foreground mr-2" />
+                {t("filePreview.preview")}
+              </ContextMenuItem>
+            )}
             {showOpenInternal && (
               <ContextMenuItem onClick={() => onOpenInternal(entry)}>
                 <MdEdit className="text-[0.875rem] text-muted-foreground mr-2" />

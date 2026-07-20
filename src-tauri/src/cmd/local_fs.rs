@@ -1,4 +1,6 @@
-use crate::core::sftp::{FileEntry, FileProperties, RemoteTextFile, WriteRemoteTextResult};
+use crate::core::sftp::{
+    FileEntry, FileProperties, RemoteBinaryFile, RemoteTextFile, WriteRemoteTextResult,
+};
 use crate::core::{SessionManager, SessionType};
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
@@ -182,6 +184,40 @@ async fn read_local_file_text_impl(path: &str, max_bytes: u64) -> AppResult<Remo
     Ok(RemoteTextFile {
         path: path.to_string(),
         content,
+        size: metadata.len(),
+        mtime: modified_time_secs(&metadata),
+    })
+}
+
+#[tauri::command]
+pub async fn read_local_file_bytes(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    path: String,
+    max_bytes: u64,
+) -> AppResult<RemoteBinaryFile> {
+    ensure_local_session(state.inner(), &session_id).await?;
+    read_local_file_bytes_impl(&path, max_bytes).await
+}
+
+async fn read_local_file_bytes_impl(path: &str, max_bytes: u64) -> AppResult<RemoteBinaryFile> {
+    let metadata = tokio::fs::metadata(&path).await?;
+    if metadata.is_dir() {
+        return Err(AppError::Config(
+            "Cannot read a directory as bytes".to_string(),
+        ));
+    }
+    if metadata.len() > max_bytes {
+        return Err(AppError::Config(format!(
+            "File is too large to preview ({} bytes)",
+            metadata.len()
+        )));
+    }
+
+    let bytes = tokio::fs::read(&path).await?;
+    Ok(RemoteBinaryFile {
+        path: path.to_string(),
+        content_bytes: bytes,
         size: metadata.len(),
         mtime: modified_time_secs(&metadata),
     })
@@ -502,6 +538,53 @@ mod tests {
             .await
             .expect_err("missing path should error");
         assert!(matches!(error, AppError::Io(_)));
+    }
+
+    #[tokio::test]
+    async fn local_read_file_bytes_returns_byte_payload() {
+        let root = temp_test_dir("bytes");
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let file = root.join("image.bin");
+        tokio::fs::write(&file, [0_u8, 1, 2, 253, 254, 255])
+            .await
+            .unwrap();
+
+        let binary = read_local_file_bytes_impl(file.to_str().unwrap(), 1024)
+            .await
+            .unwrap();
+
+        assert_eq!(binary.content_bytes, [0, 1, 2, 253, 254, 255]);
+        assert_eq!(binary.size, 6);
+
+        cleanup(&root).await;
+    }
+
+    #[tokio::test]
+    async fn local_read_file_bytes_rejects_directories() {
+        let root = temp_test_dir("bytes-dir");
+        tokio::fs::create_dir_all(&root).await.unwrap();
+
+        let error = read_local_file_bytes_impl(root.to_str().unwrap(), 1024)
+            .await
+            .expect_err("directories should be rejected");
+
+        assert!(matches!(error, AppError::Config(_)));
+        cleanup(&root).await;
+    }
+
+    #[tokio::test]
+    async fn local_read_file_bytes_rejects_files_over_limit() {
+        let root = temp_test_dir("bytes-limit");
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let file = root.join("large.bin");
+        tokio::fs::write(&file, [1_u8, 2, 3, 4]).await.unwrap();
+
+        let error = read_local_file_bytes_impl(file.to_str().unwrap(), 3)
+            .await
+            .expect_err("oversized files should be rejected");
+
+        assert!(matches!(error, AppError::Config(_)));
+        cleanup(&root).await;
     }
 
     #[tokio::test]

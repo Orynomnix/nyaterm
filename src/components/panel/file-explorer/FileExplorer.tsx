@@ -62,7 +62,7 @@ import { logger } from "@/lib/logger";
 import { sendSessionInput } from "@/lib/sessionInput";
 import { matchesKeyEvent } from "@/lib/shortcutRegistry";
 import { cn, formatSize } from "@/lib/utils";
-import { openAutoUpload, openRemoteFileEditor } from "@/lib/windowManager";
+import { openAutoUpload, openFilePreview, openRemoteFileEditor } from "@/lib/windowManager";
 import type {
   AICustomActionConfig,
   FileEntry,
@@ -1155,6 +1155,22 @@ function FileExplorer({
     openDeleteDialog(selectedRealFiles);
   };
 
+  const handlePreview = async (entry: FileEntry) => {
+    if (!activeSessionId || entry.is_dir) return;
+    try {
+      await openFilePreview({
+        sessionId: activeSessionId,
+        backend: explorerBackendRef.current,
+        path: getEntryFullPath(entry),
+        name: entry.name,
+        size: entry.size,
+        mtime: entry.mtime,
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error) || t("filePreview.openFailed"));
+    }
+  };
+
   const handleToggleHiddenFiles = useCallback(() => {
     updateUi((prev) => ({
       file_explorer_show_hidden_files: !(prev.file_explorer_show_hidden_files ?? true),
@@ -2123,6 +2139,7 @@ function FileExplorer({
                           onContextMenuSelect={handleContextMenuSelection}
                           onItemClick={handleItemClick}
                           onOpenDefault={handleOpenDefault}
+                          onPreview={(entry) => void handlePreview(entry)}
                           onOpenInternal={handleOpenInternal}
                           onOpenExternal={handleOpenExternal}
                           onRefresh={() => void refreshCurrentDirectory()}

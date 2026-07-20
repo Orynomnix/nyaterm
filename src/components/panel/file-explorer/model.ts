@@ -12,6 +12,13 @@ export interface RemoteTextFile {
   mtime?: number;
 }
 
+export interface RemoteBinaryFile {
+  path: string;
+  contentBytes: number[] | Uint8Array | ArrayBuffer;
+  size: number;
+  mtime?: number;
+}
+
 export type FileExplorerSessionCache = {
   files: FileEntry[];
   currentPath: string;
@@ -350,6 +357,49 @@ export function getFileExtension(name: string) {
   const baseName = normalized.slice(lastSlash + 1);
   const index = baseName.lastIndexOf(".");
   return index > 0 ? baseName.slice(index + 1) : "";
+}
+
+export type FilePreviewKind =
+  | "image"
+  | "markdown"
+  | "csv"
+  | "json"
+  | "text"
+  | "pdf"
+  | "unsupported";
+
+export const IMAGE_PREVIEW_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+export const MARKDOWN_PREVIEW_EXTENSIONS = new Set(["md", "markdown", "mdx"]);
+export const CSV_PREVIEW_EXTENSIONS = new Set(["csv", "tsv"]);
+export const JSON_PREVIEW_EXTENSIONS = new Set(["json", "jsonc", "json5"]);
+
+export function getFilePreviewKind(name: string): FilePreviewKind {
+  const ext = getFileExtension(name);
+  if (IMAGE_PREVIEW_EXTENSIONS.has(ext)) return "image";
+  if (MARKDOWN_PREVIEW_EXTENSIONS.has(ext)) return "markdown";
+  if (CSV_PREVIEW_EXTENSIONS.has(ext)) return "csv";
+  if (JSON_PREVIEW_EXTENSIONS.has(ext)) return "json";
+  if (ext === "pdf") return "pdf";
+  if (isKnownTextFile(name)) return "text";
+  return "unsupported";
+}
+
+export function imageMimeFromFilename(name: string) {
+  switch (getFileExtension(name)) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+    case "bmp":
+      return "image/bmp";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 export function isKnownBinaryFile(name: string) {

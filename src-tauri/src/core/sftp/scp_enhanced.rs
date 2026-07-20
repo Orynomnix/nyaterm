@@ -879,6 +879,31 @@ impl RemoteFs for ScpEnhancedBackend {
         })
     }
 
+    async fn read_file_bytes(&self, path: &str, max_bytes: u64) -> AppResult<RemoteBinaryFile> {
+        let props = self.stat(path).await?;
+        if props.is_dir {
+            return Err(AppError::Config(
+                "Directories cannot be previewed".to_string(),
+            ));
+        }
+        if props.size > max_bytes {
+            return Err(AppError::Config(format!(
+                "File is too large to preview ({} bytes > {} bytes)",
+                props.size, max_bytes
+            )));
+        }
+
+        let cmd = format!("head -c {} -- {}", props.size, sh_quote(path));
+        let bytes = self.exec_ok(&cmd).await?;
+
+        Ok(RemoteBinaryFile {
+            path: path.to_string(),
+            content_bytes: bytes,
+            size: props.size,
+            mtime: props.mtime,
+        })
+    }
+
     async fn write_file_text(
         &self,
         path: &str,

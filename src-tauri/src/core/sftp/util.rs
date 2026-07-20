@@ -94,6 +94,15 @@ pub struct RemoteTextFile {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoteBinaryFile {
+    pub path: String,
+    pub content_bytes: Vec<u8>,
+    pub size: u64,
+    pub mtime: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteRemoteTextResult {
     pub status: String,
     pub mtime: Option<u64>,
