@@ -234,18 +234,6 @@ pub(super) fn get_session_backend_metadata(
         .and_then(|session| session.backend_metadata))
 }
 
-pub(super) fn get_session_external_session_id(
-    app: &AppHandle,
-    session_id: &str,
-    agent_kind: AiAgentKind,
-) -> AppResult<Option<String>> {
-    Ok(load_history(app)?
-        .sessions
-        .into_iter()
-        .find(|session| session.id == session_id && session.agent_kind == agent_kind)
-        .and_then(|session| session.external_session_id))
-}
-
 pub(super) fn set_session_external_session_id(
     app: &AppHandle,
     session_id: &str,
@@ -408,6 +396,7 @@ mod tests {
             backend_metadata: Some(AiSessionBackendMetadata {
                 backend: AiBackendKind::Codex,
                 external_thread_id: Some("thread-123".to_string()),
+                codex_terminal_tools_version: None,
             }),
         };
 

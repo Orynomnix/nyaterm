@@ -345,6 +345,8 @@ pub struct AiSessionBackendMetadata {
     pub backend: AiBackendKind,
     #[serde(default)]
     pub external_thread_id: Option<String>,
+    #[serde(default)]
+    pub codex_terminal_tools_version: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

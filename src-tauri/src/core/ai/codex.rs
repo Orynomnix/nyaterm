@@ -20,17 +20,19 @@ use crate::error::{AppError, AppResult};
 
 use super::agent::{AgentApprovalManager, run_external_agent_command_step};
 use super::history::{
-    append_message, get_session_backend_metadata, get_session_external_session_id,
-    save_user_message, set_session_backend_metadata, set_session_external_session_id,
+    append_message, get_session_backend_metadata, save_user_message, set_session_backend_metadata,
+    set_session_external_session_id,
 };
 use super::model::resolve_request_model_config;
-use super::prompt::build_prompt;
+use super::prompt::build_agent_prompt;
 use super::redaction::{redact_context, redact_sensitive_text};
 use super::stream::{active_streams, emit_stream_event};
 use super::types::{
     AiChatRequest, AiMessage, AiMessageRole, AiModelDiscovery, AiSessionBackendMetadata,
     AiStreamEventPayload, CommandObservation, now_rfc3339, uuid,
 };
+
+const CODEX_TERMINAL_TOOLS_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +112,7 @@ struct CodexTurnContext {
     request: AiChatRequest,
     settings: AiSettings,
     step_counter: Mutex<u16>,
+    dynamic_tool_call_count: AtomicU64,
     text_accumulator: Mutex<String>,
 }
 
@@ -460,14 +463,18 @@ impl CodexAppServerManager {
             .get("tool")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if namespace != "nyaterm_terminal" {
-            return Ok(dynamic_text(false, "Unsupported dynamic tool namespace"));
-        }
         let context = {
             let active = self.active_turns.lock().await;
             active.get(turn_id).cloned()
         }
         .ok_or_else(|| AppError::Config("No active Codex turn for tool call".to_string()))?;
+        context
+            .dynamic_tool_call_count
+            .fetch_add(1, Ordering::SeqCst);
+
+        if namespace != "nyaterm_terminal" {
+            return Ok(dynamic_text(false, "Unsupported dynamic tool namespace"));
+        }
 
         match tool {
             "get_context" => Ok(dynamic_text(true, &terminal_context_text(&context.request))),
@@ -681,6 +688,27 @@ impl CodexAppServerManager {
                 final_text
             }
         };
+        if context.dynamic_tool_call_count.load(Ordering::SeqCst) == 0
+            && looks_like_codex_command_plan(&content)
+        {
+            let error = "Codex returned a command plan as text instead of calling the NyaTerm terminal tools. The command was not executed. Please start a new Codex Agent session or check Codex app-server dynamic tool compatibility.".to_string();
+            emit_stream_event(
+                &context.app,
+                &context.stream_id,
+                AiStreamEventPayload {
+                    event_type: "error".to_string(),
+                    stream_id: context.stream_id.clone(),
+                    session_id: Some(context.session_id.clone()),
+                    text_delta: None,
+                    reasoning_delta: None,
+                    message: None,
+                    command_cards: vec![],
+                    usage: turn.get("usage").cloned(),
+                    error: Some(error),
+                },
+            );
+            return;
+        }
         let message = AiMessage {
             id: format!("msg-{}", uuid()),
             session_id: context.session_id.clone(),
@@ -806,14 +834,8 @@ async fn run_codex_stream_inner(
         save_user_message(&app, &session_id, request)?;
     }
 
-    let thread_id = get_session_external_session_id(&app, &session_id, AiAgentKind::Codex)?
-        .or_else(|| {
-            get_session_backend_metadata(&app, &session_id)
-                .ok()
-                .flatten()
-                .filter(|metadata| metadata.backend == AiBackendKind::Codex)
-                .and_then(|metadata| metadata.external_thread_id)
-        });
+    let metadata = get_session_backend_metadata(&app, &session_id)?;
+    let thread_id = reusable_codex_thread_id(metadata.as_ref());
 
     let thread_id = if let Some(thread_id) = thread_id {
         manager
@@ -821,22 +843,10 @@ async fn run_codex_stream_inner(
             .await?;
         thread_id
     } else {
-        let params = json!({
-            "model": selected_model.name,
-            "cwd": null,
-            "ephemeral": settings.codex.thread_mode == CodexThreadMode::Ephemeral,
-            "approvalPolicy": {
-                "granular": {
-                    "rules": false,
-                    "mcp_elicitations": false,
-                    "request_permissions": false,
-                    "sandbox_approval": false
-                }
-            },
-            "approvalsReviewer": "user",
-            "sandbox": "read-only",
-            "dynamicTools": Value::Null
-        });
+        let params = codex_thread_start_params(
+            &selected_model.name,
+            settings.codex.thread_mode == CodexThreadMode::Ephemeral,
+        );
         let response = manager.request("thread/start", params).await?;
         let new_thread_id = response
             .get("thread")
@@ -853,6 +863,7 @@ async fn run_codex_stream_inner(
             AiSessionBackendMetadata {
                 backend: AiBackendKind::Codex,
                 external_thread_id: Some(new_thread_id.clone()),
+                codex_terminal_tools_version: Some(CODEX_TERMINAL_TOOLS_VERSION),
             },
         )?;
         set_session_external_session_id(
@@ -864,14 +875,14 @@ async fn run_codex_stream_inner(
         new_thread_id
     };
 
-    let prompt = build_prompt(request, &settings);
+    let prompt = build_codex_agent_prompt(request, &settings);
     let response = manager
         .request(
             "turn/start",
             json!({
                 "threadId": thread_id,
                 "clientUserMessageId": format!("msg-{}", uuid()),
-                "input": [{ "type": "text", "text": prompt }],
+                "input": [{ "type": "text", "text": prompt, "text_elements": [] }],
                 "model": selected_model.name,
             }),
         )
@@ -894,6 +905,7 @@ async fn run_codex_stream_inner(
             request: request.clone(),
             settings,
             step_counter: Mutex::new(0),
+            dynamic_tool_call_count: AtomicU64::new(0),
             text_accumulator: Mutex::new(String::new()),
         }),
     );
@@ -1137,7 +1149,36 @@ fn parse_account_status(value: &Value) -> CodexAccountStatus {
     }
 }
 
-#[allow(dead_code)]
+fn reusable_codex_thread_id(metadata: Option<&AiSessionBackendMetadata>) -> Option<String> {
+    let metadata = metadata?;
+    if metadata.backend != AiBackendKind::Codex
+        || metadata.codex_terminal_tools_version != Some(CODEX_TERMINAL_TOOLS_VERSION)
+    {
+        return None;
+    }
+    metadata.external_thread_id.clone()
+}
+
+fn codex_thread_start_params(model: &str, ephemeral: bool) -> Value {
+    json!({
+        "model": model,
+        "cwd": null,
+        "ephemeral": ephemeral,
+        "approvalPolicy": {
+            "granular": {
+                "rules": false,
+                "mcp_elicitations": false,
+                "request_permissions": false,
+                "sandbox_approval": false
+            }
+        },
+        "approvalsReviewer": "user",
+        "sandbox": "read-only",
+        "developerInstructions": codex_developer_instructions(),
+        "dynamicTools": [terminal_tool_namespace()]
+    })
+}
+
 fn terminal_tool_namespace() -> Value {
     json!({
         "type": "namespace",
@@ -1169,6 +1210,17 @@ fn terminal_tool_namespace() -> Value {
             }
         ]
     })
+}
+
+fn codex_developer_instructions() -> &'static str {
+    "You are running inside NyaTerm as a terminal automation agent. Use the nyaterm_terminal namespace for terminal work. Call nyaterm_terminal.get_context when target context is unclear. Call nyaterm_terminal.execute_command for commands that need to run in a NyaTerm terminal session. Do not output command-plan JSON such as {\"commands\":[...]}; if a command is needed, call the tool. Do not use local shell or file tools for the user's remote terminal. After observations are sufficient, answer the user in normal assistant text."
+}
+
+fn build_codex_agent_prompt(request: &AiChatRequest, settings: &AiSettings) -> String {
+    format!(
+        "{}\n\nCodex Agent protocol:\n- Use the nyaterm_terminal namespace for all NyaTerm terminal actions.\n- If you need to inspect or change the terminal, call nyaterm_terminal.execute_command with targetTerminalSessionId and command.\n- If the target is unclear, call nyaterm_terminal.get_context first.\n- Do not return command cards, protocol JSON, or {{\"commands\":[...]}} in assistant text.\n- When finished, reply with a normal user-facing final answer.",
+        build_agent_prompt(request, settings)
+    )
 }
 
 fn terminal_context_text(request: &AiChatRequest) -> String {
@@ -1204,6 +1256,22 @@ fn final_agent_text(turn: &Value) -> String {
             })
         })
         .unwrap_or_default()
+}
+
+fn looks_like_codex_command_plan(text: &str) -> bool {
+    let trimmed = text
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        return false;
+    };
+    value
+        .get("commands")
+        .and_then(Value::as_array)
+        .is_some_and(|commands| !commands.is_empty())
 }
 
 async fn read_stderr(stderr: tokio::process::ChildStderr) {
@@ -1267,5 +1335,110 @@ mod tests {
         });
 
         assert_eq!(final_agent_text(&turn), "final");
+    }
+
+    #[test]
+    fn thread_start_params_register_nyaterm_terminal_tools() {
+        let params = codex_thread_start_params("gpt-5-codex", false);
+
+        let namespace = params
+            .get("dynamicTools")
+            .and_then(Value::as_array)
+            .and_then(|tools| tools.first())
+            .expect("terminal tool namespace");
+
+        assert_eq!(
+            namespace.get("name").and_then(Value::as_str),
+            Some("nyaterm_terminal")
+        );
+        let tools = namespace
+            .get("tools")
+            .and_then(Value::as_array)
+            .expect("namespace tools");
+        assert!(
+            tools.iter().any(|tool| {
+                tool.get("name").and_then(Value::as_str) == Some("execute_command")
+            })
+        );
+        assert!(
+            params
+                .get("developerInstructions")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.contains("nyaterm_terminal.execute_command"))
+        );
+    }
+
+    #[test]
+    fn codex_agent_prompt_does_not_request_command_cards() {
+        let request = AiChatRequest {
+            stream_id: None,
+            session_id: None,
+            connection_id: None,
+            terminal_session_id: Some("term-1".to_string()),
+            owner_scope: Default::default(),
+            targets: vec![],
+            target_contexts: vec![],
+            mode: crate::config::AiMode::Agent,
+            agent_kind: AiAgentKind::Codex,
+            permission_mode: crate::config::AiPermissionMode::Confirm,
+            model_id: None,
+            model_name: None,
+            default_target_session_id: Some("term-1".to_string()),
+            existing_external_session_id: None,
+            attachments: vec![],
+            action: super::super::types::AiAction::GenerateCommand,
+            user_input: "check load".to_string(),
+            context: Default::default(),
+            options: Default::default(),
+        };
+
+        let prompt = build_codex_agent_prompt(&request, &AiSettings::default());
+
+        assert!(prompt.contains("nyaterm_terminal.execute_command"));
+        assert!(!prompt.contains("commandCards"));
+        assert!(!prompt.contains("必须返回 JSON 对象"));
+    }
+
+    #[test]
+    fn reusable_codex_thread_requires_matching_terminal_tool_version() {
+        let old_metadata = AiSessionBackendMetadata {
+            backend: AiBackendKind::Codex,
+            external_thread_id: Some("thread-old".to_string()),
+            codex_terminal_tools_version: None,
+        };
+        let current_metadata = AiSessionBackendMetadata {
+            backend: AiBackendKind::Codex,
+            external_thread_id: Some("thread-current".to_string()),
+            codex_terminal_tools_version: Some(CODEX_TERMINAL_TOOLS_VERSION),
+        };
+        let other_backend_metadata = AiSessionBackendMetadata {
+            backend: AiBackendKind::Genai,
+            external_thread_id: Some("thread-other".to_string()),
+            codex_terminal_tools_version: Some(CODEX_TERMINAL_TOOLS_VERSION),
+        };
+
+        assert_eq!(reusable_codex_thread_id(Some(&old_metadata)), None);
+        assert_eq!(
+            reusable_codex_thread_id(Some(&current_metadata)),
+            Some("thread-current".to_string())
+        );
+        assert_eq!(
+            reusable_codex_thread_id(Some(&other_backend_metadata)),
+            None
+        );
+    }
+
+    #[test]
+    fn detects_codex_command_plan_text() {
+        assert!(looks_like_codex_command_plan(
+            r#"{"commands":[{"command":"uptime"}]}"#
+        ));
+        assert!(looks_like_codex_command_plan(
+            "```json\n{\"commands\":[{\"command\":\"uptime\"}]}\n```"
+        ));
+        assert!(!looks_like_codex_command_plan(
+            r#"{"text":"ok","commandCards":[]}"#
+        ));
+        assert!(!looks_like_codex_command_plan("load is normal"));
     }
 }
