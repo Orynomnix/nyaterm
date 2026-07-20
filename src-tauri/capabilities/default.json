@@ -21,6 +21,10 @@
         {
           "path": "$TEMP/**",
           "app": true
+        },
+        {
+          "path": "**",
+          "app": true
         }
       ]
     },
