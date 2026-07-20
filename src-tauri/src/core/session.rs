@@ -125,6 +125,7 @@ pub enum SessionCommand {
     ZmodemAcceptUpload {
         files: Vec<std::path::PathBuf>,
         conflict_mode: ZmodemUploadConflictMode,
+        preserve_timestamps: bool,
     },
     /// ZMODEM: user cancelled the ZMODEM transfer.
     ZmodemCancel,

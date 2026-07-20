@@ -526,10 +526,12 @@ async fn telnet_session_task(
                     Some(SessionCommand::ZmodemAcceptUpload {
                         files,
                         conflict_mode,
+                        preserve_timestamps,
                     }) => {
                         let mut zm = zmodem_state.lock().await;
                         if let Some(ref mut transfer) = *zm {
-                            let actions = transfer.accept_upload(files, conflict_mode);
+                            let actions =
+                                transfer.accept_upload(files, conflict_mode, preserve_timestamps);
                             for action in actions {
                                 match action {
                                     ZmodemAction::SendToRemote(data) => { let _ = writer.write_all(&data).await; }

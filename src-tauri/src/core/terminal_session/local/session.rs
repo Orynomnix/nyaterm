@@ -540,10 +540,12 @@ fn pty_session_thread(
             SessionCommand::ZmodemAcceptUpload {
                 files,
                 conflict_mode,
+                preserve_timestamps,
             } => {
                 let mut zm = zmodem_state.lock().unwrap();
                 if let Some(ref mut transfer) = *zm {
-                    let actions = transfer.accept_upload(files, conflict_mode);
+                    let actions =
+                        transfer.accept_upload(files, conflict_mode, preserve_timestamps);
                     for action in actions {
                         match action {
                             ZmodemAction::SendToRemote(data) => {
