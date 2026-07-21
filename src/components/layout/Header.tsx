@@ -2,7 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BiExport, BiImport, BiServer } from "react-icons/bi";
+import { BiExport, BiImport } from "react-icons/bi";
 import { GrUpgrade } from "react-icons/gr";
 import {
   MdAccessTime,
@@ -619,12 +619,35 @@ export default function Header({
       };
     }
 
+    const getSessionIcon = () => {
+      if (activePane.type === "SSH" && activeConnection) {
+        const def = resolveConnectionIcon(activeConnection.icon);
+        const IconComp = def.icon;
+        return <IconComp className="text-sm shrink-0" style={{ color: def.color }} />;
+      }
+
+      if (activeConnection?.icon) {
+        const def = resolveConnectionIcon(activeConnection.icon);
+        const IconComp = def.icon;
+        return <IconComp className="text-sm shrink-0" style={{ color: def.color }} />;
+      }
+
+      if (activePane.type === "Telnet") {
+        return <MdDns className="text-sm shrink-0" />;
+      }
+
+      if (activePane.type === "Serial") {
+        return <MdCellTower className="text-sm shrink-0" />;
+      }
+
+      return <MdTerminal className="text-sm shrink-0" />;
+    };
+
     if (activePane.type === "SSH" && activeConnection && !activeTab.customName) {
-      const def = resolveConnectionIcon(activeConnection.icon);
-      const IconComp = def.icon;
+      const icon = getSessionIcon();
       const text = `${activeConnection.name} - ${activeConnection.username}@${activeConnection.host}:${activeConnection.port}`;
       return {
-        icon: <IconComp className="text-sm shrink-0" style={{ color: def.color }} />,
+        icon,
         text,
         title: text,
       };
@@ -632,14 +655,14 @@ export default function Header({
 
     if (activePane.type === "SSH") {
       return {
-        icon: <BiServer className="text-sm shrink-0" />,
+        icon: getSessionIcon(),
         text: activeDisplayName,
         title: activeDisplayName,
       };
     }
 
     return {
-      icon: <MdTerminal className="text-sm shrink-0" />,
+      icon: getSessionIcon(),
       text: activeDisplayName,
       title: activeDisplayName,
     };
