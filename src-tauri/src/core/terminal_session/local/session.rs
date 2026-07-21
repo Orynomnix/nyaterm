@@ -456,6 +456,9 @@ fn pty_session_thread(
             SessionCommand::Attach => {
                 output.attach();
             }
+            SessionCommand::DetachRenderer => {
+                output.detach();
+            }
             SessionCommand::Write { data, .. } => {
                 if zmodem_state.lock().unwrap().is_some() {
                     continue;

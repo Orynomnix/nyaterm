@@ -188,6 +188,9 @@ fn serial_session_thread(
             SessionCommand::Attach => {
                 output.attach();
             }
+            SessionCommand::DetachRenderer => {
+                output.detach();
+            }
             SessionCommand::Write { mut data, .. } => {
                 if zmodem_state.lock().unwrap().is_some() {
                     continue;

@@ -795,6 +795,16 @@ pub async fn attach_session(
 }
 
 #[tauri::command]
+pub async fn detach_session_renderer(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+) -> AppResult<()> {
+    state
+        .send_command(&session_id, SessionCommand::DetachRenderer)
+        .await
+}
+
+#[tauri::command]
 pub async fn close_session(
     app: tauri::AppHandle,
     state: tauri::State<'_, Arc<SessionManager>>,

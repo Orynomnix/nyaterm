@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 
 pub const DEFAULT_TIMESTAMP_FORMAT: &str = "[HH:mm:ss]";
 pub const TIMESTAMP_FORMAT_WITH_MILLISECONDS: &str = "[HH:mm:ss.SSS]";
+pub const MIN_SCROLLBACK_LINES: u32 = 100;
+pub const DEFAULT_SCROLLBACK_LINES: u32 = 10_000;
+pub const MAX_SCROLLBACK_LINES: u32 = 100_000;
 const MAX_TIMESTAMP_FORMAT_LEN: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -90,7 +93,7 @@ pub struct TerminalSettings {
 }
 
 fn default_scrollback() -> u32 {
-    10000
+    DEFAULT_SCROLLBACK_LINES
 }
 fn default_keep_alive() -> u32 {
     60
@@ -103,6 +106,18 @@ fn default_timestamp_format() -> String {
 }
 
 impl TerminalSettings {
+    pub fn normalize_scrollback_lines(&mut self) -> bool {
+        let normalized = self
+            .scrollback_lines
+            .clamp(MIN_SCROLLBACK_LINES, MAX_SCROLLBACK_LINES);
+        if normalized == self.scrollback_lines {
+            return false;
+        }
+
+        self.scrollback_lines = normalized;
+        true
+    }
+
     pub fn normalize_timestamp_format(&mut self) -> bool {
         let current = self.timestamp_format.clone();
         let normalized = if current.trim().is_empty() {
@@ -185,5 +200,29 @@ mod tests {
         };
         assert!(long.normalize_timestamp_format());
         assert_eq!(long.timestamp_format.chars().count(), 64);
+    }
+
+    #[test]
+    fn normalizes_scrollback_lines_to_ui_bounds() {
+        let mut low = TerminalSettings {
+            scrollback_lines: 1,
+            ..TerminalSettings::default()
+        };
+        assert!(low.normalize_scrollback_lines());
+        assert_eq!(low.scrollback_lines, 100);
+
+        let mut high = TerminalSettings {
+            scrollback_lines: 250_000,
+            ..TerminalSettings::default()
+        };
+        assert!(high.normalize_scrollback_lines());
+        assert_eq!(high.scrollback_lines, 100_000);
+
+        let mut ok = TerminalSettings {
+            scrollback_lines: 10_000,
+            ..TerminalSettings::default()
+        };
+        assert!(!ok.normalize_scrollback_lines());
+        assert_eq!(ok.scrollback_lines, 10_000);
     }
 }

@@ -149,6 +149,7 @@ pub fn run() {
             cmd::session::ack_session_output,
             cmd::session::resize_session,
             cmd::session::attach_session,
+            cmd::session::detach_session_renderer,
             cmd::session::close_session,
             cmd::session::list_sessions,
             cmd::session::add_command_history,

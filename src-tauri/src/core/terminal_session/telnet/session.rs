@@ -401,6 +401,9 @@ async fn telnet_session_task(
                     Some(SessionCommand::Attach) => {
                         output.attach();
                     }
+                    Some(SessionCommand::DetachRenderer) => {
+                        output.detach();
+                    }
                     Some(SessionCommand::Write { mut data, automated }) => {
                         if !automated {
                             let mut auto = auto_login.lock().await;
