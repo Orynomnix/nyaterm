@@ -36,6 +36,27 @@ export type LoadDirectoryOptions = {
 
 export type FileExplorerBackendKind = "remote" | "local";
 
+export type BreadcrumbSegment = {
+  id: string;
+  label: string;
+  path: string;
+  isRoot: boolean;
+  isCurrent: boolean;
+};
+
+export type DirectoryChild = {
+  name: string;
+  path: string;
+  isSymlink: boolean;
+  rawPathToken?: string;
+};
+
+export type ChildrenMenuState =
+  | { status: "idle" }
+  | { status: "loading"; path: string }
+  | { status: "success"; path: string; items: DirectoryChild[] }
+  | { status: "error"; path: string; message: string };
+
 export type InlineRenameState = {
   entryName: string;
   oldPath: string;
@@ -573,6 +594,91 @@ export function formatExplorerPathFromHome(
   if (!suffix) return "~";
   if (suffix.startsWith("/") || suffix.startsWith("\\")) return `~${suffix}`;
   return `~${backend === "remote" ? "/" : getLocalSeparator(normalizedPath)}${suffix}`;
+}
+
+export function buildBreadcrumbSegments(
+  currentPath: string,
+  homeDir: string,
+  backend: FileExplorerBackendKind,
+): BreadcrumbSegment[] {
+  const normalizedPath = normalizeExplorerPath(currentPath || homeDir, backend);
+  if (!normalizedPath) return [];
+
+  const makeSegment = (label: string, path: string, isRoot: boolean): BreadcrumbSegment => {
+    const normalizedSegmentPath = normalizeExplorerPath(path, backend);
+    return {
+      id: normalizedSegmentPath || path || label,
+      label,
+      path: normalizedSegmentPath || path,
+      isRoot,
+      isCurrent: normalizedSegmentPath === normalizedPath,
+    };
+  };
+
+  if (backend === "remote") {
+    const normalizedHome = normalizeExplorerPath(homeDir, backend);
+    const useHomeRoot =
+      !!normalizedHome && pathStartsWithDirectory(normalizedPath, normalizedHome, backend);
+    const rootPath = useHomeRoot ? normalizedHome : "/";
+    const segments = [makeSegment(useHomeRoot ? "~" : "/", rootPath, true)];
+    const suffix = normalizedPath === rootPath ? "" : normalizedPath.slice(rootPath.length);
+    const parts = suffix.split("/").filter(Boolean);
+    let accumulated = rootPath;
+    for (const part of parts) {
+      accumulated = joinExplorerPath(accumulated, part, backend);
+      segments.push(makeSegment(part, accumulated, false));
+    }
+    return segments;
+  }
+
+  const normalized = normalizedPath.replace(/\//g, "\\");
+  if (normalized.startsWith("\\\\")) {
+    const parts = normalized.split("\\").filter(Boolean);
+    if (parts.length >= 2) {
+      const rootPath = `\\\\${parts[0]}\\${parts[1]}`;
+      const segments = [makeSegment(rootPath, rootPath, true)];
+      let accumulated = rootPath;
+      for (const part of parts.slice(2)) {
+        accumulated = joinExplorerPath(accumulated, part, backend);
+        segments.push(makeSegment(part, accumulated, false));
+      }
+      return segments;
+    }
+    return [makeSegment(normalizedPath, normalizedPath, true)];
+  }
+
+  const driveMatch = normalizedPath.match(/^([a-zA-Z]:)[\\/]?/);
+  if (driveMatch) {
+    const rootPath = `${driveMatch[1]}\\`;
+    const segments = [makeSegment(driveMatch[1], rootPath, true)];
+    const suffix = normalizedPath.slice(driveMatch[0].length);
+    const parts = suffix.split(/[\\/]/).filter(Boolean);
+    let accumulated = rootPath;
+    for (const part of parts) {
+      accumulated = joinExplorerPath(accumulated, part, backend);
+      segments.push(makeSegment(part, accumulated, false));
+    }
+    return segments;
+  }
+
+  if (normalizedPath.startsWith("/") || normalizedPath.startsWith("\\")) {
+    const rootPath = normalizedPath.slice(0, 1);
+    const segments = [makeSegment(rootPath, rootPath, true)];
+    const parts = normalizedPath.slice(1).split(/[\\/]/).filter(Boolean);
+    let accumulated = rootPath;
+    for (const part of parts) {
+      accumulated = joinExplorerPath(accumulated, part, backend);
+      segments.push(makeSegment(part, accumulated, false));
+    }
+    return segments;
+  }
+
+  const parts = normalizedPath.split(/[\\/]/).filter(Boolean);
+  let accumulated = "";
+  return parts.map((part, index) => {
+    accumulated = accumulated ? joinExplorerPath(accumulated, part, backend) : part;
+    return makeSegment(part, accumulated, index === 0);
+  });
 }
 
 export function isParentDirectoryEntry(entry: FileEntry) {

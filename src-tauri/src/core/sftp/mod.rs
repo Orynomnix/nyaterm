@@ -33,8 +33,8 @@ pub use transfer::{cancel_transfer, pause_transfer, resume_transfer};
 pub(crate) use util::RemotePathRef;
 pub(crate) use util::sanitize_download_file_name;
 pub use util::{
-    FileEntry, FileProperties, RemoteBinaryFile, RemoteFileAttributeUpdate, RemoteTextFile,
-    WriteRemoteTextResult,
+    DirectoryChild, FileEntry, FileProperties, RemoteBinaryFile, RemoteFileAttributeUpdate,
+    RemoteTextFile, WriteRemoteTextResult,
 };
 
 fn is_remote_delete_not_found(error: &AppError) -> bool {
@@ -334,6 +334,52 @@ pub async fn list_remote_dir(
     );
 
     Ok(entries)
+}
+
+fn normalize_remote_child_parent(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub async fn list_remote_child_directories(
+    manager: Arc<SessionManager>,
+    session_id: &str,
+    path: &str,
+    raw_path_token: Option<&str>,
+    show_hidden_files: bool,
+) -> AppResult<Vec<DirectoryChild>> {
+    let entries = list_remote_dir(manager, session_id, path, raw_path_token).await?;
+    let normalized_path = normalize_remote_child_parent(path);
+    let mut directories: Vec<DirectoryChild> = entries
+        .into_iter()
+        .filter(|entry| {
+            entry.is_dir
+                && entry.name != "."
+                && entry.name != ".."
+                && (show_hidden_files || !entry.name.starts_with('.'))
+        })
+        .map(|entry| DirectoryChild {
+            path: if normalized_path == "/" {
+                format!("/{}", entry.name)
+            } else {
+                format!("{}/{}", normalized_path, entry.name)
+            },
+            name: entry.name,
+            is_symlink: entry.is_symlink,
+            raw_path_token: entry.raw_path_token,
+        })
+        .collect();
+    directories.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    Ok(directories)
 }
 
 pub async fn delete_remote_file(

@@ -1,5 +1,6 @@
 use crate::core::sftp::{
-    FileEntry, FileProperties, RemoteBinaryFile, RemoteTextFile, WriteRemoteTextResult,
+    DirectoryChild, FileEntry, FileProperties, RemoteBinaryFile, RemoteTextFile,
+    WriteRemoteTextResult,
 };
 use crate::core::{SessionManager, SessionType};
 use crate::error::{AppError, AppResult};
@@ -45,6 +46,30 @@ pub async fn list_local_dir(
     Ok(entries)
 }
 
+#[tauri::command]
+pub async fn list_local_child_directories(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    path: String,
+    show_hidden_files: bool,
+) -> AppResult<Vec<DirectoryChild>> {
+    ensure_local_session(state.inner(), &session_id).await?;
+    let dir_path = PathBuf::from(path.clone());
+    let entries = list_local_child_directories_impl(&dir_path, show_hidden_files).await?;
+
+    tracing::debug!(
+        target: "user_action",
+        action = "list",
+        entity = "local_child_directories",
+        session_id = %session_id,
+        local_path = path,
+        item_count = entries.len(),
+        "User listed local child directories"
+    );
+
+    Ok(entries)
+}
+
 async fn list_local_dir_impl(dir_path: &Path) -> AppResult<Vec<FileEntry>> {
     let mut read_dir = tokio::fs::read_dir(dir_path).await.map_err(|error| {
         AppError::Io(std::io::Error::new(
@@ -66,6 +91,59 @@ async fn list_local_dir_impl(dir_path: &Path) -> AppResult<Vec<FileEntry>> {
             entries.push(file_entry);
         }
     }
+    Ok(entries)
+}
+
+async fn list_local_child_directories_impl(
+    dir_path: &Path,
+    show_hidden_files: bool,
+) -> AppResult<Vec<DirectoryChild>> {
+    let mut read_dir = tokio::fs::read_dir(dir_path).await.map_err(|error| {
+        AppError::Io(std::io::Error::new(
+            error.kind(),
+            format!(
+                "Failed to list local child directories '{}': {error}",
+                dir_path.display()
+            ),
+        ))
+    })?;
+
+    let mut entries = Vec::new();
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.is_empty() || name == "." || name == ".." {
+            continue;
+        }
+        if !show_hidden_files && name.starts_with('.') {
+            continue;
+        }
+
+        let path = entry.path();
+        let symlink_metadata = match tokio::fs::symlink_metadata(&path).await {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        let metadata = tokio::fs::metadata(&path)
+            .await
+            .unwrap_or_else(|_| symlink_metadata.clone());
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        entries.push(DirectoryChild {
+            name,
+            path: path_to_string(path),
+            is_symlink: symlink_metadata.file_type().is_symlink(),
+            raw_path_token: None,
+        });
+    }
+
+    entries.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
     Ok(entries)
 }
 

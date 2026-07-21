@@ -70,7 +70,11 @@ import type {
   SessionInfo,
 } from "@/types/global";
 import { FileExplorerDialogs } from "./FileExplorerDialogs";
-import { FileExplorerPathBar } from "./FileExplorerPathBar";
+import {
+  clearDirectoryChildrenCacheForPath,
+  clearDirectoryChildrenCacheForSession,
+  FileExplorerPathBar,
+} from "./FileExplorerPathBar";
 import { FileExplorerToolbar } from "./FileExplorerToolbar";
 import { FileListItem } from "./FileListItem";
 import {
@@ -79,6 +83,7 @@ import {
   compareFileEntries,
   DEFAULT_FILE_LIST_COLUMN_WIDTHS,
   DEFAULT_FILE_SORT_DIRECTIONS,
+  type DirectoryChild,
   FILE_LIST_COLUMNS,
   FILE_LIST_HEADER_HEIGHT,
   FILE_LIST_ITEM_HEIGHT,
@@ -209,6 +214,20 @@ function FileExplorer({
 
   const resetExternalDropHover = useCallback(() => {
     setIsExternalDropActive(false);
+  }, []);
+
+  const beginPathEditing = useCallback(() => {
+    setPathInputText(currentPathRef.current || homeDirRef.current);
+    setIsEditingPath(true);
+    window.requestAnimationFrame(() => pathInputRef.current?.select());
+  }, []);
+
+  const invalidateDirectoryChildrenCache = useCallback((path: string) => {
+    clearDirectoryChildrenCacheForPath(
+      activeSessionIdRef.current,
+      explorerBackendRef.current,
+      path,
+    );
   }, []);
   const autoSyncConnectionIds = appSettings.ui.file_explorer_auto_sync_cwd_connection_ids ?? [];
   const autoSyncScopeId = activeConnectionId ?? (hasLocalSession ? "local" : null);
@@ -365,6 +384,7 @@ function FileExplorer({
         for (const sessionId of [...cache.keys()]) {
           if (!liveIds.has(sessionId)) {
             cache.delete(sessionId);
+            clearDirectoryChildrenCacheForSession(sessionId);
           }
         }
       } catch {
@@ -579,6 +599,7 @@ function FileExplorer({
       normalizeExplorerPath(currentPathRef.current, backend) ||
       normalizeExplorerPath(homeDirRef.current, backend);
     if (!targetPath) return Promise.resolve(false);
+    clearDirectoryChildrenCacheForPath(activeSessionIdRef.current, backend, targetPath);
     return loadDirectory(targetPath);
   }, [loadDirectory]);
 
@@ -817,6 +838,7 @@ function FileExplorer({
       }
       refreshUploadCompletionTimerRef.current = setTimeout(() => {
         refreshUploadCompletionTimerRef.current = null;
+        clearDirectoryChildrenCacheForPath(activeSessionIdRef.current, "remote", visibleDir);
         void refreshCurrentDirectory();
       }, 250);
     });
@@ -1075,6 +1097,42 @@ function FileExplorer({
     [loadDirectory],
   );
 
+  const handleNavigateDirectory = useCallback(
+    async (path: string, options?: LoadDirectoryOptions) => {
+      const backend = explorerBackendRef.current;
+      const normalizedPath = normalizeExplorerPath(path, backend);
+      if (!normalizedPath) return false;
+      setFileSearchQuery("");
+      return loadDirectory(normalizedPath, options);
+    },
+    [loadDirectory],
+  );
+
+  const listChildDirectories = useCallback(
+    async (path: string) => {
+      if (!activeSessionId) return [];
+      const backend = explorerBackendRef.current;
+      const normalizedPath = normalizeExplorerPath(path, backend);
+      if (!normalizedPath) return [];
+      return backend === "local"
+        ? await invoke<DirectoryChild[]>("list_local_child_directories", {
+            sessionId: activeSessionId,
+            path: normalizedPath,
+            showHiddenFiles,
+          })
+        : await invoke<DirectoryChild[]>("list_remote_child_directories", {
+            sessionId: activeSessionId,
+            path: normalizedPath,
+            rawPathToken:
+              normalizedPath === normalizeExplorerPath(currentPathRef.current, backend)
+                ? currentPathRawTokenRef.current
+                : undefined,
+            showHiddenFiles,
+          });
+    },
+    [activeSessionId, showHiddenFiles],
+  );
+
   const handleItemClick = (entry: FileEntry) => {
     if (isParentDirectoryEntry(entry)) {
       handleGoUp();
@@ -1186,6 +1244,18 @@ function FileExplorer({
         target.tagName === "TEXTAREA" ||
         target.tagName === "SELECT")
     ) {
+      return;
+    }
+
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "l"
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      beginPathEditing();
       return;
     }
 
@@ -1481,6 +1551,7 @@ function FileExplorer({
           oldRawPathToken: inlineRenameState.oldRawPathToken,
         });
       }
+      invalidateDirectoryChildrenCache(currentPathRef.current);
       await loadDirectory(currentPathRef.current, {
         history: "preserve",
         selectEntryName: newName,
@@ -1494,7 +1565,7 @@ function FileExplorer({
           : prev,
       );
     }
-  }, [activeSessionId, inlineRenameState, loadDirectory]);
+  }, [activeSessionId, inlineRenameState, invalidateDirectoryChildrenCache, loadDirectory]);
 
   const getEntryAiActions = (entry: FileEntry) => {
     if (entry.is_dir || entry.size > appSettings.ai.max_ai_file_size_bytes) {
@@ -1965,11 +2036,16 @@ function FileExplorer({
           displayPath={displayPath}
           currentPath={currentPath}
           homeDir={homeDir}
+          sessionId={activeSessionId ?? ""}
+          currentDirectoryEntries={files}
+          showHiddenFiles={showHiddenFiles}
           directoryHistory={visitedHistory}
           favoriteDirectories={favoriteDirectories}
           onPathInputTextChange={setPathInputText}
           onEditingPathChange={setIsEditingPath}
           onLoadDirectory={(path) => void loadDirectory(path)}
+          onNavigate={handleNavigateDirectory}
+          onListChildDirectories={listChildDirectories}
           onSelectHistoryPath={handleSelectHistoryPath}
           onAddCurrentDirectoryToFavorites={handleAddCurrentDirectoryToFavorites}
           onSelectFavoritePath={handleSelectFavoritePath}

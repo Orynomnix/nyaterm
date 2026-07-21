@@ -29,6 +29,24 @@ pub async fn list_remote_dir(
 }
 
 #[tauri::command]
+pub async fn list_remote_child_directories(
+    state: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    path: String,
+    raw_path_token: Option<String>,
+    show_hidden_files: bool,
+) -> AppResult<Vec<sftp::DirectoryChild>> {
+    sftp::list_remote_child_directories(
+        state.inner().clone(),
+        &session_id,
+        &path,
+        raw_path_token.as_deref(),
+        show_hidden_files,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn delete_remote_file(
     state: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,
