@@ -456,6 +456,32 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     ),
     [t],
   );
+  const renderCommandPreview = useCallback(
+    (cmd: QuickCommand) => (
+      <div className="relative">
+        <pre
+          className="custom-scrollbar terminal-scroll max-h-[120px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/40 bg-background/50 p-2.5 pr-9 font-mono text-[0.6875rem] text-foreground/80"
+          title={cmd.command}
+        >
+          {cmd.command}
+        </pre>
+        <button
+          type="button"
+          className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-[var(--df-primary)]"
+          aria-label={t("quickCommands.copyCommand")}
+          title={t("quickCommands.copyCommand")}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleCopyCommand(cmd.command);
+          }}
+        >
+          <MdContentCopy className="text-[0.8rem]" />
+        </button>
+      </div>
+    ),
+    [handleCopyCommand, t],
+  );
   const renderCommandDetailsPopover = useCallback(
     (cmd: QuickCommand) => {
       const categoryName = getCommandCategoryName(cmd);
@@ -508,19 +534,14 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
                   </div>
                 )}
 
-                <pre
-                  className="custom-scrollbar terminal-scroll max-h-[120px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/40 bg-background/50 p-2.5 font-mono text-[0.6875rem] text-foreground/80"
-                  title={cmd.command}
-                >
-                  {cmd.command}
-                </pre>
+                {renderCommandPreview(cmd)}
               </div>
             </div>
           </PopoverContent>
         </Popover>
       );
     },
-    [getCommandCategoryName, renderCommandIcon, t],
+    [getCommandCategoryName, renderCommandIcon, renderCommandPreview, t],
   );
   const renderMoreMenu = useCallback(
     (cmd: QuickCommand) => (
@@ -735,27 +756,7 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
                     </div>
                   )}
 
-                  <div className="relative">
-                    <pre
-                      className="custom-scrollbar terminal-scroll max-h-[120px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/40 bg-background/50 p-2.5 pr-9 font-mono text-[0.6875rem] text-foreground/80"
-                      title={cmd.command}
-                    >
-                      {cmd.command}
-                    </pre>
-                    <button
-                      type="button"
-                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-[var(--df-primary)]"
-                      aria-label={t("quickCommands.copyCommand")}
-                      title={t("quickCommands.copyCommand")}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void handleCopyCommand(cmd.command);
-                      }}
-                    >
-                      <MdContentCopy className="text-[0.8rem]" />
-                    </button>
-                  </div>
+                  {renderCommandPreview(cmd)}
                 </div>
               </div>
             </TooltipContent>
@@ -767,8 +768,8 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     [
       getCommandCategoryName,
       handleCommandClick,
-      handleCopyCommand,
       renderCommandIcon,
+      renderCommandPreview,
       renderContextMenuContent,
       t,
     ],
