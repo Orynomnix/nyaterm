@@ -28,8 +28,6 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     minimize_to_tray: false,
     boss_key: null,
     confirm_on_close: true,
-    portable_update_download_source: "github",
-    portable_update_custom_mirror: "",
   },
   appearance: {
     theme: "github-dark",
@@ -216,8 +214,6 @@ const DEFAULT_RUNTIME_INFO: AppRuntimeInfo = {
  */
 export function ChildAppProvider({ children }: { children: ReactNode }) {
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
-  const [runtimeInfo, setRuntimeInfo] = useState<AppRuntimeInfo>(DEFAULT_RUNTIME_INFO);
-  const [runtimeInfoLoaded, setRuntimeInfoLoaded] = useState(false);
   const loaded = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -243,20 +239,6 @@ export function ChildAppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadAppSettings();
   }, [loadAppSettings]);
-
-  useEffect(() => {
-    invoke<AppRuntimeInfo>("get_app_runtime_info")
-      .then(setRuntimeInfo)
-      .catch((error) => {
-        logger.error({
-          domain: "app.lifecycle",
-          event: "runtime_info.load_failed",
-          message: "Failed to load app runtime info in child window",
-          error,
-        });
-      })
-      .finally(() => setRuntimeInfoLoaded(true));
-  }, []);
 
   useEffect(() => {
     const unlisten = listen("settings-changed", () => {
@@ -410,8 +392,8 @@ export function ChildAppProvider({ children }: { children: ReactNode }) {
       setIsLocked,
       settingsLoaded,
       startupRestoreComplete: true,
-      runtimeInfo,
-      runtimeInfoLoaded,
+      runtimeInfo: DEFAULT_RUNTIME_INFO,
+      runtimeInfoLoaded: true,
     }),
     [
       noop,
@@ -430,8 +412,6 @@ export function ChildAppProvider({ children }: { children: ReactNode }) {
       isLocked,
       setIsLocked,
       settingsLoaded,
-      runtimeInfo,
-      runtimeInfoLoaded,
     ],
   );
 

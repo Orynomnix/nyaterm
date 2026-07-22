@@ -224,6 +224,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -260,7 +261,14 @@ jobs:
           New-Item -ItemType File -Path (Join-Path $dataDir ".keep") -Force | Out-Null
 
           Compress-Archive -Path $portableDir -DestinationPath $assetPath -Force
-          gh release upload "$env:GITHUB_REF_NAME" "$assetPath" --repo "$env:GITHUB_REPOSITORY" --clobber
+          pnpm tauri signer sign --private-key-path "$env:TAURI_SIGNING_PRIVATE_KEY" "$assetPath"
+
+          $signaturePath = "$assetPath.sig"
+          if (-not (Test-Path $signaturePath)) {
+            throw "Portable updater signature was not generated: $signaturePath"
+          }
+
+          gh release upload "$env:GITHUB_REF_NAME" "$assetPath" "$signaturePath" --repo "$env:GITHUB_REPOSITORY" --clobber
 
   rename-assets:
     name: Rename release assets
@@ -433,6 +441,12 @@ jobs:
                   keys.push('linux-x86_64');
                 } else if (lower.includes('linux_arm64') || lower.includes('arm64') || lower.includes('aarch64')) {
                   keys.push('linux-aarch64');
+                }
+              } else if (lower.endsWith('_portable.zip.sig')) {
+                if (lower.includes('windows_x64') || lower.includes('x64') || lower.includes('x86_64') || lower.includes('amd64')) {
+                  keys.push('windows-x86_64-portable');
+                } else if (lower.includes('windows_arm64') || lower.includes('arm64') || lower.includes('aarch64')) {
+                  keys.push('windows-aarch64-portable');
                 }
               } else if (lower.endsWith('-setup.exe.sig') || lower.endsWith('-setup.nsis.zip.sig')) {
                 if (lower.includes('windows_x64') || lower.includes('x64') || lower.includes('x86_64') || lower.includes('amd64')) {
@@ -859,6 +873,27 @@ jobs:
             process.stdin.on('data', chunk => input += chunk);
             process.stdin.on('end', () => {
               const json = JSON.parse(input);
+              const requiredPortablePlatforms = [
+                'windows-x86_64-portable',
+                'windows-aarch64-portable',
+              ];
+
+              for (const platform of requiredPortablePlatforms) {
+                const item = json.platforms?.[platform];
+                if (!item?.url || !item?.signature) {
+                  throw new Error(
+                    'R2 latest.json is missing a signed portable target: ' + platform
+                  );
+                }
+                const portableUrlPrefix = process.env.DOWNLOAD_BASE_URL +
+                  '/releases/' + process.env.GITHUB_REF_NAME + '/';
+                if (!item.url.startsWith(portableUrlPrefix)) {
+                  throw new Error(
+                    'R2 latest.json portable target does not use the versioned R2 URL: ' + platform
+                  );
+                }
+              }
+
               console.log('R2 latest.json version:', json.version);
               console.log('Platforms:', Object.keys(json.platforms || {}).join(', '));
             });

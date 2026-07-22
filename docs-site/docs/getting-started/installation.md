@@ -24,12 +24,12 @@ NyaTerm 支持以下操作系统：
 | macOS | `.dmg` |
 | Linux | `.deb` / `.AppImage` |
 
-Windows 便携版解压后运行 `NyaTerm.exe` 即可。**Help → 检查更新** 会从 GitHub Releases 读取版本和更新说明，并使用 GitHub 提供的 SHA-256 摘要验证下载包。可在设置中选择 GitHub 直连、内置镜像或自定义镜像；重启时 NyaTerm 会自动替换程序文件，并完整保留 `data/` 目录。
+Windows 便携版解压后运行 `NyaTerm.exe` 即可。**Help → 检查更新** 与安装版共用 Cloudflare R2 更新清单和下载源，暂存更新前会强制验证 Tauri updater 签名。重启时 NyaTerm 会自动替换程序文件，并完整保留 `data/` 目录。
 
 Windows 便携版直接下载：
 
-- [NyaTerm_1.1.17_windows_x64_portable.zip](https://github.com/nyakang/nyaterm/releases/download/v1.1.17/NyaTerm_1.1.17_windows_x64_portable.zip)（x64）
-- [NyaTerm_1.1.17_windows_arm64_portable.zip](https://github.com/nyakang/nyaterm/releases/download/v1.1.17/NyaTerm_1.1.17_windows_arm64_portable.zip)（ARM64）
+- [NyaTerm_1.1.17_windows_x64_portable.zip](https://downloads.nyaterm.app/releases/v1.1.17/NyaTerm_1.1.17_windows_x64_portable.zip)（x64）
+- [NyaTerm_1.1.17_windows_arm64_portable.zip](https://downloads.nyaterm.app/releases/v1.1.17/NyaTerm_1.1.17_windows_arm64_portable.zip)（ARM64）
 
 ### macOS
 

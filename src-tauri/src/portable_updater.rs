@@ -7,15 +7,13 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use futures_util::StreamExt;
-use semver::Version;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use serde::Serialize;
 use tauri::State;
 use tauri::ipc::Channel;
+use tauri_plugin_updater::{Update, UpdaterExt};
+use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use crate::config::{PortableUpdateDownloadSource, load_app_settings};
 use crate::error::{AppError, AppResult};
 use crate::runtime::AppRuntime;
 
@@ -25,9 +23,6 @@ const PORTABLE_MARKER: &str = "portable.flag";
 const HELPER_FLAG: &str = "--nyaterm-portable-update-helper";
 const CLEANUP_ENV: &str = "NYATERM_PORTABLE_UPDATE_CLEANUP";
 const WORK_DIR_PREFIX: &str = "nyaterm-portable-update-";
-const GITHUB_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/nyakang/nyaterm/releases/latest";
-const GITHUB_API_VERSION: &str = "2022-11-28";
 const MAX_ARCHIVE_ENTRIES: usize = 128;
 const MAX_PAYLOAD_BYTES: u64 = 512 * 1024 * 1024;
 const STALE_WORK_DIR_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -45,31 +40,6 @@ pub struct PortableUpdateInfo {
 pub struct PortableUpdateProgress {
     downloaded: u64,
     total: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubRelease {
-    tag_name: String,
-    body: Option<String>,
-    published_at: Option<String>,
-    assets: Vec<GithubReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubReleaseAsset {
-    name: String,
-    browser_download_url: String,
-    size: u64,
-    digest: Option<String>,
-}
-
-#[derive(Debug)]
-struct PortableRelease {
-    version: String,
-    date: Option<String>,
-    body: Option<String>,
-    asset: GithubReleaseAsset,
-    sha256: String,
 }
 
 #[derive(Debug)]
@@ -99,12 +69,12 @@ pub async fn check(
     runtime: &AppRuntime,
 ) -> AppResult<Option<PortableUpdateInfo>> {
     ensure_portable_runtime(runtime)?;
-    Ok(latest_portable_release(app, std::env::consts::ARCH)
+    Ok(portable_update(app, std::env::consts::ARCH)
         .await?
-        .map(|release| PortableUpdateInfo {
-            version: release.version,
-            date: release.date,
-            body: release.body,
+        .map(|update| PortableUpdateInfo {
+            version: update.version,
+            date: update.date.and_then(|date| date.format(&Rfc3339).ok()),
+            body: update.body,
         }))
 }
 
@@ -123,58 +93,32 @@ pub async fn download(
         .map_err(|_| AppError::Config("A portable update download is already running".into()))?;
     let _guard = DownloadGuard(&state.downloading);
 
-    let release = latest_portable_release(app, std::env::consts::ARCH)
+    let update = portable_update(app, std::env::consts::ARCH)
         .await?
         .ok_or_else(|| AppError::Config("No portable update is available".into()))?;
-    let settings = load_app_settings(app)?;
-    let download_url = rewrite_download_url(
-        &release.asset.browser_download_url,
-        settings.general.portable_update_download_source,
-        &settings.general.portable_update_custom_mirror,
-    )?;
-    let client = github_client(app)?;
-    let response =
-        client.get(download_url).send().await.map_err(|error| {
-            AppError::Config(format!("Portable update download failed: {error}"))
+    let mut downloaded = 0_u64;
+    let bytes = update
+        .download(
+            |chunk_len, total| {
+                downloaded = downloaded.saturating_add(chunk_len as u64);
+                let _ = on_progress.send(PortableUpdateProgress {
+                    downloaded,
+                    total: total.unwrap_or(0),
+                });
+            },
+            || {},
+        )
+        .await
+        .map_err(|error| {
+            AppError::Config(format!(
+                "Portable update download or signature verification failed: {error}"
+            ))
         })?;
-    if !response.status().is_success() {
-        return Err(AppError::Config(format!(
-            "Portable update download failed with HTTP {}",
-            response.status()
-        )));
-    }
-
-    let total = response.content_length().unwrap_or(release.asset.size);
-    if total > MAX_PAYLOAD_BYTES || release.asset.size > MAX_PAYLOAD_BYTES {
+    if bytes.len() as u64 > MAX_PAYLOAD_BYTES {
         return Err(AppError::Config(
             "Portable update archive is larger than the allowed limit".into(),
         ));
     }
-    let mut bytes = Vec::with_capacity(release.asset.size as usize);
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| {
-            AppError::Config(format!("Portable update download failed: {error}"))
-        })?;
-        if bytes.len().saturating_add(chunk.len()) > MAX_PAYLOAD_BYTES as usize {
-            return Err(AppError::Config(
-                "Portable update archive is larger than the allowed limit".into(),
-            ));
-        }
-        bytes.extend_from_slice(&chunk);
-        let _ = on_progress.send(PortableUpdateProgress {
-            downloaded: bytes.len() as u64,
-            total,
-        });
-    }
-    if bytes.len() as u64 != release.asset.size {
-        return Err(AppError::Config(format!(
-            "Portable update size mismatch: GitHub reported {} bytes, downloaded {} bytes",
-            release.asset.size,
-            bytes.len()
-        )));
-    }
-    verify_github_digest(&bytes, &release.sha256)?;
     let _ = on_progress.send(PortableUpdateProgress {
         downloaded: bytes.len() as u64,
         total: bytes.len() as u64,
@@ -248,164 +192,35 @@ fn ensure_portable_runtime(runtime: &AppRuntime) -> AppResult<()> {
     Ok(())
 }
 
-async fn latest_portable_release(
-    app: &tauri::AppHandle,
-    arch: &str,
-) -> AppResult<Option<PortableRelease>> {
-    let asset_suffix = portable_asset_suffix_for_arch(arch)?;
-    let client = github_client(app)?;
-    let response = client
-        .get(GITHUB_LATEST_RELEASE_URL)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
-        .send()
-        .await
-        .map_err(|error| {
-            AppError::Config(format!("Failed to check GitHub portable release: {error}"))
-        })?;
-    if !response.status().is_success() {
-        return Err(AppError::Config(format!(
-            "GitHub release check failed with HTTP {}",
-            response.status()
-        )));
-    }
-    let release: GithubRelease = response
-        .json()
-        .await
-        .map_err(|error| AppError::Config(format!("Invalid GitHub release response: {error}")))?;
-    portable_release_from_github(
-        release,
-        app.package_info().version.to_string(),
-        asset_suffix,
-    )
-}
-
-fn portable_release_from_github(
-    release: GithubRelease,
-    current_version: String,
-    asset_suffix: &str,
-) -> AppResult<Option<PortableRelease>> {
-    let version_text = release.tag_name.trim_start_matches('v');
-    let version = Version::parse(version_text).map_err(|error| {
-        AppError::Config(format!(
-            "GitHub release has an invalid version '{}': {error}",
-            release.tag_name
-        ))
-    })?;
-    let current = Version::parse(current_version.trim_start_matches('v')).map_err(|error| {
-        AppError::Config(format!(
-            "Current application version '{current_version}' is invalid: {error}"
-        ))
-    })?;
-    if version <= current {
-        return Ok(None);
-    }
-
-    let mut matching_assets = release
-        .assets
-        .into_iter()
-        .filter(|asset| asset.name.to_ascii_lowercase().ends_with(asset_suffix));
-    let asset = matching_assets.next().ok_or_else(|| {
-        AppError::Config(format!(
-            "GitHub release {} does not contain a compatible portable ZIP",
-            release.tag_name
-        ))
-    })?;
-    if matching_assets.next().is_some() {
-        return Err(AppError::Config(format!(
-            "GitHub release {} contains duplicate portable ZIP assets",
-            release.tag_name
-        )));
-    }
-    let sha256 = parse_github_sha256(asset.digest.as_deref())?;
-
-    Ok(Some(PortableRelease {
-        version: version.to_string(),
-        date: release.published_at,
-        body: release.body,
-        asset,
-        sha256,
-    }))
-}
-
-fn github_client(app: &tauri::AppHandle) -> AppResult<reqwest::Client> {
-    reqwest::Client::builder()
-        .user_agent(format!("NyaTerm/{}", app.package_info().version))
-        .connect_timeout(Duration::from_secs(20))
-        .timeout(Duration::from_secs(15 * 60))
+async fn portable_update(app: &tauri::AppHandle, arch: &str) -> AppResult<Option<Update>> {
+    let target = portable_target_for_arch(arch)?;
+    let updater = app
+        .updater_builder()
+        .target(target)
         .build()
-        .map_err(|error| AppError::Config(format!("Failed to create update client: {error}")))
-}
-
-fn portable_asset_suffix_for_arch(arch: &str) -> AppResult<&'static str> {
-    match arch {
-        "x86_64" => Ok("_windows_x64_portable.zip"),
-        "aarch64" => Ok("_windows_arm64_portable.zip"),
-        other => Err(AppError::Config(format!(
-            "Unsupported portable update architecture: {other}"
+        .map_err(|error| {
+            AppError::Config(format!("Failed to configure portable updater: {error}"))
+        })?;
+    match updater.check().await {
+        Ok(update) => Ok(update),
+        Err(
+            tauri_plugin_updater::Error::TargetNotFound(_)
+            | tauri_plugin_updater::Error::TargetsNotFound(_),
+        ) => Ok(None),
+        Err(error) => Err(AppError::Config(format!(
+            "Failed to check for a portable update: {error}"
         ))),
     }
 }
 
-fn parse_github_sha256(digest: Option<&str>) -> AppResult<String> {
-    let digest = digest.ok_or_else(|| {
-        AppError::Config("GitHub did not provide a SHA-256 digest for the portable ZIP".into())
-    })?;
-    let value = digest
-        .strip_prefix("sha256:")
-        .ok_or_else(|| AppError::Config("GitHub portable ZIP digest is not SHA-256".into()))?;
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(AppError::Config(
-            "GitHub portable ZIP SHA-256 digest is invalid".into(),
-        ));
+fn portable_target_for_arch(arch: &str) -> AppResult<&'static str> {
+    match arch {
+        "x86_64" => Ok("windows-x86_64-portable"),
+        "aarch64" => Ok("windows-aarch64-portable"),
+        other => Err(AppError::Config(format!(
+            "Unsupported portable update architecture: {other}"
+        ))),
     }
-    Ok(value.to_ascii_lowercase())
-}
-
-fn verify_github_digest(bytes: &[u8], expected: &str) -> AppResult<()> {
-    let actual = hex::encode(Sha256::digest(bytes));
-    if actual != expected {
-        return Err(AppError::Config(format!(
-            "Portable update SHA-256 mismatch: expected {expected}, downloaded {actual}"
-        )));
-    }
-    Ok(())
-}
-
-fn rewrite_download_url(
-    original: &str,
-    source: PortableUpdateDownloadSource,
-    custom_mirror: &str,
-) -> AppResult<String> {
-    let rewritten = match source {
-        PortableUpdateDownloadSource::Github => original.to_string(),
-        PortableUpdateDownloadSource::Ghfast => format!("https://ghfast.top/{original}"),
-        PortableUpdateDownloadSource::GhProxy => format!("https://gh-proxy.com/{original}"),
-        PortableUpdateDownloadSource::Custom => {
-            let mirror = custom_mirror.trim();
-            if mirror.is_empty() {
-                return Err(AppError::Config(
-                    "A custom portable update mirror URL is required".into(),
-                ));
-            }
-            if mirror.contains("{url}") {
-                mirror.replace("{url}", original)
-            } else {
-                format!("{}/{original}", mirror.trim_end_matches('/'))
-            }
-        }
-    };
-    let parsed = reqwest::Url::parse(&rewritten)
-        .map_err(|error| AppError::Config(format!("Invalid update download URL: {error}")))?;
-    if !matches!(parsed.scheme(), "http" | "https")
-        || !parsed.username().is_empty()
-        || parsed.password().is_some()
-    {
-        return Err(AppError::Config(
-            "Update download URL must use HTTP(S) without embedded credentials".into(),
-        ));
-    }
-    Ok(rewritten)
 }
 
 fn ensure_install_directory_writable(directory: &Path) -> AppResult<()> {
@@ -736,82 +551,14 @@ mod tests {
     #[test]
     fn maps_supported_windows_architectures() {
         assert_eq!(
-            portable_asset_suffix_for_arch("x86_64").unwrap(),
-            "_windows_x64_portable.zip"
+            portable_target_for_arch("x86_64").unwrap(),
+            "windows-x86_64-portable"
         );
         assert_eq!(
-            portable_asset_suffix_for_arch("aarch64").unwrap(),
-            "_windows_arm64_portable.zip"
+            portable_target_for_arch("aarch64").unwrap(),
+            "windows-aarch64-portable"
         );
-        assert!(portable_asset_suffix_for_arch("x86").is_err());
-    }
-
-    #[test]
-    fn rewrites_supported_download_sources() {
-        let original = "https://github.com/nyakang/nyaterm/releases/download/v1.2.0/file.zip";
-        assert_eq!(
-            rewrite_download_url(original, PortableUpdateDownloadSource::Github, "").unwrap(),
-            original
-        );
-        assert_eq!(
-            rewrite_download_url(original, PortableUpdateDownloadSource::Ghfast, "").unwrap(),
-            format!("https://ghfast.top/{original}")
-        );
-        assert_eq!(
-            rewrite_download_url(original, PortableUpdateDownloadSource::GhProxy, "").unwrap(),
-            format!("https://gh-proxy.com/{original}")
-        );
-        assert_eq!(
-            rewrite_download_url(
-                original,
-                PortableUpdateDownloadSource::Custom,
-                "https://mirror.example/{url}",
-            )
-            .unwrap(),
-            format!("https://mirror.example/{original}")
-        );
-        assert!(rewrite_download_url(original, PortableUpdateDownloadSource::Custom, "").is_err());
-    }
-
-    #[test]
-    fn selects_newer_github_release_and_requires_digest() {
-        let release = GithubRelease {
-            tag_name: "v1.1.16".into(),
-            body: Some("notes".into()),
-            published_at: Some("2026-07-21T11:06:47Z".into()),
-            assets: vec![GithubReleaseAsset {
-                name: "NyaTerm_1.1.16_windows_x64_portable.zip".into(),
-                browser_download_url: "https://github.com/example.zip".into(),
-                size: 42,
-                digest: Some(format!("sha256:{}", "a".repeat(64))),
-            }],
-        };
-        let selected =
-            portable_release_from_github(release, "1.1.15".into(), "_windows_x64_portable.zip")
-                .unwrap()
-                .unwrap();
-        assert_eq!(selected.version, "1.1.16");
-        assert_eq!(selected.sha256, "a".repeat(64));
-
-        let missing_digest = GithubRelease {
-            tag_name: "v1.1.16".into(),
-            body: None,
-            published_at: None,
-            assets: vec![GithubReleaseAsset {
-                name: "NyaTerm_1.1.16_windows_x64_portable.zip".into(),
-                browser_download_url: "https://github.com/example.zip".into(),
-                size: 42,
-                digest: None,
-            }],
-        };
-        assert!(
-            portable_release_from_github(
-                missing_digest,
-                "1.1.15".into(),
-                "_windows_x64_portable.zip",
-            )
-            .is_err()
-        );
+        assert!(portable_target_for_arch("x86").is_err());
     }
 
     #[test]

@@ -4306,7 +4306,6 @@ dependencies = [
  "russh",
  "russh-sftp",
  "rusty-leveldb",
- "semver",
  "serde",
  "serde_json",
  "serialport",

@@ -20,7 +20,7 @@ pub use ai::{
 };
 pub use appearance::{AppearanceSettings, TerminalColorsConfig, ThemeColorsConfig, ThemeConfig};
 pub use diagnostics::{DiagnosticsLogLevel, DiagnosticsSettings};
-pub use general::{GeneralSettings, PortableUpdateDownloadSource};
+pub use general::GeneralSettings;
 pub use interaction::InteractionSettings;
 pub use proxy::ProxySettings;
 pub use search::{SearchEngine, SearchSettings};

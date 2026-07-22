@@ -134,7 +134,6 @@ reqwest = { version = "0.13", default-features = false, features = [
     "json",
     "form",
     "query",
-    "stream",
     "native-tls",
 ] }
 reqwest_012_native_tls = { package = "reqwest", version = "0.12.28", default-features = false, features = [
@@ -149,7 +148,6 @@ hex = "0.4"
 http = "1"
 urlencoding = "2"
 zip = "8"
-semver = "1"
 encoding_rs = "0.8"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
 rqrr = "0.9"
