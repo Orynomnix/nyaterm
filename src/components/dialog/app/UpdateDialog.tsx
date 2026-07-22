@@ -14,18 +14,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useApp } from "@/context/AppContext";
+import { invoke } from "@/lib/invoke";
 import type { UpdateInfo, UpdateProgress, UpdateStatus } from "@/lib/updater";
 import { checkForUpdate, downloadAndInstallUpdate, relaunchApp } from "@/lib/updater";
+import type { GeneralSettings } from "@/types/global";
 
 interface UpdateDialogProps {
   open: boolean;
   onClose: () => void;
   onUpdateFound?: (info: UpdateInfo) => void;
 }
-
-const RELEASES_URL = "https://github.com/nyakang/nyaterm/releases";
 
 type MarkdownNodeProps = {
   children?: ReactNode;
@@ -149,15 +157,20 @@ function MarkdownContent({ content }: { content: string }) {
 
 export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDialogProps) {
   const { t } = useTranslation();
-  const { runtimeInfo } = useApp();
+  const { appSettings, runtimeInfo, updateAppSettings } = useApp();
   const [status, setStatus] = useState<UpdateStatus>("checking");
   const [progress, setProgress] = useState<UpdateProgress>({ downloaded: 0, total: 0 });
   const [error, setError] = useState<string>("");
   const [currentVersion, setCurrentVersion] = useState("");
   const [localUpdateInfo, setLocalUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [downloadSource, setDownloadSource] =
+    useState<GeneralSettings["portable_update_download_source"]>("github");
+  const [customMirror, setCustomMirror] = useState("");
   const isUpdating = useRef(false);
   const onUpdateFoundRef = useRef(onUpdateFound);
+  const appSettingsRef = useRef(appSettings);
   onUpdateFoundRef.current = onUpdateFound;
+  appSettingsRef.current = appSettings;
 
   useEffect(() => {
     if (!open) return;
@@ -168,17 +181,19 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
     setProgress({ downloaded: 0, total: 0 });
     setError("");
     setLocalUpdateInfo(null);
+    setDownloadSource(appSettingsRef.current.general.portable_update_download_source);
+    setCustomMirror(appSettingsRef.current.general.portable_update_custom_mirror);
     isUpdating.current = false;
 
     setStatus("checking");
 
     let cancelled = false;
-    checkForUpdate()
+    checkForUpdate(runtimeInfo.portable)
       .then((info) => {
         if (cancelled) return;
         if (info) {
           setLocalUpdateInfo(info);
-          setStatus(runtimeInfo.portable ? "manual" : "available");
+          setStatus("available");
           onUpdateFoundRef.current?.(info);
         } else {
           setStatus("idle");
@@ -195,6 +210,34 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
     };
   }, [open, runtimeInfo.portable]);
 
+  const handleDownloadSourceChange = useCallback(
+    (source: GeneralSettings["portable_update_download_source"]) => {
+      setDownloadSource(source);
+      updateAppSettings({
+        general: {
+          ...appSettings.general,
+          portable_update_download_source: source,
+          portable_update_custom_mirror: customMirror,
+        },
+      });
+    },
+    [appSettings.general, customMirror, updateAppSettings],
+  );
+
+  const handleCustomMirrorChange = useCallback(
+    (value: string) => {
+      setCustomMirror(value);
+      updateAppSettings({
+        general: {
+          ...appSettings.general,
+          portable_update_download_source: downloadSource,
+          portable_update_custom_mirror: value,
+        },
+      });
+    },
+    [appSettings.general, downloadSource, updateAppSettings],
+  );
+
   const handleUpdate = useCallback(async () => {
     if (isUpdating.current) return;
     isUpdating.current = true;
@@ -202,7 +245,19 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
     setError("");
 
     try {
-      await downloadAndInstallUpdate((p) => {
+      if (runtimeInfo.portable) {
+        await invoke("save_app_settings", {
+          settings: {
+            ...appSettings,
+            general: {
+              ...appSettings.general,
+              portable_update_download_source: downloadSource,
+              portable_update_custom_mirror: customMirror,
+            },
+          },
+        });
+      }
+      await downloadAndInstallUpdate(runtimeInfo.portable, (p) => {
         setProgress(p);
       });
       setStatus("ready");
@@ -211,23 +266,19 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
       setStatus("error");
       isUpdating.current = false;
     }
-  }, []);
+  }, [appSettings, customMirror, downloadSource, runtimeInfo.portable]);
 
   const handleRelaunch = useCallback(async () => {
     try {
-      await relaunchApp();
+      await relaunchApp(runtimeInfo.portable);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("error");
     }
-  }, []);
+  }, [runtimeInfo.portable]);
 
   const canClose =
-    status === "checking" ||
-    status === "available" ||
-    status === "idle" ||
-    status === "error" ||
-    status === "manual";
+    status === "checking" || status === "available" || status === "idle" || status === "error";
   const percent = progress.total > 0 ? Math.round((progress.downloaded / progress.total) * 100) : 0;
 
   return (
@@ -270,41 +321,6 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
           </>
         )}
 
-        {status === "manual" && (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t("updater.portableManualTitle")}</DialogTitle>
-              <DialogDescription className="space-y-2 pt-1 text-xs">
-                <span className="block">
-                  {t("updater.currentVersion")}: v{currentVersion}
-                </span>
-                {localUpdateInfo && (
-                  <span className="block">
-                    {t("updater.newVersion")}: v{localUpdateInfo.version}
-                  </span>
-                )}
-                <span className="block">{t("updater.portableManualDesc")}</span>
-              </DialogDescription>
-            </DialogHeader>
-            {localUpdateInfo?.body && (
-              <div className="terminal-scroll max-h-[min(42vh,320px)] min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border p-3">
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  {t("updater.releaseNotes")}
-                </p>
-                <MarkdownContent content={localUpdateInfo.body} />
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={onClose}>
-                {t("common.close")}
-              </Button>
-              <Button size="sm" onClick={() => void openUrl(RELEASES_URL)}>
-                {t("updater.openReleases")}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
         {status === "available" && localUpdateInfo && (
           <>
             <DialogHeader>
@@ -331,6 +347,61 @@ export default function UpdateDialog({ open, onClose, onUpdateFound }: UpdateDia
                   {t("updater.releaseNotes")}
                 </p>
                 <MarkdownContent content={localUpdateInfo.body} />
+              </div>
+            )}
+
+            {runtimeInfo.portable && (
+              <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium" htmlFor="portable-update-source">
+                    {t("settings.portableUpdateDownloadSource")}
+                  </label>
+                  <p className="text-[11px] leading-4 text-muted-foreground">
+                    {t("settings.portableUpdateDownloadSourceDesc")}
+                  </p>
+                </div>
+                <Select
+                  value={downloadSource}
+                  onValueChange={(value) =>
+                    handleDownloadSourceChange(
+                      value as GeneralSettings["portable_update_download_source"],
+                    )
+                  }
+                >
+                  <SelectTrigger id="portable-update-source" className="w-full" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="github">
+                      {t("settings.portableUpdateSourceGithub")}
+                    </SelectItem>
+                    <SelectItem value="ghfast">
+                      {t("settings.portableUpdateSourceGhfast")}
+                    </SelectItem>
+                    <SelectItem value="gh_proxy">
+                      {t("settings.portableUpdateSourceGhProxy")}
+                    </SelectItem>
+                    <SelectItem value="custom">
+                      {t("settings.portableUpdateSourceCustom")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {downloadSource === "custom" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium" htmlFor="portable-update-custom-mirror">
+                      {t("settings.portableUpdateCustomMirror")}
+                    </label>
+                    <Input
+                      id="portable-update-custom-mirror"
+                      value={customMirror}
+                      placeholder="https://example.com/{url}"
+                      onChange={(event) => handleCustomMirrorChange(event.target.value)}
+                    />
+                    <p className="text-[11px] leading-4 text-muted-foreground">
+                      {t("settings.portableUpdateCustomMirrorDesc")}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

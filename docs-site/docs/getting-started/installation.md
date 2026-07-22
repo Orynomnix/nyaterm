@@ -24,7 +24,7 @@ NyaTerm 支持以下操作系统：
 | macOS | `.dmg` |
 | Linux | `.deb` / `.AppImage` |
 
-Windows 便携版解压后运行 `NyaTerm.exe` 即可。便携版不会使用自动更新；更新时请下载新的便携版 zip，关闭 NyaTerm，替换程序文件，并保留 `data/` 目录。
+Windows 便携版解压后运行 `NyaTerm.exe` 即可。**Help → 检查更新** 会从 GitHub Releases 读取版本和更新说明，并使用 GitHub 提供的 SHA-256 摘要验证下载包。可在设置中选择 GitHub 直连、内置镜像或自定义镜像；重启时 NyaTerm 会自动替换程序文件，并完整保留 `data/` 目录。
 
 Windows 便携版直接下载：
 

@@ -24,7 +24,7 @@ Visit the [Releases](https://github.com/nyakang/nyaterm/releases) page and downl
 | macOS | `.dmg` |
 | Linux | `.deb` / `.AppImage` |
 
-For the Windows portable edition, extract the zip and run `NyaTerm.exe`. Portable edition updates are manual: download the new portable zip, close NyaTerm, replace the program files, and keep the `data/` folder.
+For the Windows portable edition, extract the zip and run `NyaTerm.exe`. **Help → Check Updates** reads version details and release notes from GitHub Releases, then verifies the downloaded archive against GitHub's SHA-256 digest. You can select direct GitHub downloads, a built-in mirror, or a custom mirror in Settings; when restarting, NyaTerm replaces the program files and preserves the complete `data/` folder.
 
 Direct downloads for the Windows portable edition:
 

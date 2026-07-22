@@ -5,8 +5,10 @@ import { useApp } from "@/context/AppContext";
 import { useConfigTransfer } from "@/hooks/useConfigTransfer";
 import { AVAILABLE_LANGUAGES } from "@/i18n";
 import { invoke } from "@/lib/invoke";
+import type { GeneralSettings } from "@/types/global";
 import {
   SettingFieldGrid,
+  SettingInput,
   SettingRow,
   SettingSection,
   SettingSelect,
@@ -15,7 +17,7 @@ import {
 
 export function GeneralTab() {
   const { t, i18n } = useTranslation();
-  const { appSettings, updateAppSettings, updateUi } = useApp();
+  const { appSettings, runtimeInfo, updateAppSettings, updateUi } = useApp();
   const { handleExportDiagnostics, handleOpenLogs } = useConfigTransfer();
 
   return (
@@ -85,6 +87,51 @@ export function GeneralTab() {
           />
         </SettingRow>
       </SettingSection>
+
+      {runtimeInfo.portable && (
+        <SettingSection
+          title={t("settings.portableUpdate")}
+          desc={t("settings.portableUpdateDesc")}
+          contentClassName="space-y-4"
+        >
+          <SettingSelect
+            label={t("settings.portableUpdateDownloadSource")}
+            desc={t("settings.portableUpdateDownloadSourceDesc")}
+            value={appSettings.general.portable_update_download_source}
+            onValueChange={(source) =>
+              updateAppSettings({
+                general: {
+                  ...appSettings.general,
+                  portable_update_download_source:
+                    source as GeneralSettings["portable_update_download_source"],
+                },
+              })
+            }
+          >
+            <SelectItem value="github">{t("settings.portableUpdateSourceGithub")}</SelectItem>
+            <SelectItem value="ghfast">{t("settings.portableUpdateSourceGhfast")}</SelectItem>
+            <SelectItem value="gh_proxy">{t("settings.portableUpdateSourceGhProxy")}</SelectItem>
+            <SelectItem value="custom">{t("settings.portableUpdateSourceCustom")}</SelectItem>
+          </SettingSelect>
+
+          {appSettings.general.portable_update_download_source === "custom" && (
+            <SettingInput
+              label={t("settings.portableUpdateCustomMirror")}
+              desc={t("settings.portableUpdateCustomMirrorDesc")}
+              value={appSettings.general.portable_update_custom_mirror}
+              placeholder="https://example.com/{url}"
+              onChange={(event) =>
+                updateAppSettings({
+                  general: {
+                    ...appSettings.general,
+                    portable_update_custom_mirror: event.target.value,
+                  },
+                })
+              }
+            />
+          )}
+        </SettingSection>
+      )}
 
       <SettingSection
         title={t("settings.diagnostics")}

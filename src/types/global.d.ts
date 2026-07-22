@@ -752,6 +752,8 @@ export interface GeneralSettings {
   minimize_to_tray: boolean;
   boss_key: string | null;
   confirm_on_close: boolean;
+  portable_update_download_source: "github" | "ghfast" | "gh_proxy" | "custom";
+  portable_update_custom_mirror: string;
 }
 
 export type BackgroundImageFit = "cover" | "contain" | "stretch" | "tile";

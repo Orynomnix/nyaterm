@@ -191,6 +191,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     minimize_to_tray: false,
     boss_key: null,
     confirm_on_close: true,
+    portable_update_download_source: "github",
+    portable_update_custom_mirror: "",
   },
   appearance: {
     theme: "github-dark",
