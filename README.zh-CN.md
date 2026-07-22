@@ -264,6 +264,22 @@ NyaTerm 适合每天在服务器、本地命令、设备调试和配置文件之
 
 Windows 便携版解压后运行 `NyaTerm.exe` 即可。便携版更新需要手动完成：下载新的便携版 zip，关闭 NyaTerm，替换程序文件，并保留 `data/` 目录。
 
+### macOS
+
+macOS 用户可以通过 Homebrew 安装 NyaTerm：
+
+```bash
+brew install nyakang/nyaterm/nyaterm
+```
+
+该命令会使用 [`nyakang/homebrew-nyaterm`](https://github.com/nyakang/homebrew-nyaterm) tap，并安装 `nyaterm` cask。也可以从 [nyaterm.app](https://nyaterm.app) 或 [Releases](https://github.com/nyakang/nyaterm/releases) 下载 `.dmg` 安装包，然后将 NyaTerm 拖入 `/Applications`。
+
+NyaTerm 目前还没有使用 Apple Developer 证书签名。安装后如果 macOS 提示应用已损坏或无法打开，可以移除 quarantine 属性后再打开：
+
+```bash
+sudo xattr -cr /Applications/NyaTerm.app
+```
+
 ### Arch Linux / AUR
 
 Arch Linux 用户可以通过 AUR 安装 NyaTerm：
