@@ -861,7 +861,7 @@
     "duplicateOverwriteAllForTaskDesc": "Only for this upload task; future uploads will still ask.",
     "duplicateSkip": "Skip",
     "duplicateTitle": "Target already exists",
-    "duplicateUnverifiedDescription": "NyaTerm cannot verify whether \"{{name}}\" already exists at the ZMODEM destination. Overwrite only if you trust the current remote directory.",
+    "duplicateUnverifiedDescription": "NyaTerm cannot verify whether \"{{name}}\" already exists at the ZMODEM destination. Overwrite only if you trust the current remote directory; forced overwrite will be attempted.",
     "duplicateUnverifiedTitle": "ZMODEM destination not verified",
     "error": "Error",
     "noTransfers": "No transfers",
@@ -2412,7 +2412,7 @@
     "selectFiles": "Select files to upload via ZMODEM",
     "selectSaveDir": "Select folder to save ZMODEM downloads",
     "sftpProbeSkipped": "SFTP channel busy, skipping conflict detection; uploading via ZMODEM",
-    "sftpProbeUnavailable": "Could not verify the ZMODEM destination; uploading with overwrite enabled",
+    "sftpProbeUnavailable": "Could not verify the ZMODEM destination; trying upload with forced overwrite",
     "uploading": "Sending: {{fileName}} ({{percent}}%)"
   }
 }

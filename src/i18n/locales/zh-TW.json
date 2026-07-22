@@ -861,7 +861,7 @@
     "duplicateOverwriteAllForTaskDesc": "僅對本次上傳任務生效，後續上傳仍會詢問。",
     "duplicateSkip": "跳過",
     "duplicateTitle": "目標已存在",
-    "duplicateUnverifiedDescription": "NyaTerm 無法確認 ZMODEM 目標位置是否已有「{{name}}」。僅在你確認目前遠端目錄正確時選擇覆蓋。",
+    "duplicateUnverifiedDescription": "NyaTerm 無法確認 ZMODEM 目標位置是否已有「{{name}}」。僅在你確認目前遠端目錄正確時選擇覆蓋；覆蓋時會嘗試使用強制覆蓋參數上傳。",
     "duplicateUnverifiedTitle": "無法確認 ZMODEM 目標位置",
     "error": "錯誤",
     "noTransfers": "無傳輸記錄",
@@ -2407,7 +2407,7 @@
     "selectFiles": "選擇要透過 ZMODEM 上傳的檔案",
     "selectSaveDir": "選擇 ZMODEM 下載儲存資料夾",
     "sftpProbeSkipped": "SFTP 通道繁忙，跳過同名檔案偵測，直接上傳",
-    "sftpProbeUnavailable": "無法確認 ZMODEM 目標位置，將以覆蓋同名檔案的模式上傳",
+    "sftpProbeUnavailable": "無法確認 ZMODEM 目標位置，將嘗試使用強制覆蓋參數上傳",
     "uploading": "傳送中: {{fileName}} ({{percent}}%)"
   }
 }
