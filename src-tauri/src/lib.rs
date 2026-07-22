@@ -103,6 +103,7 @@ pub fn run() {
             cmd::app::read_background_image_data_url,
             cmd::ai::start_ai_chat_stream,
             cmd::ai::list_ai_model_names,
+            cmd::ai::refresh_ai_model_settings,
             cmd::ai::cancel_ai_chat_stream,
             cmd::ai::detect_codex_cli,
             cmd::ai::get_codex_account_status,
