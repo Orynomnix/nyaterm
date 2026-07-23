@@ -418,6 +418,7 @@ export interface UiConfig {
   quick_cmd_height: number;
   quick_cmd_view_mode: QuickCommandViewMode;
   quick_cmd_sort_mode?: QuickCommandSortMode;
+  quick_cmd_selected_category?: string;
   /** ID of whichever panel is currently open on the left side. */
   active_left_panel: string | null;
   /** ID of whichever panel is currently open on the right side. */

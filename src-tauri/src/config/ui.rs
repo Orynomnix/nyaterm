@@ -229,6 +229,8 @@ pub struct UiConfig {
     pub quick_cmd_view_mode: String,
     #[serde(default = "default_quick_cmd_sort_mode")]
     pub quick_cmd_sort_mode: String,
+    #[serde(default = "default_quick_cmd_selected_category")]
+    pub quick_cmd_selected_category: String,
     #[serde(default = "default_active_left_panel")]
     pub active_left_panel: Option<String>,
     #[serde(default = "default_active_right_panel")]
@@ -313,6 +315,10 @@ fn default_quick_cmd_sort_mode() -> String {
     "created".to_string()
 }
 
+fn default_quick_cmd_selected_category() -> String {
+    "all".to_string()
+}
+
 fn default_active_left_panel() -> Option<String> {
     Some("fileExplorer".to_string())
 }
@@ -387,6 +393,7 @@ impl Default for UiConfig {
             quick_cmd_height: default_quick_cmd_height(),
             quick_cmd_view_mode: default_quick_cmd_view_mode(),
             quick_cmd_sort_mode: default_quick_cmd_sort_mode(),
+            quick_cmd_selected_category: default_quick_cmd_selected_category(),
             active_left_panel: default_active_left_panel(),
             active_right_panel: default_active_right_panel(),
             left_open_panels: vec![],

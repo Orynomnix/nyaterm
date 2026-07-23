@@ -96,13 +96,13 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
   const { appSettings, updateUi } = useApp();
   const [commands, setCommands] = useState<QuickCommand[]>([]);
   const [savedCategories, setSavedCategories] = useState<QuickCommandCategory[]>([]);
+  const [quickCommandsLoaded, setQuickCommandsLoaded] = useState(false);
   const loaded = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextSaveRef = useRef(false);
 
   // UI State
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPopoverOpen, setAiPopoverOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -120,6 +120,7 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     skipNextSaveRef.current = true;
     setCommands(cfg.commands || []);
     setSavedCategories(cfg.categories || []);
+    setQuickCommandsLoaded(true);
     loaded.current = true;
   }, []);
 
@@ -164,9 +165,13 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     const categoryId = categoryToDelete.id;
     setSavedCategories((prev) => prev.filter((category) => category.id !== categoryId));
     setCommands((prev) => prev.filter((cmd) => cmd.category_id !== categoryId));
-    setSelectedCategory((current) => (current === categoryId ? "all" : current));
+    updateUi((current) =>
+      current.quick_cmd_selected_category === categoryId
+        ? { quick_cmd_selected_category: "all" }
+        : {},
+    );
     setCategoryToDelete(null);
-  }, [categoryToDelete]);
+  }, [categoryToDelete, updateUi]);
 
   const handleConfirmRenameCategory = useCallback(
     (name: string) => {
@@ -350,6 +355,10 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
 
   const viewMode = normalizeQuickCommandViewMode(appSettings.ui.quick_cmd_view_mode);
   const sortMode = normalizeQuickCommandSortMode(appSettings.ui.quick_cmd_sort_mode);
+  const storedSelectedCategory = appSettings.ui.quick_cmd_selected_category || "all";
+  const selectedCategory = categoryItems.some((category) => category.id === storedSelectedCategory)
+    ? storedSelectedCategory
+    : "all";
   const setViewMode = useCallback(
     (mode: QuickCommandViewMode) => {
       updateUi({ quick_cmd_view_mode: mode });
@@ -362,6 +371,18 @@ function QuickCommands({ onSend, onSendToAll }: QuickCommandsProps) {
     },
     [updateUi],
   );
+  const setSelectedCategory = useCallback(
+    (categoryId: string) => {
+      updateUi({ quick_cmd_selected_category: categoryId });
+    },
+    [updateUi],
+  );
+
+  useEffect(() => {
+    if (!quickCommandsLoaded) return;
+    if (storedSelectedCategory === selectedCategory) return;
+    updateUi({ quick_cmd_selected_category: selectedCategory });
+  }, [quickCommandsLoaded, selectedCategory, storedSelectedCategory, updateUi]);
 
   const filteredCommands = useMemo(() => {
     let filtered = commands;
