@@ -19,15 +19,26 @@
 </p>
 
 <p align="center">
-  <a href="https://nyaterm.app"><img alt="Version" src="https://img.shields.io/github/v/release/nyakang/nyaterm?style=flat-square&logo=github&color=0EA5E9&labelColor=334155&label=版本"></a>
+  <a href="https://nyaterm.app"><img alt="Version" src="https://img.shields.io/github/v/release/nyakang/nyaterm.svg?style=flat-square&logo=github&color=0EA5E9&labelColor=334155&label=%E7%89%88%E6%9C%AC&cacheSeconds=300"></a>
   &nbsp;
-  <a href="https://github.com/nyakang/nyaterm/releases"><img alt="GitHub downloads" src="https://img.shields.io/github/downloads/nyakang/nyaterm/total?style=flat-square&logo=github&color=0EA5E9&label=下载量&labelColor=334155"></a>
+  <a href="https://github.com/nyakang/nyaterm/releases">
+    <img
+      alt="GitHub downloads"
+      src="https://img.shields.io/github/downloads/nyakang/nyaterm/total.svg?style=flat-square&logo=github&color=0EA5E9&label=%E4%B8%8B%E8%BD%BD%E9%87%8F&labelColor=334155&v=2"
+    >
+  </a>
   &nbsp;
-  <a href="#"><img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0EA5E9?style=flat-square&logo=linux&labelColor=334155&label=支持平台"></a>
+  <img
+    alt="Platform"
+    src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0EA5E9.svg?style=flat-square&logo=linux&labelColor=334155&label=%E6%94%AF%E6%8C%81%E5%B9%B3%E5%8F%B0&v=2"
+  >
   &nbsp;
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-0EA5E9?style=flat-square&logo=readthedocs&labelColor=334155&label=协议"></a>
-</p>
-
+  <a href="LICENSE">
+    <img
+      alt="License"
+      src="https://img.shields.io/badge/License-MIT-0EA5E9.svg?style=flat-square&logo=readthedocs&labelColor=334155&label=%E5%8D%8F%E8%AE%AE&v=2"
+    >
+  </a>
 <p align="center">
   <a href="./README.md">English</a> · <a href="./README.zh-CN.md">简体中文</a>
 </p>
