@@ -182,6 +182,17 @@ export async function sendSessionBinaryInput(sessionId: string, data: string): P
   });
 }
 
+export async function sendSessionBinaryInputWithSync(
+  sessionId: string,
+  data: string,
+  peerSessionIds: string[],
+): Promise<void> {
+  await sendSessionBinaryInput(sessionId, data);
+  await Promise.allSettled(
+    peerSessionIds.map((sid) => sendSessionBinaryInput(sid, data)),
+  );
+}
+
 /**
  * Send input to a session and broadcast to all sync-group peers.
  * Peers do not emit frontend preview/history UI, but an executable command
