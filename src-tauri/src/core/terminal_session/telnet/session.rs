@@ -400,6 +400,7 @@ async fn telnet_session_task(
                         let mut write_failed = None;
                         if raw {
                             let send_data = prepare_terminal_write_input(data, &encoding, true, false);
+                            let send_data = escape_telnet_application_data(&send_data, config.raw_tcp_cli);
                             if let Err(e) = writer.write_all(&send_data).await {
                                 write_failed = Some(e);
                             }

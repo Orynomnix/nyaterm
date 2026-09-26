@@ -52,6 +52,7 @@ import {
   type SendSessionInputOptions,
   type SessionInputPreview,
   sendSessionBinaryInput,
+  sendSessionBinaryInputWithSync,
   sendSessionInput,
   sendSessionInputWithSync,
 } from "@/lib/sessionInput";
@@ -2362,7 +2363,12 @@ export default function XTerminal({
         requestWake("input");
       }
       if (disconnectedRef.current) return;
-      void sendSessionBinaryInput(sessionIdRef.current, data).catch(() => {});
+      const peers = syncPeerSessionIdsRef.current;
+      void (
+        peers?.length
+          ? sendSessionBinaryInputWithSync(sessionIdRef.current, data, peers)
+          : sendSessionBinaryInput(sessionIdRef.current, data)
+      ).catch(() => {});
     });
 
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
